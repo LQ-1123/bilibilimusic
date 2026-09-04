@@ -1,0 +1,18 @@
+{% if songs %}
+<div class="grid">
+  {% for s in songs %}
+  <div class="card">
+    <div class="cover">
+      <img src="{{ s.cover_url }}" alt="" loading="lazy">
+      <button class="play" data-play="{{ s.id }}" title="播放">▶</button>
+      <span class="q-badge">{{ s.quality_label }}</span>
+    </div>
+    <div class="c-title" title="{{ s.title }}">{{ s.title }}</div>
+    <div class="c-sub">{{ s.artist }} · {{ s.duration_text }}</div>
+    <button class="del" data-del="{{ s.id }}" title="删除">✕</button>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">曲库还是空的——去 B 站复制一个音乐视频链接，粘贴到上面的输入框吧。</div>
+{% endif %}

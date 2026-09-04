@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BiliMusic · B站音乐收藏</title>
+  <link rel="stylesheet" href="/static/style.css?v=2">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/transition.js?v=5" defer></script>
+  <script src="/static/app.js?v=5" defer></script>
+  <script src="/static/export.js?v=5" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">▶ BiliMusic</div>
+    <nav>
+      <span id="auth-badge" class="badge {{ 'ok' if logged_in else 'err' }}">
+        {% if logged_in %}已登录 · 最高 192K{% else %}未登录 · 请先登录{% endif %}
+      </span>
+      <button id="btn-export" class="linklike" title="把曲库导出为 B 站收藏夹链接">导出</button>
+      <a href="/login">账号</a>
+    </nav>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="queue-panel" class="hidden">
+    <div class="q-head">
+      <span>播放列表 <span id="queue-count"></span></span>
+      <span class="q-toggles">
+        <label class="smart-toggle" title="切歌时自动寻找最佳衔接点">
+          <input type="checkbox" id="smart-toggle"> 智能过渡
+        </label>
+        <label class="smart-toggle" title="当前歌曲循环播放">
+          <input type="checkbox" id="repeat-one-toggle"> 单曲循环
+        </label>
+      </span>
+    </div>
+    <ul id="queue-list"></ul>
+  </div>
+
+  <footer id="player-bar">
+    <img id="player-cover" alt="封面">
+    <div class="p-meta">
+      <div id="player-title">—</div>
+      <div id="player-artist"></div>
+    </div>
+    <div class="p-controls">
+      <button id="btn-prev" title="上一首">⏮</button>
+      <button id="btn-toggle" title="播放/暂停">▶</button>
+      <button id="btn-next" title="下一首">⏭</button>
+      <button id="btn-queue" title="播放列表">☰</button>
+    </div>
+    <div class="p-progress">
+      <span id="t-cur">0:00</span>
+      <input id="seek" type="range" min="0" max="1000" value="0" step="1">
+      <span id="t-dur">0:00</span>
+    </div>
+    <audio id="audio" preload="none"></audio>
+    <audio id="audio2" preload="none"></audio>
+  </footer>
+
+  <div id="export-modal" class="modal hidden">
+    <div class="modal-box">
+      <h3>导出为 B 站收藏夹</h3>
+      <p class="hint">
+        每次入库都会自动收藏进你账号的公开收藏夹「<b>bilimusic</b>」。
+        此按钮补同步缺失的歌曲（登录前导入或收藏失败的），随后生成分享链接——
+        他人把链接粘进本应用即可整夹导入，链接对浏览器 / B 站 App 同样有效。
+      </p>
+      <div id="export-progress" class="hidden">
+        <div class="bar"><div class="fill" id="export-fill" style="width: 0%"></div></div>
+        <span id="export-status">准备中…</span>
+      </div>
+      <div id="export-result" class="hidden">
+        <a id="export-link" target="_blank" rel="noopener"></a>
+        <button id="btn-copy-link">复制链接</button>
+      </div>
+      <div id="export-failures" class="hidden"></div>
+      <div class="modal-actions">
+        <button id="btn-export-close">关闭</button>
+        <button id="btn-export-start">生成链接 / 补同步</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

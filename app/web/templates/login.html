@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="login-box">
+  <h2>扫码登录 B 站</h2>
+  <p class="hint">
+    本应用需要登录后使用：导入、播放与导出都走你的账号。
+    登录后系统会自动在你的账号下创建公开收藏夹「bilimusic」，每首入库的歌都会自动收藏进去，
+    导出即分享该收藏夹链接。凭据仅保存在本机后端（cookies.json，权限 0600）。
+  </p>
+  <div id="qr-box">
+    <div id="qr-status">正在生成二维码…</div>
+    <img id="qr-img" alt="登录二维码" hidden>
+    <button id="qr-refresh" class="hidden">二维码已失效，点击刷新</button>
+  </div>
+  {% if logged_in %}
+  <div class="current-login">
+    当前已登录。
+    <button id="btn-logout">退出登录</button>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

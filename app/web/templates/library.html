@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="import-box">
+  <form hx-post="/web/import" hx-target="#task-list" hx-swap="innerHTML">
+    <input type="text" name="url" placeholder="粘贴 B 站视频分享链接或收藏夹链接…" required autofocus>
+    <button type="submit">导入</button>
+  </form>
+  <p class="import-hint">支持：视频分享链接（b23.tv / BV 号）· 收藏夹链接（含 fid，未公开收藏夹需先登录）· 批量导入自动去重</p>
+</section>
+
+<section class="tasks" id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></section>
+
+<section class="library">
+  <input id="search" type="search" name="q" placeholder="搜索歌名 / UP 主…"
+         hx-get="/partials/songs" hx-trigger="input changed delay:300ms" hx-include="this"
+         hx-target="#songs" hx-swap="innerHTML">
+  <div id="songs" hx-get="/partials/songs" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
+</section>
+{% endblock %}

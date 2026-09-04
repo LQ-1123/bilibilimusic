@@ -1,0 +1,9 @@
+.venv/
+data/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mimosa/
+.v2c/
+.video_agent/
+.zcode/
