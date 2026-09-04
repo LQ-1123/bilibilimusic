@@ -7,9 +7,12 @@ from app.db.session import new_session
 from app.storage.files import FileStore
 
 
-def list_songs(q: str = "", limit: int = 500) -> list[Song]:
+def list_songs(q: str = "", limit: int = 500, playlist_id: int = 0) -> list[Song]:
+    """playlist_id>0 时只返回该歌内的歌；0 返回全部。"""
     with new_session() as session:
         stmt = select(Song).order_by(Song.created_at.desc()).limit(limit)
+        if playlist_id:
+            stmt = stmt.where(Song.playlist_id == playlist_id)  # type: ignore[attr-defined]
         if q.strip():
             kw = f"%{q.strip()}%"
             stmt = stmt.where(or_(Song.title.like(kw), Song.artist.like(kw)))
@@ -35,6 +38,38 @@ def update_aid(song_id: int, aid: int) -> None:
             song.aid = aid
             session.add(song)
             session.commit()
+
+
+def update_fav_folder(song_id: int, folder_id: int) -> None:
+    """记录歌曲所在的曲库夹；删歌取消收藏时直接定位。"""
+    with new_session() as session:
+        song = session.get(Song, song_id)
+        if song is not None and folder_id:
+            song.fav_folder_id = folder_id
+            session.add(song)
+            session.commit()
+
+
+def update_playlist(song_id: int, playlist_id: int) -> None:
+    with new_session() as session:
+        song = session.get(Song, song_id)
+        if song is not None and playlist_id:
+            song.playlist_id = playlist_id
+            session.add(song)
+            session.commit()
+
+
+def update_lyrics(song_id: int, lyrics: str, source: str) -> None:
+    """写入歌词与来源，并置已尝试标记（lyrics 为空 = 取过但没取到，不再重试）。"""
+    with new_session() as session:
+        song = session.get(Song, song_id)
+        if song is None:
+            return
+        song.lyrics = lyrics
+        song.lyrics_source = source
+        song.lyrics_checked = 1
+        session.add(song)
+        session.commit()
 
 
 def get_by_bvid(bvid: str) -> Song | None:

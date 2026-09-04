@@ -3,19 +3,28 @@
 契约同时服务于 Web 页与二期 Flutter 安卓端，字段变更需同步 README.md 的契约文档。
 """
 
+import asyncio
+import hashlib
+import re
 import urllib.parse
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.bili.client import BiliClient
-from app.bili.quality import quality_label
+from app.bili.client import (
+    BILIBILI_REFERER,
+    BiliClient,
+    BiliApiError,
+    VideoRef,
+)
+from app.bili.quality import pick_best_audio, quality_label
 from app.config import settings
 from app.core.cookies import CookieStore
+from app.core.url_guard import UnsafeUrlError, validate_bilibili_url
 from app.db.models import ImportTask, Song
-from app.services import library
+from app.services import library, playlists, recs
 from app.services.importer import ImportService
 from app.storage.files import FileStore
 
@@ -71,6 +80,13 @@ def _media_token_suffix() -> str:
 
 # ---- 序列化 ----
 
+def _fallback_color(bvid: str) -> str:
+    """无封面主色时的稳定兜底色（由 bvid 哈希派生，同一首歌颜色恒定）。"""
+    h = int(hashlib.sha256(bvid.encode()).hexdigest()[:6], 16)
+    r, g, b = h >> 16 & 0xFF, h >> 8 & 0xFF, h & 0xFF
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
 def song_out(s: Song) -> dict:
     return {
         "id": s.id,
@@ -82,6 +98,10 @@ def song_out(s: Song) -> dict:
         "qualityLabel": quality_label(s.quality_id),
         "audioUrl": f"/api/songs/{s.id}/audio" + _media_token_suffix(),
         "coverUrl": f"/api/songs/{s.id}/cover" + _media_token_suffix(),
+        "coverColor": s.cover_color or _fallback_color(s.bvid),
+        "aid": s.aid,
+        "playlistId": s.playlist_id,
+        "favFolderId": s.fav_folder_id,
         "createdAt": s.created_at.isoformat(),
     }
 
@@ -101,15 +121,17 @@ def task_out(t: ImportTask) -> dict:
     }
 
 
-# ---- 导入 ----
+# ---- 收藏（导入） ----
 
 class ImportCreate(BaseModel):
     url: str = Field(min_length=1, max_length=2000, description="B 站链接或完整分享文本")
+    playlistId: int = Field(default=0, description="目标歌单；0 = 默认歌单")
 
 
 @router.post("/imports", status_code=202)
 async def create_import(body: ImportCreate, request: Request) -> dict:
-    task = request.app.state.importer.submit(body.url)
+    task = request.app.state.importer.submit(body.url, playlist_id=body.playlistId)
+    recs.dismiss_for_text(body.url)  # 发现页收藏转正：出池
     return {"importId": task.id}
 
 
@@ -119,7 +141,8 @@ async def create_batch_import(body: ImportCreate, request: Request) -> dict:
     from app.services.batch import submit_any
 
     return await submit_any(
-        request.app.state.importer, request.app.state.bili, body.url
+        request.app.state.importer, request.app.state.bili, body.url,
+        playlist_id=body.playlistId,
     )
 
 
@@ -139,8 +162,50 @@ def get_import(task_id: str) -> dict:
 # ---- 曲库 ----
 
 @router.get("/songs")
-def list_songs(q: str = "") -> dict:
-    return {"songs": [song_out(s) for s in library.list_songs(q)]}
+def list_songs(q: str = "", playlist_id: int = 0) -> dict:
+    return {"songs": [song_out(s) for s in library.list_songs(q, playlist_id=playlist_id)]}
+
+def playlist_out(p) -> dict:
+    from app.services.playlists import folder_ids
+
+    return {"id": p.id, "name": p.name, "folderIds": folder_ids(p)}
+
+
+# ---- 歌单（每歌单对应收藏夹 bilimusic- <歌单名>） ----
+
+class PlaylistBody(BaseModel):
+    name: str = Field(min_length=1, max_length=16)
+
+
+@router.get("/playlists")
+def list_playlists_api() -> dict:
+    return {"playlists": [playlist_out(p) for p in playlists.list_playlists()]}
+
+
+@router.post("/playlists", status_code=201)
+async def create_playlist_api(body: PlaylistBody, request: Request) -> dict:
+    p = await playlists.create(body.name, request.app.state.bili)
+    return playlist_out(p)
+
+
+@router.patch("/playlists/{playlist_id}")
+async def rename_playlist_api(
+    playlist_id: int, body: PlaylistBody, request: Request
+) -> dict:
+    """改歌单名；B 站收藏夹名同步更新（bilimusic- <新名字>）。"""
+    if playlists.get_playlist(playlist_id) is None:
+        raise HTTPException(status_code=404, detail="歌单不存在")
+    await playlists.rename(playlist_id, body.name, request.app.state.bili)
+    return playlist_out(playlists.get_playlist(playlist_id))
+
+
+@router.delete("/playlists/{playlist_id}", status_code=202)
+async def delete_playlist_api(playlist_id: int, request: Request) -> dict:
+    """删除歌单：歌曲移入默认歌单（解放），B 站收藏夹一并删除；收藏转移后台执行。"""
+    try:
+        return await playlists.delete(playlist_id, request.app.state.bili)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/songs/{song_id}")
@@ -171,11 +236,92 @@ def song_cover(song_id: int, files: FileStore = Depends(_files)):
     return files.cover_response(Path(song.cover_path))
 
 
-@router.delete("/songs/{song_id}")
-def delete_song_api(song_id: int, files: FileStore = Depends(_files)) -> dict:
-    if not library.delete_song(song_id, files):
+@router.get("/songs/{song_id}/lyrics")
+async def song_lyrics(song_id: int, request: Request) -> dict:
+    """歌词（带轴 LRC 或无轴纯文本）；未抓取过则现场懒抓（B站字幕+LRCLIB）并缓存。
+
+    存量歌曲无需回填脚本：首次打开歌词面板时由此端点自动补齐。
+    取不到返回 {"lyrics": null}，已标记不再重复请求外部接口。
+    """
+    song = library.get_song(song_id)
+    if song is None:
         raise HTTPException(status_code=404, detail="歌曲不存在")
+    if not song.lyrics_checked:
+        await request.app.state.lyrics.ensure_for_song(song_id)
+        song = library.get_song(song_id) or song
+    return {"lyrics": song.lyrics or None, "source": song.lyrics_source or None}
+
+
+@router.delete("/songs/{song_id}")
+async def delete_song_api(
+    song_id: int, request: Request, files: FileStore = Depends(_files)
+) -> dict:
+    song = library.get_song(song_id)
+    if song is None or not library.delete_song(song_id, files):
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    # 删歌即取消收藏（夹池强关联曲库）；失败不影响本地删除
+    bili: BiliClient = request.app.state.bili
+    if song.aid:
+        try:
+            if song.fav_folder_id:
+                await bili.unfavorite_song(song.aid, folder_id=song.fav_folder_id)
+            else:
+                asyncio.create_task(bili.unfavorite_song(song.aid))  # 旧数据：后台有界查找
+        except BiliApiError:
+            pass
     return {"ok": True}
+
+
+# ---- 曲库同步（账号 ⇆ 收藏夹池） ----
+
+@router.post("/sync", status_code=202)
+async def create_sync(request: Request) -> dict:
+    """双向对账：拉取（夹→本地导入）+ 推送（本地→补收藏）。已有进行中的同步则幂等返回。"""
+    state = request.app.state.syncer.submit()
+    return state.out()
+
+
+@router.get("/sync/{sync_id}")
+def get_sync(sync_id: str, request: Request) -> dict:
+    state = request.app.state.syncer.get(sync_id)
+    if state is None:
+        raise HTTPException(status_code=404, detail="同步任务不存在")
+    return state.out()
+
+
+# ---- B 站搜索 ----
+
+def _fmt_duration(seconds: int) -> str:
+    h, rem = divmod(max(0, int(seconds or 0)), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def search_out(h) -> dict:
+    return {
+        "bvid": h.bvid,
+        "avid": h.avid,
+        "title": h.title,
+        "artist": h.artist,
+        "duration": h.duration,
+        "durationText": _fmt_duration(h.duration),
+        "coverUrl": h.cover_url,
+        "play": h.play,
+        "importUrl": f"https://www.bilibili.com/video/{h.bvid}",
+    }
+
+
+@router.get("/search")
+async def search_bili(
+    q: str = "", keyword: str = "", page: int = 1, bili: BiliClient = Depends(_bili)
+) -> dict:
+    """B 站站内搜索（WBI 签名综合搜索，仅视频分区），找到后可直接把 importUrl 提交导入。
+
+    兼容 q / keyword 两种参数名（q 与曲库搜索框一致）。
+    """
+    kw = (keyword or q).strip()
+    hits = await bili.search_videos(kw, page=page)
+    return {"keyword": kw, "results": [search_out(h) for h in hits]}
 
 
 # ---- 导出（曲库 → B 站收藏夹） ----
@@ -225,17 +371,127 @@ def song_analysis(body: AnalysisRequest, request: Request) -> dict:
     return result
 
 
+# ---- 推荐池（滚动链接组，不落音频） ----
+
+def rec_out(i) -> dict:
+    return {
+        "bvid": i.bvid,
+        "title": i.title,
+        "artist": i.artist,
+        "duration": i.duration,
+        "durationText": _fmt_duration(i.duration),
+        "coverUrl": i.cover_url,
+        "genre": i.genre,
+        "seedBvid": i.seed_bvid,
+        "expiresAt": i.expires_at.isoformat(),
+    }
+
+
+class RecSeed(BaseModel):
+    songId: int = Field(gt=0)
+
+
+@router.post("/recs/seed", status_code=202)
+async def recs_seed(body: RecSeed, request: Request) -> dict:
+    """播放起播时搭车调用：以当前歌为种子采集相关推荐（服务端频控，幂等）。"""
+    song = library.get_song(body.songId)
+    if song is None:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    bili: BiliClient = request.app.state.bili
+    asyncio.create_task(recs.collect_for_song(bili, song))
+    return {"queued": True}
+
+
+@router.get("/recs")
+def recs_list(genre: str = "", mode: str = "") -> dict:
+    """mode=today 返回今日推荐；否则按 genre 过滤（空 = 全部）。"""
+    if mode == "today":
+        items = recs.daily_items()
+    else:
+        items = recs.list_items(genre=genre)
+    return {"items": [rec_out(i) for i in items]}
+
+
+@router.delete("/recs/{bvid}")
+def recs_dismiss(bvid: str) -> dict:
+    recs.dismiss(bvid)
+    return {"ok": True}
+
+
+# ---- 实时流代理（推荐试听：解析直链后边下边转发，不落盘） ----
+
+@router.get("/stream/{bvid}")
+async def stream_bvid(
+    bvid: str, request: Request, range_header: str | None = Header(default=None, alias="Range")
+):
+    """推荐歌曲实时播放：现解析 playurl → 代理 CDN 音频流（支持 Range/206）。
+
+    直链域名经 url_guard 白名单校验，仅放行 B 站 CDN；不写磁盘。
+    """
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
+        raise HTTPException(status_code=400, detail="bvid 格式错误")
+    bili: BiliClient = request.app.state.bili
+    try:
+        info = await bili.get_video_info(VideoRef(bvid=bvid))
+        streams = await bili.get_audio_streams(info.bvid, info.cid)
+    except BiliApiError as exc:
+        raise HTTPException(status_code=502, detail=exc.message)
+    best = pick_best_audio(streams)
+    url = best.base_url
+    try:
+        validate_bilibili_url(url)
+    except UnsafeUrlError:
+        raise HTTPException(status_code=502, detail="CDN 地址未通过安全校验")
+
+    headers = {"Referer": BILIBILI_REFERER}
+    if range_header:
+        headers["Range"] = range_header
+    upstream = await bili.http.send(
+        bili.http.build_request("GET", url, headers=headers), stream=True
+    )
+    if upstream.status_code >= 400:
+        await upstream.aclose()
+        raise HTTPException(status_code=502, detail="B 站 CDN 拒绝了播放请求")
+
+    out_headers = {}
+    for h in ("content-length", "content-range", "accept-ranges"):
+        if h in upstream.headers:
+            out_headers[h] = upstream.headers[h]
+
+    async def gen():
+        try:
+            async for chunk in upstream.aiter_bytes(64 * 1024):
+                yield chunk
+        finally:
+            await upstream.aclose()
+
+    return StreamingResponse(
+        gen(), status_code=upstream.status_code, media_type="audio/mp4", headers=out_headers
+    )
+
+
 # ---- 登录（免登录门禁） ----
 
 @auth_router.post("/qrcode")
 async def create_qrcode(bili: BiliClient = Depends(_bili)) -> dict:
     qr = await bili.qrcode_generate()
-    return {"qrContent": qr.url, "qrPngDataUrl": qr.png_data_url, "qrcodeKey": qr.qrcode_key}
+    return {
+        "qrContent": qr.url,
+        "qrPngDataUrl": qr.png_data_url,
+        "qrcodeKey": qr.qrcode_key,
+        "matrix": qr.matrix,
+        "modules": qr.modules,
+    }
 
 
 @auth_router.get("/qrcode/{qrcode_key}")
-async def poll_qrcode(qrcode_key: str, bili: BiliClient = Depends(_bili)) -> dict:
+async def poll_qrcode(qrcode_key: str, request: Request, bili: BiliClient = Depends(_bili)) -> dict:
     poll = await bili.qrcode_poll(qrcode_key)
+    if poll.status == "confirmed":
+        # 登录成功即后台对账：拉回夹池曲库（换设备/换服务器时这步就是「恢复」）
+        syncer = getattr(request.app.state, "syncer", None)
+        if syncer is not None:
+            asyncio.create_task(syncer.reconcile_quietly())
     return {"status": poll.status}
 
 

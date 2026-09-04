@@ -1,10 +1,10 @@
 {% if songs %}
 <div class="grid">
   {% for s in songs %}
-  <div class="card">
+  <div class="card" data-play="{{ s.id }}" title="{{ s.title }}">
     <div class="cover">
       <img src="{{ s.cover_url }}" alt="" loading="lazy">
-      <button class="play" data-play="{{ s.id }}" title="播放">▶</button>
+      <button class="play" title="播放">▶</button>
       <span class="q-badge">{{ s.quality_label }}</span>
     </div>
     <div class="c-title" title="{{ s.title }}">{{ s.title }}</div>

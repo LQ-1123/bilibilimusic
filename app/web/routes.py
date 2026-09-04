@@ -1,16 +1,18 @@
 """Web 页面路由：服务端渲染 + htmx 局部刷新。强制登录，未登录一律跳登录页。"""
 
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import func, select
 
 from app.bili.client import BiliApiError
+from app.core.link_parser import BV_RE, parse_video_url
 from app.db.models import ImportTask
 from app.db.session import new_session
-from app.services import library
+from app.services import library, playlists, recs
 from app.services.importer import ImportService
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -18,6 +20,9 @@ router = APIRouter(include_in_schema=False)
 
 _ACTIVE = ("pending", "resolving", "downloading")
 _last_ready_count: int | None = None  # 用于检测新入库，触发前端曲库刷新
+
+_SEARCH_CACHE_TTL = 300  # B 站搜索风控较严：同词 5 分钟内直接复用结果
+_search_cache: dict[str, tuple[float, list]] = {}
 
 
 def _login_redirect(request: Request) -> RedirectResponse | None:
@@ -31,6 +36,15 @@ def _fmt_duration(seconds: int) -> str:
     h, rem = divmod(seconds, 3600)
     m, s = divmod(rem, 60)
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _fmt_play(n: int) -> str:
+    n = max(0, int(n or 0))
+    if n >= 100_000_000:
+        return f"{n / 100_000_000:.1f}".rstrip("0").rstrip(".") + "亿"
+    if n >= 10_000:
+        return f"{n / 10_000:.1f}".rstrip("0").rstrip(".") + "万"
+    return str(n)
 
 
 def _song_ctx(s) -> dict:
@@ -65,21 +79,77 @@ def _task_ctx(t) -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    """曲库主界面（含歌单、收藏、发现、播放）。未登录一律跳登录页。"""
     gate = _login_redirect(request)
     if gate:
         return gate
-    songs = [_song_ctx(s) for s in library.list_songs()]
     return templates.TemplateResponse(
-        request, "library.html", {"songs": songs, "logged_in": True}
+        request,
+        "library.html",
+        {"playlists": playlists.list_playlists(), "logged_in": True},
     )
 
 
-@router.get("/partials/songs", response_class=HTMLResponse)
-def songs_partial(request: Request, q: str = ""):
+@router.get("/library", response_class=HTMLResponse)
+def library_page(request: Request):
+    return RedirectResponse("/", status_code=307)
+
+
+@router.get("/partials/playlists", response_class=HTMLResponse)
+def playlists_partial(request: Request):
     gate = _login_redirect(request)
     if gate:
         return gate
-    songs = [_song_ctx(s) for s in library.list_songs(q)]
+    return templates.TemplateResponse(
+        request, "partials/playlists.html", {"playlists": playlists.list_playlists()}
+    )
+
+
+@router.post("/web/playlists/create", response_class=PlainTextResponse)
+async def web_playlist_create(request: Request, name: str = Form(default="")):
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    try:
+        await playlists.create(name, request.app.state.bili)
+    except (ValueError, BiliApiError) as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return PlainTextResponse("ok")
+
+
+@router.post("/web/playlists/rename", response_class=PlainTextResponse)
+async def web_playlist_rename(
+    request: Request, id: int = Form(default=0), name: str = Form(default="")
+):
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    try:
+        await playlists.rename(id, name, request.app.state.bili)
+    except (ValueError, BiliApiError) as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return PlainTextResponse("ok")
+
+
+@router.post("/web/playlists/delete", response_class=PlainTextResponse)
+async def web_playlist_delete(request: Request, id: int = Form(default=0)):
+    """删除歌单：歌曲移入默认歌单（解放），B 站收藏夹一并删除，收藏转移后台执行。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    try:
+        result = await playlists.delete(id, request.app.state.bili)
+    except (ValueError, BiliApiError) as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return PlainTextResponse(f"ok {result['moved']}")
+
+
+@router.get("/partials/songs", response_class=HTMLResponse)
+def songs_partial(request: Request, q: str = "", playlist_id: int = 0):
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    songs = [_song_ctx(s) for s in library.list_songs(q, playlist_id=playlist_id)]
     return templates.TemplateResponse(request, "partials/songs.html", {"songs": songs})
 
 
@@ -126,8 +196,108 @@ def tasks_partial(request: Request):
     return resp
 
 
+@router.get("/partials/web-search", response_class=HTMLResponse)
+async def web_search(request: Request, q: str = ""):
+    """B 站站内搜索结果（曲库搜索框联动）；导入按钮复用 /web/import 链路。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    q = (q or "").strip()
+    results, error = [], None
+    # 粘贴的是链接 / BV 号时不做站内搜索，交给导入框处理
+    if q and not (q.lower().startswith("http") or BV_RE.search(q) or parse_video_url(q)):
+        cached = _search_cache.get(q)
+        if cached and time.monotonic() - cached[0] < _SEARCH_CACHE_TTL:
+            results = cached[1]
+        else:
+            try:
+                results = [
+                    {
+                        "title": h.title,
+                        "artist": h.artist,
+                        "duration_text": _fmt_duration(h.duration),
+                        "play_text": _fmt_play(h.play),
+                        "cover_url": h.cover_url,
+                        "import_url": f"https://www.bilibili.com/video/{h.bvid}",
+                    }
+                    for h in await request.app.state.bili.search_videos(q)
+                ]
+                _search_cache[q] = (time.monotonic(), results)
+                if len(_search_cache) > 64:  # 只留最近 32 词
+                    for k in sorted(_search_cache, key=lambda k: _search_cache[k][0])[:-32]:
+                        _search_cache.pop(k, None)
+            except BiliApiError as exc:
+                error = str(exc)
+    return templates.TemplateResponse(
+        request, "partials/web_search.html", {"results": results, "error": error}
+    )
+
+
+@router.post("/web/sync", response_class=HTMLResponse)
+async def web_sync(request: Request):
+    """顶栏「同步」：与 B 站夹池双向对账。拉取的歌会以导入任务形式出现在任务列表。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    request.app.state.syncer.submit()
+
+    rows = ImportService.recent_tasks(50)
+    active = [t for t in rows if t.status in _ACTIVE]
+    active.reverse()
+    finished = [t for t in rows if t.status not in _ACTIVE]
+    resp = templates.TemplateResponse(
+        request,
+        "partials/tasks.html",
+        {
+            "tasks": [_task_ctx(t) for t in active[:10] + finished[:5]],
+            "summary": None,
+            "active_total": len(active),
+            "form_error": None,
+        },
+    )
+    resp.headers["HX-Trigger"] = "refreshSongs"
+    return resp
+
+
+@router.get("/partials/recs", response_class=HTMLResponse)
+def recs_partial(request: Request, genre: str = "", mode: str = ""):
+    """发现板块：今日推荐 / 风格分类的推荐池（纯链接，试听走实时流）。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    if mode == "today":
+        items = recs.daily_items()
+    else:
+        items = recs.list_items(genre=genre)
+    ctx_items = [
+        {
+            "bvid": i.bvid,
+            "title": i.title,
+            "artist": i.artist,
+            "duration_text": _fmt_duration(i.duration),
+            "cover_url": i.cover_url,
+            "genre": i.genre,
+        }
+        for i in items
+    ]
+    return templates.TemplateResponse(
+        request,
+        "partials/recs.html",
+        {"items": ctx_items, "genres": list(recs.GENRE_KEYWORDS.keys()), "mode": mode},
+    )
+
+
+@router.post("/web/recs/dismiss", response_class=PlainTextResponse)
+def web_recs_dismiss(bvid: str = Form(default="")):
+    """不感兴趣：立即出池。"""
+    recs.dismiss(bvid.strip())
+    return PlainTextResponse("ok")
+
+
 @router.post("/web/import", response_class=HTMLResponse)
-async def web_import(request: Request, url: str = Form(default="")):
+async def web_import(
+    request: Request, url: str = Form(default=""), playlist_id: int = Form(default=0)
+):
     gate = _login_redirect(request)
     if gate:
         return gate
@@ -137,8 +307,10 @@ async def web_import(request: Request, url: str = Form(default="")):
     if url.strip():
         try:
             result = await submit_any(
-                request.app.state.importer, request.app.state.bili, url
+                request.app.state.importer, request.app.state.bili, url,
+                playlist_id=playlist_id,
             )
+            recs.dismiss_for_text(url)  # 从发现收藏的歌：转正出池
         except (ValueError, BiliApiError) as exc:
             form_error = str(exc)
 

@@ -6,15 +6,15 @@
 {% if summary %}
 {% set active_n = (summary.get('pending', 0) or 0) + (summary.get('resolving', 0) or 0) + (summary.get('downloading', 0) or 0) %}
 <div class="task summary">
-  <span class="t-text">共 {{ active_n + (summary.get('ready', 0) or 0) + (summary.get('failed', 0) or 0) }} 个任务 · 进行中 {{ active_n }} · 已入库 {{ summary.get('ready', 0) or 0 }} · 失败 {{ summary.get('failed', 0) or 0 }}</span>
+  <span class="t-text">共 {{ active_n + (summary.get('ready', 0) or 0) + (summary.get('failed', 0) or 0) }} 个任务 · 进行中 {{ active_n }} · 已收藏 {{ summary.get('ready', 0) or 0 }} · 失败 {{ summary.get('failed', 0) or 0 }}</span>
 </div>
 {% endif %}
 {% for t in tasks %}
 <div class="task st-{{ t.status }}">
   {% if t.status == "ready" %}
-    <span class="t-icon ok">✓</span><span class="t-text">已入库</span>
+    <span class="t-icon ok">✓</span><span class="t-text">已收藏</span>
   {% elif t.status == "failed" %}
-    <span class="t-icon err">✕</span><span class="t-text">{{ t.error or "导入失败" }}</span>
+    <span class="t-icon err">✕</span><span class="t-text">{{ t.error or "收藏失败" }}</span>
   {% else %}
     <span class="t-icon">⏳</span><span class="t-text">{{ t.status_label }}…</span>
     <div class="bar"><div class="fill" style="width: {{ t.progress }}%"></div></div>

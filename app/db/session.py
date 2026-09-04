@@ -32,6 +32,24 @@ def _migrate() -> None:
     if "aid" not in cols:
         with _engine.begin() as conn:
             conn.exec_driver_sql("ALTER TABLE song ADD COLUMN aid INTEGER DEFAULT 0")
+    if "cover_color" not in cols:
+        with _engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE song ADD COLUMN cover_color VARCHAR DEFAULT ''")
+    if "fav_folder_id" not in cols:
+        with _engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE song ADD COLUMN fav_folder_id INTEGER DEFAULT 0")
+    if "playlist_id" not in cols:
+        with _engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE song ADD COLUMN playlist_id INTEGER DEFAULT 0")
+    if "lyrics" not in cols:
+        with _engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE song ADD COLUMN lyrics TEXT DEFAULT ''")
+    if "lyrics_source" not in cols:
+        with _engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE song ADD COLUMN lyrics_source VARCHAR DEFAULT ''")
+    if "lyrics_checked" not in cols:
+        with _engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE song ADD COLUMN lyrics_checked INTEGER DEFAULT 0")
 
 
 def new_session() -> Session:

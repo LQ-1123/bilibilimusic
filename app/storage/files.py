@@ -76,6 +76,52 @@ class FileStore:
     def cover_path(self, bvid: str) -> Path:
         return self._safe_path_in(self.cover_dir, f"{bvid}.jpg")
 
+    # ---- 封面主色（球海 UI 用） ----
+
+    def dominant_color(self, path: Path) -> str:
+        """封面缩到 8x8 取平均色，返回 #rrggbb；失败返回空串。"""
+        try:
+            from PIL import Image
+
+            with Image.open(path) as img:
+                small = img.convert("RGB").resize((8, 8))
+            pixels = list(small.getdata())
+            n = len(pixels) or 1
+            r = sum(p[0] for p in pixels) // n
+            g = sum(p[1] for p in pixels) // n
+            b = sum(p[2] for p in pixels) // n
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception:  # noqa: BLE001  主色提取失败不影响入库
+            return ""
+
+    def backfill_cover_color(self) -> int:
+        """启动时为缺主色的存量歌曲补算，返回补算数量。"""
+        from sqlmodel import select
+
+        from app.db.models import Song
+        from app.db.session import new_session
+
+        filled = 0
+        with new_session() as session:
+            rows = session.exec(select(Song)).all()
+
+        for song in rows:
+            if song.cover_color:
+                continue
+            try:
+                color = self.dominant_color(Path(song.cover_path))
+            except Exception:
+                continue
+            if color:
+                with new_session() as session:
+                    row = session.get(Song, song.id)
+                    if row is not None:
+                        row.cover_color = color
+                        session.add(row)
+                        session.commit()
+                        filled += 1
+        return filled
+
     # ---- 下载 ----
 
     async def download(

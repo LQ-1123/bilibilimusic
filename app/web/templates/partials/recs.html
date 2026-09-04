@@ -1,0 +1,31 @@
+<div class="rec-genres">
+  <button type="button" class="pl-chip {{ 'on' if mode == 'today' }}" hx-get="/partials/recs?mode=today" hx-target="#rec-list" hx-swap="innerHTML">今日推荐</button>
+  <button type="button" class="pl-chip {{ 'on' if not mode and not genre }}" hx-get="/partials/recs" hx-target="#rec-list" hx-swap="innerHTML">全部</button>
+  {% for g in genres %}
+  <button type="button" class="pl-chip {{ 'on' if genre == g }}" hx-get="/partials/recs?genre={{ g }}" hx-target="#rec-list" hx-swap="innerHTML">{{ g }}</button>
+  {% endfor %}
+</div>
+
+{% if items %}
+<div class="rec-grid">
+  {% for r in items %}
+  <div class="rec-card">
+    <img class="rec-cover" src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+    <div class="rec-t" title="{{ r.title }}">{{ r.title }}</div>
+    <div class="rec-s">{{ r.artist }} · {{ r.duration_text }}{% if r.genre %} · {{ r.genre }}{% endif %}</div>
+    <div class="rec-acts">
+      <button type="button" class="rec-play" data-bvid="{{ r.bvid }}" onclick="playRec('{{ r.bvid }}', this)">▶ 试听</button>
+      <button type="button" class="ws-import rec-collect"
+              hx-post="/web/import"
+              hx-vals='{"url": "https://www.bilibili.com/video/{{ r.bvid }}"}'
+              hx-include="#collect-playlist-id"
+              hx-target="#task-list" hx-swap="innerHTML">收藏</button>
+      <button type="button" class="rec-dismiss" title="不感兴趣（移出推荐）"
+              onclick="dismissRec('{{ r.bvid }}', this)">✕</button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">推荐池还空着——去听几首歌，推荐会慢慢懂你。</div>
+{% endif %}

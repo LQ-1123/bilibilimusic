@@ -22,7 +22,9 @@ def _stop_any(url: str):
     return parse_fav_id(url) or parse_video_url(url)
 
 
-async def submit_any(importer: ImportService, bili: BiliClient, text: str) -> dict:
+async def submit_any(
+    importer: ImportService, bili: BiliClient, text: str, playlist_id: int = 0
+) -> dict:
     """智能提交：收藏夹链接批量导入，否则单视频导入。"""
     text = (text or "").strip()
     if not text:
@@ -45,18 +47,22 @@ async def submit_any(importer: ImportService, bili: BiliClient, text: str) -> di
                 break
 
     if fid is not None:
-        return await submit_fav(importer, bili, fid)
-    return {"mode": "single", "importId": importer.submit(text).id}
+        return await submit_fav(importer, bili, fid, playlist_id=playlist_id)
+    return {"mode": "single", "importId": importer.submit(text, playlist_id=playlist_id).id}
 
 
-async def submit_fav(importer: ImportService, bili: BiliClient, media_id: int) -> dict:
+async def submit_fav(
+    importer: ImportService, bili: BiliClient, media_id: int, playlist_id: int = 0
+) -> dict:
     folder = await bili.get_fav_folder_info(media_id)
     videos = await bili.get_fav_videos(media_id, cap=_FAV_CAP)
     if not videos:
         raise ValueError(
             "收藏夹为空、不存在或未公开（未公开收藏夹需要先在「账号」页扫码登录）"
         )
-    tasks = [importer.submit_bvid(v["bvid"]) for v in videos]
+    tasks = [
+        importer.submit_bvid(v["bvid"], playlist_id=playlist_id) for v in videos
+    ]
     return {
         "mode": "batch",
         "folderTitle": folder.get("title") or f"收藏夹 {media_id}",

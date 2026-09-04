@@ -4,6 +4,7 @@
 （或 python -m app.main）
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from app.core.cookies import CookieStore
 from app.db.session import init_db
 from app.services.exporter import ExportService
 from app.services.importer import ImportService
+from app.services.lyrics import LyricsService
+from app.services import playlists
+from app.services.sync import SyncService
 from app.storage.files import FileStore
 from app.web.routes import router as web_router
 
@@ -29,6 +33,7 @@ _STATIC_DIR = Path(__file__).parent / "web" / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    playlists.ensure_default()
     store = CookieStore(settings.cookie_path)
     bili = BiliClient(store)
     try:
@@ -36,10 +41,13 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001  指纹初始化失败不阻塞启动
         pass
     files = FileStore(settings.music_dir, settings.cover_dir)
+    files.backfill_cover_color()
     analysis = AnalysisService()
-    importer = ImportService(bili, files, analysis=analysis)
+    lyrics = LyricsService(bili)
+    importer = ImportService(bili, files, analysis=analysis, lyrics=lyrics)
     importer.recover_stale()
     exporter = ExportService(bili)
+    syncer = SyncService(bili, importer)
 
     app.state.cookies = store
     app.state.bili = bili
@@ -47,8 +55,14 @@ async def lifespan(app: FastAPI):
     app.state.importer = importer
     app.state.exporter = exporter
     app.state.analysis = analysis
+    app.state.lyrics = lyrics
+    app.state.syncer = syncer
+    if store.logged_in:
+        # 已登录则启动即对账：换机器/重新部署后这就是自动恢复
+        asyncio.create_task(syncer.reconcile_quietly())
     yield
     await importer.shutdown()
+    await lyrics.aclose()
     await bili.aclose()
 
 

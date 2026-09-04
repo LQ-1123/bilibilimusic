@@ -7,6 +7,7 @@
 import asyncio
 import base64
 import io
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -27,8 +28,16 @@ BILIBILI_REFERER = "https://www.bilibili.com/"
 _API = "https://api.bilibili.com"
 _PASSPORT = "https://passport.bilibili.com"
 
-# 账号下的专用收藏夹：入库自动收藏、导出即此夹
+# 账号下的专用收藏夹池：入库自动收藏、导出即这些夹；曲库清单 = 夹池内容并集。
+# 命名规则：默认歌单「我的曲库」→ 主夹「bilimusic」（历史溢出 bilimusic2…）；
+# 普通歌单 → 「bilimusic- <歌单名>」（溢出追加编号）。
+# 歌单结构持久化在 B 站侧：换设备/换服务器登录后由同步自动收养重建。
 FAV_FOLDER_NAME = "bilimusic"
+_FOLDER_CAP = 2000  # B 站单个收藏夹条目上限
+_FOLDER_RE = re.compile(r"^bilimusic(?:(?P<num>\d+)|-(?P<name>.+))?$")
+_NAMED_RE = re.compile(r"^bilimusic-\s*(.+)$")
+_FOLDERS_TTL = 60  # 夹池缓存秒数；建夹/改删夹/登出时失效
+_UNFAV_SCAN_PAGES = 60  # 删歌时未知夹的有界扫描预算（页，20 条/页）
 
 _WBI_KEY_TTL = 3600  # wbi key 每天轮换，缓存 1 小时足够
 
@@ -38,6 +47,7 @@ ERROR_MESSAGES = {
     -404: "视频不存在或已删除",
     -352: "触发 B 站风控校验，请稍后再试",
     -412: "请求被 B 站拦截，请稍后再试",
+    11001: "名称超过字数限制（收藏夹总长约 20 字，歌单名请控制在 9 字内）",
     62002: "稿件不可见",
     62004: "稿件审核中",
     62012: "稿件仅 UP 主本人可见",
@@ -78,10 +88,78 @@ class AudioStream:
 
 
 @dataclass
+class SearchHit:
+    bvid: str
+    avid: int
+    title: str
+    artist: str
+    duration: int  # 秒
+    cover_url: str
+    play: int = 0
+
+
+_EM_RE = re.compile(r"</?em[^>]*>")
+
+
+def strip_highlight(title: str) -> str:
+    """去掉搜索结果标题里的 <em class="keyword"> 高亮标签。"""
+    return _EM_RE.sub("", title)
+
+
+def parse_duration_text(text) -> int:
+    """搜索结果的时长文本（"4:12" / "1:02:33"）→ 秒；无法解析返回 0。"""
+    parts = str(text or "").strip().split(":")
+    if not parts or len(parts) > 3 or not all(p.isdigit() for p in parts):
+        return 0
+    seconds = 0
+    for p in parts:
+        seconds = seconds * 60 + int(p)
+    return seconds
+
+
+def folder_sort_key(title: str) -> tuple[int, int, str]:
+    """夹池排序：主夹「bilimusic」最前，其次编号溢出夹，再次歌单命名夹，最后其他。"""
+    m = _FOLDER_RE.match(title.strip())
+    if not m:
+        return (3, 0, title)
+    if m.group("num"):
+        return (1, int(m.group("num")), title)
+    if m.group("name"):
+        return (2, 0, title)
+    return (0, 0, title)
+
+
+def next_folder_title(existing: list[str]) -> str:
+    """默认歌单夹全满时应新建的夹名：编号取现有最大编号 +1（无编号夹视作 1）。"""
+    nums = []
+    for title in existing:
+        m = _FOLDER_RE.match(title.strip())
+        if m and m.group("num"):
+            nums.append(int(m.group("num")))
+    return f"bilimusic{max(nums + [1]) + 1}"
+
+
+def playlist_folder_title(name: str) -> str:
+    """歌单名 → 对应收藏夹名（B 站标题上限约 20 字，超长由接口报错提示）。"""
+    return f"bilimusic- {name.strip()}"
+
+
+def playlist_name_from_title(title: str) -> str | None:
+    """收藏夹名 → 歌单名；非「bilimusic- X」命名的夹返回 None。"""
+    m = _NAMED_RE.match(title.strip())
+    if not m:
+        return None
+    name = m.group(1).strip()
+    return name or None
+
+
+@dataclass
 class QrCode:
     url: str
     qrcode_key: str
     png_data_url: str
+    matrix: list = field(default_factory=list)  # 点阵（"1"=黑模块），球海登录场景用
+    modules: int = 0
 
 
 @dataclass
@@ -96,6 +174,7 @@ class BiliClient:
         self._wbi: tuple[str, str] | None = None
         self._wbi_at = 0.0
         self._fav_lock = asyncio.Lock()
+        self._folders: tuple[float, list[dict]] | None = None  # (时间戳, 夹池)，TTL 缓存
         self.http = httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=False,
@@ -118,12 +197,12 @@ class BiliClient:
     ) -> dict:
         url = path if path.startswith("http") else _API + path
         resp = await self.http.get(url, params=params)
-        return self._parse_json_response(resp)
+        return self._parse_json_response(resp, ok_codes=ok_codes)
 
     async def _post_json(self, path: str, data: dict, *, ok_codes: tuple[int, ...] = (0,)) -> dict:
         url = path if path.startswith("http") else _API + path
         resp = await self.http.post(url, data=data)
-        return self._parse_json_response(resp)
+        return self._parse_json_response(resp, ok_codes=ok_codes)
 
     def _parse_json_response(self, resp: httpx.Response, *, ok_codes: tuple[int, ...] = (0,)) -> dict:
         if resp.status_code == 412:
@@ -211,6 +290,85 @@ class BiliClient:
             raise BiliApiError(-404, "未取到音频流（视频可能太老，未提供 DASH 分离音轨）")
         return streams
 
+    # ---- 字幕（歌词来源之一） ----
+
+    async def get_subtitle_tracks(self, bvid: str, aid: int, cid: int) -> list[dict]:
+        """视频字幕轨列表 [{id, lan, lan_doc, ai_type, subtitle_url}]。
+
+        与 playurl 同族的 player/wbi/v2 接口；人工 CC 无需登录即可见，
+        AI 字幕（ai_type=1）必须带登录 cookie，否则 subtitles 为空。
+        """
+        params: dict = {"bvid": bvid, "cid": cid}
+        if aid:
+            params["aid"] = aid
+        data = await self._get_json_signed("/x/player/wbi/v2", params)
+        subtitle = data.get("subtitle") or {}
+        tracks = subtitle.get("subtitles") or []
+        return [t for t in tracks if isinstance(t, dict) and t.get("subtitle_url")]
+
+    async def download_subtitle_body(self, url: str) -> list[dict]:
+        """下载字幕 JSON（hdslb CDN），返回行列表 [{from, to, content}]。"""
+        if url.startswith("//"):  # 接口下发的是协议相对地址
+            url = "https:" + url
+        validate_bilibili_url(url)
+        resp = await self.http.get(url)
+        resp.raise_for_status()
+        try:
+            payload = resp.json()
+        except ValueError:
+            return []
+        body = payload.get("body") or []
+        return [line for line in body if isinstance(line, dict)]
+
+    # ---- 搜索 ----
+
+    async def search_videos(self, keyword: str, page: int = 1) -> list[SearchHit]:
+        """关键词搜索 B 站视频：WBI 签名综合搜索，只取视频分区（默认首页约 20 条）。"""
+        keyword = (keyword or "").strip()
+        if not keyword:
+            return []
+        data = await self._get_json_signed(
+            "/x/web-interface/wbi/search/all/v2",
+            {"keyword": keyword, "page": max(1, page)},
+        )
+        for block in data.get("result") or []:
+            if block.get("result_type") != "video":
+                continue
+            hits = []
+            for item in block.get("data") or []:
+                bvid = str(item.get("bvid") or "")
+                if not bvid:
+                    continue  # 直播/课程等非视频条目或已失效
+                hits.append(
+                    SearchHit(
+                        bvid=bvid,
+                        avid=int(item.get("aid") or 0),
+                        title=strip_highlight(str(item.get("title", ""))).strip(),
+                        artist=str(item.get("author", "")).strip(),
+                        duration=parse_duration_text(item.get("duration")),
+                        cover_url=str(item.get("pic") or ""),
+                        play=int(item.get("play") or 0),
+                    )
+                )
+            return hits
+        return []
+
+    # ---- 推荐 ----
+
+    async def related_videos(self, aid: int) -> list[dict]:
+        """相关视频推荐（B 站协同过滤结果）；data 直接是视频字典列表。"""
+        data = await self._get_json_signed(
+            "/x/web-interface/archive/related", {"aid": aid}
+        )
+        return data if isinstance(data, list) else []
+
+    async def video_tags(self, bvid: str) -> list[str]:
+        """视频标签名列表（风格画像/分类用）。"""
+        data = await self._get_json("/x/tag/archive/tags", {"bvid": bvid})
+        if not isinstance(data, list):
+            return []
+        return [str(t.get("tag_name") or "").strip() for t in data if isinstance(t, dict)]
+
     # ---- 音频/封面下载 ----
 
     def candidate_urls(self, stream: AudioStream) -> list[str]:
@@ -277,7 +435,7 @@ class BiliClient:
             pn += 1
         return out
 
-    # ---- 收藏夹导出 ----
+    # ---- 账号 ----
 
     def _csrf(self) -> str:
         return self.store.get("bili_jct") or ""
@@ -294,39 +452,147 @@ class BiliClient:
         self.store.set_many({"mid": str(mid)})
         return mid
 
-    async def ensure_fav_folder(self) -> int:
-        """确保账号下存在专用收藏夹「bilimusic」（公开），返回 media_id。
+    # ---- 收藏夹池（曲库的 B 站侧存储） ----
 
-        media_id 缓存到本地；若用户在 B 站侧删除了该夹，下次调用会重建。
+    async def list_library_folders(self, refresh: bool = False) -> list[dict]:
+        """账号下所有曲库夹（bilimusic / bilimusicN）：[{id, title, count}]，按序排列。"""
+        if not refresh and self._folders and time.monotonic() - self._folders[0] < _FOLDERS_TTL:
+            return self._folders[1]
+        mid = await self.get_my_mid()
+        data = await self._get_json_signed(
+            "/x/v3/fav/folder/created/list-all", {"up_mid": mid, "jsonp": "jsonp"}
+        )
+        raw = data.get("list", []) if isinstance(data, dict) else (data or [])
+        folders = [
+            {
+                "id": int(f["id"]),
+                "title": str(f.get("title") or "").strip(),
+                "count": int(f.get("media_count") or 0),
+            }
+            for f in raw
+            if _FOLDER_RE.match(str(f.get("title") or "").strip().lower())
+        ]
+        folders.sort(key=lambda f: folder_sort_key(f["title"]))
+        self._folders = (time.monotonic(), folders)
+        return folders
+
+    async def favorite_into(
+        self, aid: int, folder_ids: list[int], next_title=None
+    ) -> int:
+        """收藏单曲进指定夹组中第一个未满的夹；全满且提供 next_title 时自动建新夹。
+
+        返回实际入的夹 id；收藏失败（夹被删/刚好已满）时刷新夹池重试一次。
         """
-        async with self._fav_lock:
-            cached = self.store.get("fav_folder_id")
-            if cached:
-                return int(cached)
-            mid = await self.get_my_mid()
-            data = await self._get_json_signed(
-                "/x/v3/fav/folder/created/list-all",
-                {"up_mid": mid, "jsonp": "jsonp"},
-            )
-            folders = data.get("list", []) if isinstance(data, dict) else (data or [])
-            for f in folders:
-                if (f.get("title") or "").strip().lower() == FAV_FOLDER_NAME:
-                    media_id = int(f["id"])
-                    self.store.set_many({"fav_folder_id": str(media_id)})
-                    return media_id
-            media_id = await self.create_fav_folder(FAV_FOLDER_NAME)
-            self.store.set_many({"fav_folder_id": str(media_id)})
-            return media_id
-
-    async def favorite_song(self, aid: int) -> None:
-        """把单曲收藏进专用夹；夹被删时自动重建并重试一次。"""
-        media_id = await self.ensure_fav_folder()
+        folder_id = await self._pick_in(aid, folder_ids, next_title)
         try:
-            await self.fav_add(aid, media_id)
+            await self.fav_add(aid, folder_id)
         except BiliApiError:
-            self.store.pop("fav_folder_id")
-            media_id = await self.ensure_fav_folder()
-            await self.fav_add(aid, media_id)
+            self._folders = None
+            folder_id = await self._pick_in(aid, folder_ids, next_title)
+            await self.fav_add(aid, folder_id)
+        return folder_id
+
+    async def _pick_in(self, aid: int, folder_ids: list[int], next_title=None) -> int:
+        async with self._fav_lock:
+            all_folders = {f["id"]: f for f in await self.list_library_folders()}
+            candidates = [all_folders[i] for i in folder_ids if i in all_folders]
+            for f in candidates:
+                if f["count"] < _FOLDER_CAP:
+                    return f["id"]
+            if next_title is None:
+                if candidates:
+                    return candidates[0]["id"]  # 全满又不能建夹：兜底首夹
+                raise BiliApiError(-400, "歌单没有可用的收藏夹（可能已被删除）")
+            return await self.create_fav_folder(next_title([f["title"] for f in candidates]))
+
+    async def rename_folder(self, media_id: int, title: str) -> None:
+        """重命名收藏夹（B 站标题上限约 20 字，超长返回 11001）。"""
+        await self._post_json(
+            "/x/v3/fav/folder/edit",
+            {"media_id": media_id, "title": title, "privacy": 0, "csrf": self._csrf()},
+        )
+        self._folders = None
+
+    async def delete_folder(self, media_id: int) -> None:
+        """删除收藏夹（歌单删除场景用；注意夹内收藏一并消失）。"""
+        await self._post_json(
+            "/x/v3/fav/folder/del", {"media_ids": str(media_id), "csrf": self._csrf()}
+        )
+        self._folders = None
+
+    async def ensure_fav_folder(self) -> int:
+        """默认歌单主夹「bilimusic」的 id；不存在则创建。"""
+        folders = await self.list_library_folders()
+        for f in folders:
+            if f["title"].strip().lower() == FAV_FOLDER_NAME:
+                return f["id"]
+        return await self.create_fav_folder(FAV_FOLDER_NAME)
+
+    async def favorite_song(self, aid: int) -> int:
+        """收藏单曲进默认歌单夹池（主夹 bilimusic + 编号溢出夹），返回实际入的夹 id。"""
+        main_id = await self.ensure_fav_folder()
+        ids = [
+            f["id"]
+            for f in await self.list_library_folders()
+            if f["id"] == main_id or re.match(r"^bilimusic\d+$", f["title"])
+        ]
+        return await self.favorite_into(aid, ids, next_folder_title)
+
+    async def fav_remove(self, aid: int, media_id: int) -> None:
+        """把视频移出指定收藏夹（rid 为 av 号，type=2 稿件）。"""
+        await self._post_json(
+            "/x/v3/fav/resource/deal",
+            {
+                "rid": aid,
+                "type": 2,
+                "del_media_ids": str(media_id),
+                "csrf": self._csrf(),
+            },
+        )
+
+    async def unfavorite_song(self, aid: int, folder_id: int = 0) -> int:
+        """删歌时同步取消收藏：从曲库夹移除单曲，返回移除的夹数。
+
+        folder_id 已知（入库时记录）直接删；未知（旧数据）时在夹池内
+        按页有界查找，避免大夹全量翻页拖慢删除。
+        """
+        if folder_id:
+            await self.fav_remove(aid, folder_id)
+            return 1
+        removed = 0
+        budget = _UNFAV_SCAN_PAGES
+        for f in await self.list_library_folders():
+            if budget <= 0:
+                break
+            hit, pages = await self._find_in_folder(f["id"], aid, budget)
+            budget -= pages
+            if hit:
+                await self.fav_remove(aid, f["id"])
+                removed += 1
+        return removed
+
+    async def _find_in_folder(self, media_id: int, aid: int, max_pages: int) -> tuple[bool, int]:
+        """按页在收藏夹里查找 aid，返回 (是否找到, 实际翻页数)。"""
+        pn = 1
+        while pn <= max_pages:
+            data = await self._get_json_signed(
+                "/x/v3/fav/resource/list",
+                {
+                    "media_id": media_id,
+                    "pn": pn,
+                    "ps": 20,
+                    "order": "mtime",
+                    "tid": 0,
+                    "platform": "web",
+                },
+            )
+            medias = data.get("medias") or []
+            if any(int(item.get("id") or 0) == aid for item in medias):
+                return True, pn
+            if len(medias) < 20:
+                return False, pn
+            pn += 1
+        return False, max_pages
 
     async def create_fav_folder(self, title: str) -> int:
         """创建公开收藏夹，返回 media_id。"""
@@ -334,6 +600,7 @@ class BiliClient:
             "/x/v3/fav/folder/add",
             {"title": title, "privacy": 0, "csrf": self._csrf()},
         )
+        self._folders = None
         return int(data["id"])
 
     async def fav_add(self, aid: int, media_id: int) -> None:
@@ -360,14 +627,18 @@ class BiliClient:
 
     async def qrcode_generate(self) -> QrCode:
         data = await self._get_json(_PASSPORT + "/x/passport-login/web/qrcode/generate")
-        img = qrcode.make(data["url"])
+        img = qrcode.QRCode(border=1)
+        img.add_data(data["url"])
+        img.make(fit=True)
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        img.make_image(fill_color="black", back_color="white").save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode()
         return QrCode(
             url=data["url"],
             qrcode_key=data["qrcode_key"],
             png_data_url=f"data:image/png;base64,{b64}",
+            matrix=[("1" if cell else "0") for row in img.get_matrix() for cell in row],
+            modules=img.modules_count,
         )
 
     async def qrcode_poll(self, qrcode_key: str) -> QrPoll:
@@ -390,16 +661,9 @@ class BiliClient:
             if cookies:
                 self.store.set_many(cookies)
                 self.http.cookies.update(cookies)
-                # 登录即后台确保专用收藏夹存在（不阻塞登录响应）
-                asyncio.create_task(self._ensure_folder_quietly())
+                self._folders = None  # 换账号，夹池缓存失效
             return QrPoll(status="confirmed", cookies=cookies)
         return QrPoll(status=_QR_STATUS.get(code, "waiting"))
-
-    async def _ensure_folder_quietly(self) -> None:
-        try:
-            await self.ensure_fav_folder()
-        except Exception:  # noqa: BLE001  后台尽力而为，首次导入/导出还会懒建
-            pass
 
     async def login_status(self) -> dict:
         """校验当前登录态是否仍有效。"""
@@ -410,6 +674,7 @@ class BiliClient:
 
     def logout(self) -> None:
         self.store.clear_login()
+        self._folders = None
         for k in ("SESSDATA", "bili_jct", "dedeuserid", "sid"):
             try:
                 del self.http.cookies[k]

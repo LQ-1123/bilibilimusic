@@ -1,19 +1,32 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="import-box">
-  <form hx-post="/web/import" hx-target="#task-list" hx-swap="innerHTML">
-    <input type="text" name="url" placeholder="粘贴 B 站视频分享链接或收藏夹链接…" required autofocus>
-    <button type="submit">导入</button>
-  </form>
-  <p class="import-hint">支持：视频分享链接（b23.tv / BV 号）· 收藏夹链接（含 fid，未公开收藏夹需先登录）· 批量导入自动去重</p>
+<section class="view on" id="view-home">
+  <header class="page-head">
+    <h1>主页</h1>
+    <form class="collect-box" hx-post="/web/import" hx-target="#task-list" hx-swap="innerHTML">
+      <input type="hidden" name="playlist_id" id="collect-playlist-id" value="0">
+      <input type="text" name="url" placeholder="粘贴 B 站视频链接，收藏到「全部歌曲」…" required>
+      <button type="submit">收藏</button>
+    </form>
+  </header>
+
+  <div class="tasks-strip" id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></div>
+
+  <section class="shelf">
+    <div class="shelf-head">
+      <h2>全部歌曲</h2>
+      <span class="shelf-hint" id="songs-filter-hint">全部歌单 · 按收藏时间</span>
+    </div>
+    <div id="songs" hx-get="/partials/songs" hx-trigger="load, refreshSongs from:body"
+         hx-include="#collect-playlist-id, #search" hx-swap="innerHTML"></div>
+  </section>
 </section>
 
-<section class="tasks" id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></section>
-
-<section class="library">
-  <input id="search" type="search" name="q" placeholder="搜索歌名 / UP 主…"
-         hx-get="/partials/songs" hx-trigger="input changed delay:300ms" hx-include="this"
-         hx-target="#songs" hx-swap="innerHTML">
-  <div id="songs" hx-get="/partials/songs" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
+<section class="view" id="view-discover">
+  <header class="page-head">
+    <h1>发现</h1>
+    <p class="page-sub">试听来自 B 站的相关推荐（实时流，不下载）· 满意就收藏进歌单</p>
+  </header>
+  <div id="rec-list" hx-get="/partials/recs?mode=today" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
 </section>
 {% endblock %}

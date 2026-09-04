@@ -68,8 +68,13 @@ GET    /api/songs?q=关键词     → {"songs": [SongOut]}
 GET    /api/songs/{id}         → SongOut
 GET    /api/songs/{id}/audio   → 音频流，支持 HTTP Range（206/416），Content-Type: audio/mp4
 GET    /api/songs/{id}/cover   → 封面图 image/jpeg
+GET    /api/songs/{id}/lyrics  → {"lyrics": "…LRC 文本或纯文本…", "source": "cc|lrclib|ai"}；无歌词 → {"lyrics": null}
 DELETE /api/songs/{id}         → 删除记录与本地文件
 ```
+
+歌词为 B站人工 CC 字幕 / LRCLIB 正式歌词 / B站 AI 字幕三级来源，入库时自动抓取；
+存量歌曲在此端点首次访问时懒抓并缓存，取不到已标记不再重复请求外部接口。
+带 `[mm:ss.xx]` 时间轴的 LRC 前端跟随滚动，纯文本静态展示。
 
 `SongOut`：
 
@@ -83,6 +88,29 @@ DELETE /api/songs/{id}         → 删除记录与本地文件
 }
 ```
 
+### B 站搜索
+
+```http
+GET /api/search?keyword=关键词&page=1 → {"keyword": "...", "results": [SearchHitOut]}
+```
+
+`SearchHitOut`：
+
+```json
+{
+  "bvid": "BV1xx411c7mD", "avid": 123,
+  "title": "…（已去除高亮 <em> 标签）", "artist": "UP主名",
+  "duration": 252, "durationText": "4:12",
+  "coverUrl": "https://i0.hdslb.com/bfs/archive/….jpg",
+  "play": 123456,
+  "importUrl": "https://www.bilibili.com/video/BV1xx411c7mD"
+}
+```
+
+- 走 WBI 签名综合搜索（`/x/web-interface/wbi/search/all/v2`），只取视频分区；`importUrl` 可直接作为 `POST /api/imports` 的 `url`
+- 依赖启动时获取的 buvid3 指纹；搜索是 B 站风控敏感接口，高频调用可能触发 -352/-412
+- Web 端：曲库搜索框输入关键词后，本地结果下方展示「B 站搜索结果」（`/partials/web-search`，同词 5 分钟缓存），一键导入
+
 ### 扫码登录
 
 ```http
@@ -92,6 +120,56 @@ GET  /api/auth/status          → {loggedIn, username, maxQuality: "64K"|"192K"
 DELETE /api/auth               → 退出登录
 ```
 
+### 歌单 ⇆ 收藏夹（账号持久化）
+
+曲库强关联 B 站账号，事实源在 B 站侧，自建服务可随时丢弃重建（登录即自动恢复）：
+
+- **歌单 ↔ 收藏夹一一对应**：歌单 `Rock&roll` ↔ 账号公开收藏夹 `bilimusic- Rock&roll`；
+  默认歌单「我的曲库」↔ 主夹 `bilimusic`（历史溢出夹 `bilimusic2…` 也归它）
+- 单夹上限 2000 条，满了自动建溢出夹（`bilimusic- Rock&roll2`…），理论无限容量
+- **改名同步**：歌单改名 → B 站收藏夹同步改名（收藏夹总长约 20 字上限，歌单名建议 ≤9 字）
+- **删歌即取消收藏**：DELETE 歌曲时自动从所在夹移除；旧数据夹未知时后台有界扫描
+- **自动对账**（登录成功后 / 服务启动已登录时 / 手动触发）：
+  - 收养：账号下未被认领的 `bilimusic- X` 夹 → 自动建成歌单 X（换设备恢复歌单结构）
+  - 拉取：夹里有、本地没有 → 自动收藏入库
+  - 推送：本地有、夹里没有 → 补收藏（1~1.5s/首频控）
+  - 回填：补齐本地歌曲缺失的 fav_folder_id
+
+```http
+GET  /api/playlists        → {"playlists": [{id, name, folderIds}]}
+POST /api/playlists        {"name": "Rock&roll"}  → 201（同步创建收藏夹）
+PATCH /api/playlists/{id}  {"name": "新名字"}      → 歌单与收藏夹同步改名
+DELETE /api/playlists/{id} → 202 歌单删除：歌曲移入默认歌单（解放），
+                             B 站收藏夹一并删除，歌曲收藏后台转移进主夹
+POST /api/sync             （无请求体）→ 202 SyncState（已有进行中同步则幂等返回）
+GET  /api/sync/{id}        → SyncState
+```
+
+`SyncState`：`{id, status: running|done|failed, folders, adopted, pulled, pushed, backfilled, error, failures}`
+
+收藏提交时可用 `playlistId` 指定目标歌单（缺省 = 默认歌单）：
+`POST /api/imports {"url": "...", "playlistId": 2}`
+
+### 推荐池（发现）
+
+滚动的链接组：只存 bvid + 元数据，**不下载音频**，每条 7 天过期、读取时懒清理。
+
+- **采集搭车在听歌上**：播放器起播 → POST /api/recs/seed 以当前歌为种子拉 B 站相关视频；
+  三重频控（同种子未过期不重复 / 全局最小间隔 10 分钟 / 每日 20 次），无任何后台爬取
+- **风格分类**：种子标签 + 候选标题关键词 → 摇滚 / R&B / 流行 / 民谣 / 说唱 / 电子 / 古风 / 爵士
+- **今日推荐**：按「日期 + bvid」确定性挑选 12 条，同一天刷新不变，隔天自动轮换
+- **试听**：GET /api/stream/{bvid} 实时流代理（现解析 playurl → 透传 CDN 流，
+  支持 Range/206，直链域名过 url_guard 白名单，不落盘）
+
+```http
+POST /api/recs/seed        {"songId": 1}  → 202（搭车采集，幂等+频控）
+GET  /api/recs             ?genre=摇滚|mode=today → {"items": [RecOut]}
+DELETE /api/recs/{bvid}    → 不感兴趣，立即出池
+GET  /api/stream/{bvid}    → audio/mp4 实时流（Range 206）
+```
+
+Web 端：曲库页「发现」板块——今日推荐 + 风格 chips 过滤，卡片带 ▶ 试听 / 收藏（进所选歌单并出池）/ ✕ 不感兴趣。
+
 ### 导出（bilimusic 收藏夹同步与分享链接）
 
 ```http
@@ -100,11 +178,10 @@ POST /api/exports/status     {"exportId"}   → {id, status, total, done, folder
 GET  /api/exports/{id}       → 同上（API 客户端用）
 ```
 
-- 强制登录下使用；导出 = 确保账号下存在公开收藏夹「bilimusic」→ 比对补收藏缺失歌曲（约 1 首/秒）→ 返回 `link`
+- 强制登录下使用；导出 = 确保夹池存在 → 比对全部曲库夹与曲库的差异 → 补收藏缺失歌曲（约 1 首/秒，自动选未满的夹）→ 返回首夹 `link`
 - `status`: `pending / syncing / done / failed`；`failures` 为逐首失败明细（bvid + 原因）；正常情况下（入库时已自动收藏）几乎秒回
-- `link` 形如 `https://space.bilibili.com/{mid}/favlist?fid={media_id}`，粘进任意 BiliMusic 导入框即整夹导入（自动去重）
-- 专用夹的 media_id 缓存于 `cookies.json`，用户在 B 站侧删夹后会自动重建；收藏夹标题上限约 20 字
-- 导出任务状态在内存（服务重启失效）
+- `link` 形如 `https://space.bilibili.com/{mid}/favlist?fid={media_id}`（首夹），粘进任意 BiliMusic 导入框即整夹导入（自动去重）；夹池多于一个时 `folderTitle` 为各夹名拼接
+- 导出任务状态在内存（服务重启失效）；整夹级持久化/恢复请用上面的「曲库同步」
 
 ### 智能过渡（Smart Transition）
 

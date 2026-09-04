@@ -1,7 +1,8 @@
-"""导出 = 账号专用收藏夹「bilimusic」的同步与分享链接。
+"""导出 = 曲库向账号收藏夹池（bilimusic 系公开夹）的同步与分享链接。
 
-入库时已自动收藏（见 importer），导出通常只需：确保收藏夹存在 →
-比对缺失歌曲并补收藏 → 生成 `space.bilibili.com/{mid}/favlist?fid=xxx`。
+入库时已自动收藏（见 importer），导出通常只需：确保夹池存在 →
+比对缺失歌曲并补收藏（自动选未满的夹）→ 生成首夹的
+`space.bilibili.com/{mid}/favlist?fid=xxx`。
 导出任务状态保存在内存（服务重启即失效），个人规模场景可接受。
 """
 
@@ -71,36 +72,58 @@ class ExportService:
 
     async def _export(self, state: ExportState) -> None:
         state.status = "syncing"
-        media_id = await self.bili.ensure_fav_folder()
-        mid = int(self.bili.store.get("mid") or await self.bili.get_my_mid())
-        state.link = f"https://space.bilibili.com/{mid}/favlist?fid={media_id}"
+        from app.services import playlists
 
-        # 比对收藏夹与曲库的差异（收藏失败/登录前导入的歌在这里补上）
-        in_folder = {
-            v["bvid"] for v in await self.bili.get_fav_videos(media_id, cap=1000)
-        }
-        missing = [s for s in library.list_songs() if s.bvid not in in_folder]
-        state.total = len(missing)
-        if not missing:
+        await playlists.adopt_folders(self.bili)
+        main_id = await self.bili.ensure_fav_folder()
+        mid = int(self.bili.store.get("mid") or await self.bili.get_my_mid())
+        # 分享链接指向主夹；跨歌单完整恢复请用「同步」
+        state.link = f"https://space.bilibili.com/{mid}/favlist?fid={main_id}"
+
+        # 按歌单比对差异（收藏失败/登录前收藏的歌在这里补上）
+        folders_by_id = {f["id"]: f for f in await self.bili.list_library_folders(refresh=True)}
+        jobs = []
+        for p in playlists.list_playlists():
+            ids = [i for i in playlists.folder_ids(p) if i in folders_by_id]
+            if not ids:
+                continue
+            in_folders: set[str] = set()
+            for i in ids:
+                in_folders |= {
+                    v["bvid"] for v in await self.bili.get_fav_videos(i, cap=2000)
+                }
+            missing = [
+                s
+                for s in library.list_songs(limit=5000, playlist_id=p.id or 0)
+                if s.bvid not in in_folders
+            ]
+            if missing:
+                jobs.append((p, ids, missing))
+        state.total = sum(len(m) for _, _, m in jobs)
+        if not state.total:
             state.status = "done"
             return
 
-        for song in missing:
-            aid = song.aid
-            if not aid:
-                aid = await self.bili.bvid_to_aid(song.bvid) or 0
-                if aid:
-                    library.update_aid(song.id, aid)
-            if not aid:
-                state.failures.append({"bvid": song.bvid, "error": "视频可能已下架，无法获取 id"})
+        for p, ids, missing in jobs:
+            for song in missing:
+                aid = song.aid
+                if not aid:
+                    aid = await self.bili.bvid_to_aid(song.bvid) or 0
+                    if aid:
+                        library.update_aid(song.id, aid)
+                if not aid:
+                    state.failures.append({"bvid": song.bvid, "error": "视频可能已下架，无法获取 id"})
+                    state.done += 1
+                    continue
+                try:
+                    folder_id = await self.bili.favorite_into(
+                        aid, ids, playlists.next_title_maker(p.name)
+                    )
+                    library.update_fav_folder(song.id, folder_id)
+                except BiliApiError as exc:
+                    state.failures.append({"bvid": song.bvid, "error": exc.message})
                 state.done += 1
-                continue
-            try:
-                await self.bili.fav_add(aid, media_id)
-            except BiliApiError as exc:
-                state.failures.append({"bvid": song.bvid, "error": exc.message})
-            state.done += 1
-            await asyncio.sleep(random.uniform(*_SYNC_INTERVAL))
+                await asyncio.sleep(random.uniform(*_SYNC_INTERVAL))
 
         if state.failures and len(state.failures) == state.total:
             state.status = "failed"

@@ -16,6 +16,7 @@ from app.bili.quality import pick_best_audio
 from app.core.link_parser import resolve_share_text
 from app.db.models import ImportTask, Song
 from app.db.session import new_session
+from app.services import library, playlists
 from app.storage.files import FileStore
 
 _ACTIVE_STATUSES = ("pending", "resolving", "downloading")
@@ -24,16 +25,22 @@ log = logging.getLogger(__name__)
 
 
 class ImportService:
-    def __init__(self, bili: BiliClient, files: FileStore, concurrency: int = 4, analysis=None) -> None:
+    def __init__(
+        self, bili: BiliClient, files: FileStore, concurrency: int = 4,
+        analysis=None, lyrics=None,
+    ) -> None:
         self.bili = bili
         self.files = files
         self.analysis = analysis  # AnalysisService，可空（导入完成后触发后台分析）
+        self.lyrics = lyrics  # LyricsService，可空（导入完成后尽力抓歌词）
         self._sem = asyncio.Semaphore(concurrency)
         self._tasks: dict[str, asyncio.Task] = {}
+        self._prefav: dict[str, int] = {}  # bvid → 已在的曲库夹（同步拉取用，免重复收藏）
+        self._task_playlist: dict[str, int] = {}  # 任务 → 目标歌单
 
     # ---- 对外接口 ----
 
-    def submit(self, raw_text: str) -> ImportTask:
+    def submit(self, raw_text: str, playlist_id: int = 0) -> ImportTask:
         task = ImportTask(
             id=uuid.uuid4().hex[:12],
             source_url=raw_text.strip()[:500],
@@ -43,12 +50,19 @@ class ImportService:
             session.add(task)
             session.commit()
             session.refresh(task)
+        if playlist_id:
+            self._task_playlist[task.id] = playlist_id
         self._tasks[task.id] = asyncio.create_task(self._run(task.id))
         return task
 
-    def submit_bvid(self, bvid: str) -> ImportTask:
-        """已知 BV 号的提交（收藏夹批量导入用）：解析走裸 BV 快速路径，零额外请求。"""
-        return self.submit(bvid)
+    def submit_bvid(self, bvid: str, fav_folder_id: int = 0, playlist_id: int = 0) -> ImportTask:
+        """已知 BV 号的提交（收藏夹批量导入/同步拉取用）：解析走裸 BV 快速路径，零额外请求。
+
+        fav_folder_id>0 表示该视频已在收藏夹里（同步拉取场景），入库后不再重复收藏。
+        """
+        if fav_folder_id:
+            self._prefav[bvid] = fav_folder_id
+        return self.submit(bvid, playlist_id=playlist_id)
 
     async def shutdown(self) -> None:
         for t in self._tasks.values():
@@ -156,6 +170,15 @@ class ImportService:
             suffix = info.part_title or f"P{info.page}"
             title = f"{info.title} · {suffix}"
 
+        cover_color = ""
+        cover_file = self.files.cover_path(info.bvid)
+        if cover_file.exists():
+            cover_color = self.files.dominant_color(cover_file)
+
+        playlist_id = self._task_playlist.pop(task_id, 0)
+        if not playlist_id:
+            playlist_id = playlists.ensure_default().id or 0
+
         song = Song(
             bvid=info.bvid,
             aid=info.avid,
@@ -166,18 +189,38 @@ class ImportService:
             quality_id=best.quality_id,
             audio_path=str(self.files.audio_path(info.bvid)),
             cover_path=str(self.files.cover_path(info.bvid)),
+            cover_color=cover_color,
             source_url=raw_text,
+            playlist_id=playlist_id,
         )
         with new_session() as session:
-            session.add(song)
-            session.commit()
-            session.refresh(song)
-            self._update(task_id, status="ready", progress=100, song_id=song.id)
+            try:
+                session.add(song)
+                session.commit()
+                session.refresh(song)
+                song_id = song.id
+            except Exception:  # noqa: BLE001  并发导入同一 bvid：复用已入库的那条
+                session.rollback()
+                existing = library.get_by_bvid(info.bvid)
+                song_id = existing.id if existing else None
+                if song_id is None:
+                    raise
+        if song_id is None:
+            self._update(task_id, status="failed", error="入库冲突，请重试")
+            return
+        if song_id != song.id:  # 复用了并发导入已入库的记录，重载权威数据
+            song = library.get_song(song_id) or song
+        self._update(task_id, status="ready", progress=100, song_id=song_id)
 
-        # 入库即收藏进账号专用夹「bilimusic」：尽力而为，失败不影响曲库状态
+        # 入库即收藏进歌单对应的收藏夹（bilimusic- <歌单名>）：尽力而为，失败不影响曲库状态。
+        # 同步拉取的歌已在夹内（_prefav），只记录夹 id 不重复收藏。
+        prefav = self._prefav.pop(info.bvid, 0)
         try:
-            await asyncio.sleep(random.uniform(0.3, 0.8))
-            await self.bili.favorite_song(info.avid)
+            if prefav:
+                library.update_fav_folder(song.id, prefav)
+            else:
+                await asyncio.sleep(random.uniform(0.3, 0.8))
+                await self._favorite(song)
         except Exception as exc:  # noqa: BLE001
             log.warning("自动收藏失败 %s: %s", info.bvid, exc)
 
@@ -187,6 +230,27 @@ class ImportService:
                 self.analysis.schedule_for_song(song)
             except Exception as exc:  # noqa: BLE001
                 log.warning("后台分析调度失败 %s: %s", info.bvid, exc)
+
+        # 歌词抓取（B站字幕 + LRCLIB），尽力而为不阻塞任务完成
+        if self.lyrics is not None:
+            try:
+                await self.lyrics.ensure_for_song(song.id)
+            except Exception as exc:  # noqa: BLE001
+                log.warning("歌词抓取失败 %s: %s", info.bvid, exc)
+
+    async def _favorite(self, song: Song) -> None:
+        """把歌收藏进其歌单对应的收藏夹（满则溢出建夹），并记录夹 id。"""
+        p = playlists.get_playlist(song.playlist_id) or playlists.ensure_default()
+        if song.playlist_id != (p.id or 0):
+            library.update_playlist(song.id, p.id or 0)
+        ids = playlists.folder_ids(p)
+        if ids:
+            folder_id = await self.bili.favorite_into(
+                song.aid, ids, playlists.next_title_maker(p.name)
+            )
+        else:
+            folder_id = await self.bili.favorite_song(song.aid)  # 默认夹池（含收养）
+        library.update_fav_folder(song.id, folder_id)
 
     # ---- 查询（API 用） ----
 

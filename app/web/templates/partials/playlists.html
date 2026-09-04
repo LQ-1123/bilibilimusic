@@ -1,0 +1,13 @@
+<button type="button" class="side-playlist" data-pl="0" data-name="全部歌曲" onclick="selectPlaylist(0, this)">
+  <span class="sp-cov">♪</span><span class="sp-name">全部歌曲</span>
+</button>
+{% for p in playlists %}
+<button type="button" class="side-playlist" data-pl="{{ p.id }}" data-name="{{ p.name }}" onclick="selectPlaylist({{ p.id }}, this)">
+  <span class="sp-cov g{{ (loop.index0 % 8) + 1 }}"></span>
+  <span class="sp-name">{{ p.name }}</span>
+  <span class="pl-rename" title="重命名（B 站收藏夹同步改名）"
+        onclick="event.stopPropagation(); renamePlaylist({{ p.id }}, this.closest('.side-playlist').dataset.name)">✎</span>
+  <span class="pl-del" title="删除歌单（歌曲移入我的曲库，B 站收藏夹一并删除）"
+        onclick="event.stopPropagation(); deletePlaylist({{ p.id }}, this.closest('.side-playlist').dataset.name)">🗑</span>
+</button>
+{% endfor %}
