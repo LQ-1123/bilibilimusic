@@ -194,10 +194,10 @@ class BiliClient:
     # ---- 基础请求 ----
 
     async def _get_json(
-        self, path: str, params: dict | None = None, *, ok_codes: tuple[int, ...] = (0,)
+        self, path: str, params: dict | None = None, *, ok_codes: tuple[int, ...] = (0,), headers: dict | None = None
     ) -> dict:
         url = path if path.startswith("http") else _API + path
-        resp = await self.http.get(url, params=params)
+        resp = await self.http.get(url, params=params, headers=headers)
         return self._parse_json_response(resp, ok_codes=ok_codes)
 
     async def _post_json(self, path: str, data: dict, *, ok_codes: tuple[int, ...] = (0,)) -> dict:
@@ -242,9 +242,9 @@ class BiliClient:
             self._wbi_at = time.time()
         return self._wbi
 
-    async def _get_json_signed(self, path: str, params: dict) -> dict:
+    async def _get_json_signed(self, path: str, params: dict, headers: dict | None = None) -> dict:
         img_key, sub_key = await self._wbi_keys()
-        return await self._get_json(path, sign_params(params, img_key, sub_key))
+        return await self._get_json(path, sign_params(params, img_key, sub_key), headers=headers)
 
     # ---- 视频信息与播放地址 ----
 
@@ -267,6 +267,42 @@ class BiliClient:
             page=idx + 1,
             part_title=str(pages[idx].get("part", "") or "").strip(),
         )
+
+    async def get_video_owner(self, bvid: str) -> dict:
+        """视频 UP 主信息 {mid, name, face}（wbi view 同族；点 UP 名进作品页用）。"""
+        data = await self._get_json_signed("/x/web-interface/wbi/view", {"bvid": bvid})
+        owner = data.get("owner") or {}
+        return {
+            "mid": int(owner.get("mid") or 0),
+            "name": str(owner.get("name") or "").strip(),
+            "face": str(owner.get("face") or ""),
+        }
+
+    async def space_arcs(self, mid: int, pn: int = 1, ps: int = 30, order: str = "pubdate") -> tuple[list[dict], int]:
+        """UP 主投稿列表（wbi arc/search）；返回 (vlist, 投稿总数)。
+
+        order: pubdate=最新发布 / click=最多播放；该接口间歇性 -352 风控
+        （对 Referer/指纹敏感）：带空间页 Referer + 短间隔自动重试。
+        """
+        params = {"mid": mid, "pn": max(1, pn), "ps": ps, "tid": 0, "keyword": "", "order": order}
+        headers = {"Referer": f"https://space.bilibili.com/{mid}/video"}
+        last_err: BiliApiError | None = None
+        for attempt in range(4):
+            if attempt:
+                await asyncio.sleep(1.0 if attempt == 1 else 2.0)
+            try:
+                data = await self._get_json_signed("/x/space/wbi/arc/search", params, headers=headers)
+                break
+            except BiliApiError as exc:
+                if exc.code not in (-352, -412):
+                    raise
+                last_err = exc
+        else:
+            raise last_err or BiliApiError(-352, "请求被 B 站拦截，请稍后再试")
+        vlist = (data.get("list") or {}).get("vlist") or []
+        items = [v for v in vlist if isinstance(v, dict) and v.get("bvid")]
+        total = int((data.get("page") or {}).get("count") or 0)
+        return items, total
 
     async def get_audio_streams(self, bvid: str, cid: int) -> list[AudioStream]:
         params = {"bvid": bvid, "cid": cid, "qn": 64, "fnval": 16, "fourk": 1}

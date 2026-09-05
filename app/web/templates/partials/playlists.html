@@ -2,7 +2,7 @@
 <button type="button" class="side-pl" data-pl="{{ c.id }}" data-name="{{ c.name }}"
         data-count="{{ c.count }}" data-hue="{{ c.hue }}" style="--h:{{ c.hue }}"
         onclick="openDetailFrom(this)" title="打开歌单「{{ c.name }}」">
-  <span class="sp-cov">♪</span>
+  <span class="sp-cov">{% if c.cover %}<img src="{{ c.cover }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}♪{% endif %}</span>
   <span class="sp-name">{{ c.name }}</span>
   {% if c.id != 0 %}
   <span class="cnt">{{ c.count }}</span>

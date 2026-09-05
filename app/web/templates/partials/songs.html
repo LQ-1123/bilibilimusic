@@ -1,7 +1,7 @@
 {% if songs %}
 <div class="tracklist">
   {% for s in songs %}
-  <div class="trk card" data-play="{{ s.id }}" title="{{ s.title }}">
+  <div class="trk card" data-play="{{ s.id }}" data-bvid="{{ s.bvid }}" title="{{ s.title }}">
     <span class="no">{{ loop.index }}</span>
     <span class="eqbox"><span class="eq"><i></i><i></i><i></i></span></span>
     <span class="im"><img src="{{ s.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>

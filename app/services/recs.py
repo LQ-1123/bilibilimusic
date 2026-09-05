@@ -11,6 +11,7 @@
 """
 
 import hashlib
+import random
 import time
 from datetime import datetime, timedelta
 
@@ -97,6 +98,13 @@ def list_items(genre: str = "", limit: int = 500) -> list[RecPool]:
 def daily_items(n: int = 12) -> list[RecPool]:
     purge_expired()
     return daily_pick(list_items(), n=n)
+
+
+def discover_items(n: int = 12) -> list[RecPool]:
+    """发现板块：每次请求随机抽一撮（刷新即换一批）；每日精选歌单仍走按日轮换的 daily_items。"""
+    purge_expired()
+    pool = list_items()
+    return random.sample(pool, min(n, len(pool)))
 
 
 def dismiss(bvid: str) -> bool:

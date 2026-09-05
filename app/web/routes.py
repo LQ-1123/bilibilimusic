@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import func, select
 
@@ -53,6 +53,7 @@ def _song_ctx(s) -> dict:
     d = song_out(s)
     return {
         "id": d["id"],
+        "bvid": d["bvid"],
         "title": d["title"],
         "artist": d["artist"],
         "quality_label": d["qualityLabel"],
@@ -82,13 +83,27 @@ _HUES = [340, 14, 258, 44, 192, 130, 285, 210]
 
 
 def _playlist_cards() -> tuple[list[dict], int]:
-    """侧栏 + 海报架共用的歌单卡片数据（含每歌单曲目数）。返回 (cards, 总曲数)。"""
+    """侧栏 + 海报架共用的歌单卡片数据（含每歌单曲目数 + 最新封面）。返回 (cards, 总曲数)。"""
+    from app.api.routes import song_out
+
     pls = playlists.list_playlists()
     all_songs = library.list_songs(limit=10000)
     counts: dict[int, int] = {}
+    covers: dict[int, str] = {}  # 每歌单最新一首的封面（list_songs 新歌在前）
+    newest_cover = ""
     for s in all_songs:
-        counts[s.playlist_id or 0] = counts.get(s.playlist_id or 0, 0) + 1
-    cards = [{"id": 0, "name": "全部歌曲", "count": len(all_songs), "default": False, "hue": 340}]
+        pid = s.playlist_id or 0
+        counts[pid] = counts.get(pid, 0) + 1
+        if pid not in covers:
+            url = song_out(s)["coverUrl"]
+            if url:
+                covers[pid] = url
+                if not newest_cover:
+                    newest_cover = url
+    cards = [{
+        "id": 0, "name": "全部歌曲", "count": len(all_songs), "default": False, "hue": 340,
+        "cover": covers.get(0, newest_cover),
+    }]
     for i, p in enumerate(pls):
         cards.append({
             "id": p.id,
@@ -96,6 +111,7 @@ def _playlist_cards() -> tuple[list[dict], int]:
             "count": counts.get(p.id, 0),
             "default": p.name == playlists.DEFAULT_NAME,
             "hue": _HUES[i % len(_HUES)],
+            "cover": covers.get(p.id, ""),
         })
     return cards, len(all_songs)
 
@@ -345,6 +361,93 @@ async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
     )
 
 
+@router.get("/web/up/resolve")
+async def up_resolve(request: Request, bvid: str = ""):
+    """bvid → UP 主 {mid, name, face}；前端点 UP 名进作品页第一步。"""
+    if not request.app.state.cookies.logged_in:
+        return JSONResponse({"error": "需要先登录"}, status_code=401)
+    bvid = (bvid or "").strip()
+    if not bvid:
+        return JSONResponse({"error": "缺少 bvid"}, status_code=400)
+    try:
+        owner = await request.app.state.bili.get_video_owner(bvid)
+    except BiliApiError as exc:
+        return JSONResponse({"error": exc.message}, status_code=502)
+    if not owner.get("mid"):
+        return JSONResponse({"error": "未找到 UP 主"}, status_code=404)
+    return JSONResponse(owner)
+
+
+@router.get("/partials/up", response_class=HTMLResponse)
+async def up_videos_partial(request: Request, mid: int = 0, pn: int = 1, name: str = ""):
+    """UP 主投稿视频列表（试听 + ♥ 收藏入库），作品页覆盖层局部。
+
+    投稿接口被风控拦截时降级：站内搜索该 UP 名并过滤其作品（结果可能不全）。
+    """
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    if mid <= 0:
+        return HTMLResponse("<div class='empty'>缺少 UP 主 id</div>")
+    bili = request.app.state.bili
+    has_more = False
+    total = 0
+    top10: list[dict] = []
+    try:
+        items, total = await bili.space_arcs(mid, pn=pn, ps=30)
+        has_more = pn * 30 < total
+    except BiliApiError:
+        if not name.strip():
+            raise
+        hits = await bili.search_videos(name.strip())
+        items = [
+            {
+                "bvid": h.bvid,
+                "title": h.title,
+                "pic": h.cover_url,
+                "length": _fmt_duration(h.duration),
+                "play": h.play,
+            }
+            for h in hits
+            if h.artist == name.strip()
+        ][:30]
+    if pn == 1 and len(items) >= 5:
+        # 首屏 TOP10（click 排序，风控时页内降级），其余作品去重后排列
+        try:
+            tops, _ = await bili.space_arcs(mid, pn=1, ps=10, order="click")
+            top10 = tops[:10]
+        except BiliApiError:
+            top10 = sorted(items, key=lambda v: int(v.get("play") or 0), reverse=True)[:10]
+        shown = {v["bvid"] for v in top10}
+        items = [v for v in items if v["bvid"] not in shown]
+
+    def _vctx(v: dict) -> dict:
+        pic = str(v.get("pic") or "")
+        return {
+            "bvid": v["bvid"],
+            "title": str(v.get("title") or "").strip(),
+            "pic": ("https:" + pic) if pic.startswith("//") else pic,
+            "length": str(v.get("length") or ""),
+            "play_text": _fmt_play(int(v.get("play") or 0)),
+        }
+
+    ctx = [_vctx(v) for v in items]
+    return templates.TemplateResponse(
+        request,
+        "partials/up_videos.html",
+        {
+            "items": ctx,
+            "mid": mid,
+            "pn": pn,
+            "has_more": has_more,
+            "name": name.strip(),
+            "total": total,
+            "total_text": _fmt_play(total) if total else "",
+            "top10": [_vctx(v) for v in top10],
+        },
+    )
+
+
 @router.get("/partials/recent", response_class=HTMLResponse)
 def recent_partial(request: Request):
     """最近收藏架（refreshSongs 触发实时刷新）。"""
@@ -426,7 +529,7 @@ def recs_partial(request: Request, genre: str = "", mode: str = ""):
     if gate:
         return gate
     if mode == "today":
-        items = recs.daily_items()
+        items = recs.discover_items()  # 发现板块：刷新即换一批（每日精选歌单仍按日轮换）
     else:
         items = recs.list_items(genre=genre)
     ctx_items = [

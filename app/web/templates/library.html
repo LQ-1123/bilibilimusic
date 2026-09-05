@@ -3,25 +3,17 @@
 
 <section class="view" id="view-home">
 
-  <div class="hero sec-hero">
-    <div class="hero-eyebrow">BILI MUSIC</div>
-    <div class="hero-title" id="hero-hi">晚上好</div>
-    <div class="hero-sub">
-      <span>曲库 {{ stats.songs }} 首</span><span class="sep">·</span>
-      <span>歌单 {{ stats.playlists }} 个</span><span class="sep">·</span>
-      <span>推荐池 {{ stats.recs }} 首</span><span class="sep">·</span>
-      <span>已同步 B 站收藏夹</span>
-    </div>
-  </div>
+  <!-- 空 hero：纯氛围渐变载体（无文字内容） -->
+  <div class="hero sec-hero" aria-hidden="true"></div>
 
   <div class="sec">
-    <div class="sec-head"><h2>推荐歌单</h2><span class="hint">线上内容 · 实时流试听，满意点 ♥ 收藏</span></div>
+    <div class="sec-head"><h2>推荐歌单</h2></div>
     <div class="rack" id="recpl-rack"
          hx-get="/partials/rec-playlists" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
 
   <div class="sec sec-discover" id="sec-discover">
-    <div class="sec-head"><h2>发现</h2><span class="hint">试听走实时流，满意就收藏</span></div>
+    <div class="sec-head"><h2>发现</h2></div>
     <div id="rec-list" hx-get="/partials/recs?mode=today" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
   </div>
 
@@ -32,10 +24,7 @@
   </div>
 
   <div class="sec sec-songs">
-    <div class="sec-head">
-      <h2>全部歌曲</h2>
-      <span class="hint" id="songs-filter-hint">全部歌单 · 按收藏时间</span>
-    </div>
+    <div class="sec-head"><h2>全部歌曲</h2></div>
     <div class="list-head">
       <span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span>
     </div>
@@ -59,9 +48,7 @@
       <div class="dt-meta" id="dt-meta"></div>
       <div class="dt-acts">
         <button class="btn-play" type="button" onclick="playDetailFirst()">播放</button>
-        <button class="dt-ghost" type="button" onclick="shuffleDetail()" title="随机播放">⇄</button>
-        <button class="dt-ghost" type="button" onclick="focusSearchBar()" title="粘贴链接 / 搜索添加歌曲">＋</button>
-        <button class="dt-ghost" type="button" onclick="detailMenu()" title="重命名 / 删除歌单">⋯</button>
+        <button class="btn-share" type="button" onclick="shareDetail()" title="分享该歌单（B 站收藏夹链接）">↗ 分享</button>
       </div>
     </div>
   </div>

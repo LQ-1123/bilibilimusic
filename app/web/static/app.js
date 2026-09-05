@@ -601,14 +601,27 @@
     updateLyricHighlight(l.t, true);
   });
 
+  // 播放页封面/标题同步到大小两处（顶栏小封面 + 手机端大封面视图）
+  function setLyricsCover(src) {
+    if (!src) return;
+    var a = $("lyrics-cover"), b = $("lyrics-cover-big");
+    if (a) a.src = src;
+    if (b) b.src = src;
+  }
+  function setLyricsText(title, artist) {
+    $("lyrics-title").textContent = title;
+    $("lyrics-artist").textContent = artist;
+    var bt = $("ly-title-big"), ba = $("ly-artist-big");
+    if (bt) bt.textContent = title;
+    if (ba) ba.textContent = artist;
+  }
+
   function loadLyrics(meta) {
     // meta: {key, title, artist, cover, fetchUrl, fetchInit} — key 区分库内歌 / 试听歌
     lyricSongId = meta.key;
     lyricLines = []; lyricTimed = false; lyricIdx = -1;
-    $("lyrics-title").textContent = meta.title;
-    $("lyrics-artist").textContent = meta.artist;
-    var lyCov = $("lyrics-cover");
-    if (lyCov && meta.cover) lyCov.src = meta.cover;
+    setLyricsText(meta.title, meta.artist);
+    setLyricsCover(meta.cover);
     $("lyrics-scroll").innerHTML = '<div class="l-empty">歌词加载中…</div>';
     fetch(meta.fetchUrl, meta.fetchInit)
       .then(function (r) { return r.ok ? r.json() : { lyrics: null }; })
@@ -683,22 +696,20 @@
     panel.classList.toggle("hidden");
     $("btn-lyrics").classList.toggle("on", opening);
     if (!opening) return;
-    var lyCov = $("lyrics-cover");
     if (recActive && recAudio) { // 试听歌：bvid 直接取词
       var tm = trialLyricsMeta();
-      if (lyCov) lyCov.src = tm.cover;
+      setLyricsCover(tm.cover);
       if (lyricSongId === tm.key && lyricLines.length) updateLyricHighlight(recAudio.currentTime || 0, true);
       else loadLyrics(tm);
       return;
     }
     var song = playlist[current];
-    if (song && lyCov) lyCov.src = song.coverUrl;
+    if (song) setLyricsCover(song.coverUrl);
     if (song) {
       if (lyricSongId === "lib:" + song.id && lyricLines.length) updateLyricHighlight(audio.currentTime || 0, true);
       else loadLyrics(libLyricsMeta(song));
     } else {
-      $("lyrics-title").textContent = "—";
-      $("lyrics-artist").textContent = "";
+      setLyricsText("—", "");
       renderLyrics();
     }
   };
@@ -763,9 +774,21 @@
   // ---------- 供外部调用的播放器 API ----------
   window.BiliPlayer = {
     playById: function (id) {
-      for (var i = 0; i < playlist.length; i++) {
-        if (playlist[i].id === id) { playSongSmart(playlist[i]); return; }
+      // data-play 传来的是字符串、数组里是数字：必须字符串化后再比（严格 === 会全部失配）
+      var want = String(id);
+      function lookup() {
+        for (var i = 0; i < playlist.length; i++) {
+          if (String(playlist[i].id) === want) return playlist[i];
+        }
+        return null;
       }
+      var song = lookup();
+      if (song) { playSongSmart(song); return; }
+      // 曲目数组是异步装载的（页面刚开就点播放的竞态）：拉一次全量再重试，不再静默吞掉
+      refreshPlaylist().then(function () {
+        var again = lookup();
+        if (again) playSongSmart(again);
+      });
     },
     toggle: function () { $("btn-toggle").click(); },
     skip: skip,
@@ -799,8 +822,6 @@
     if (box) {
       box.placeholder = "粘贴 B 站视频链接，收藏到「" + activeName + "」…";
     }
-    var hint = document.getElementById("songs-filter-hint");
-    if (hint) hint.textContent = active === "0" ? "全部歌单 · 按收藏时间" : "歌单「" + activeName + "」 · 按收藏时间";
   }
 
   window.switchView = function (name) {
@@ -824,8 +845,8 @@
 
   window.createPlaylist = async function () {
     var name = window.__promptModal
-      ? await window.__promptModal("新建歌单", { placeholder: "歌单名（B 站将创建收藏夹 bilimusic- <名>）" })
-      : prompt("歌单名（将创建同名收藏夹 bilimusic- <歌单名>，总长约 20 字以内）：");
+      ? await window.__promptModal("新建歌单", { placeholder: "歌单名" })
+      : prompt("歌单名：");
     if (!name || !name.trim()) return;
     var body = new URLSearchParams({ name: name.trim() });
     var resp = await fetch("/web/playlists/create", {

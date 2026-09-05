@@ -10,16 +10,14 @@
     try { localStorage.setItem("bmTheme", t); } catch (e) {}
   };
 
-  // ---------- 问候语 ----------
-  (function () {
-    var el = $("hero-hi");
-    if (!el) return;
-    var h = new Date().getHours();
-    var hi = h < 5 ? "夜深了" : h < 11 ? "早上好" : h < 14 ? "中午好" : h < 18 ? "下午好" : "晚上好";
-    el.textContent = hi + "，该听歌了";
-  })();
-
   var mainEl = $("mainEl");
+
+  // 详情页滚动时淡出面包屑（dt-top 已透明，避免文字与曲目行重叠）
+  if (mainEl) {
+    mainEl.addEventListener("scroll", function () {
+      mainEl.classList.toggle("scrolled", mainEl.scrollTop > 64);
+    }, { passive: true });
+  }
 
   // ---------- 侧栏拖宽（仅桌面有意义；范围 200–420） ----------
   (function () {
@@ -39,6 +37,44 @@
     var up = function () { dragging = false; document.body.style.cursor = ""; };
     handle.addEventListener("pointerup", up);
     handle.addEventListener("pointercancel", up);
+  })();
+
+  // ---------- 用户设置弹层（侧栏点头像：智能切歌 / 同步 / 退出登录） ----------
+  (function () {
+    var btn = $("side-user-btn"), pop = $("user-pop");
+    var host = btn && btn.closest(".side-user");
+    if (!btn || !pop || !host) return;
+    var smart = $("smart-toggle-side"), queueSmart = $("smart-toggle");
+    var smartOn = function () { return localStorage.getItem("bmSmartTransition") !== "0"; };
+    if (smart) {
+      smart.checked = smartOn();
+      smart.addEventListener("change", function () {
+        localStorage.setItem("bmSmartTransition", smart.checked ? "1" : "0");
+        if (queueSmart && queueSmart.checked !== smart.checked) {
+          queueSmart.checked = smart.checked;
+          queueSmart.dispatchEvent(new Event("change", { bubbles: true })); // 同步队列面板的智能过渡开关
+        }
+      });
+    }
+    if (queueSmart) queueSmart.addEventListener("change", function () {
+      if (smart) smart.checked = queueSmart.checked;
+    });
+    var setOpen = function (v) { host.classList.toggle("pop-open", v); };
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      setOpen(!host.classList.contains("pop-open"));
+    });
+    pop.addEventListener("click", function (e) { e.stopPropagation(); });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest(".user-pop")) setOpen(false);
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") setOpen(false); });
+    var sync = $("side-sync"), quit = $("side-logout");
+    if (sync) sync.addEventListener("click", function () { setOpen(false); syncNow(); });
+    if (quit) quit.addEventListener("click", function () {
+      fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+        .then(function () { location.href = "/"; });
+    });
   })();
 
   // ---------- 导航 ----------
@@ -79,6 +115,19 @@
     document.getElementById("dt-meta").innerHTML =
       "<b>" + d.count + " 首</b><span>·</span><span>已同步 B 站收藏夹</span>";
     document.getElementById("dt-crumb").textContent = "主页 / " + d.name;
+    // 封面：取歌单内真实视频封面做艺术化拼贴（无封面/请求失败回退渐变底）
+    var cvr0 = document.querySelector("#dt-hero .dt-cvr");
+    if (cvr0) { cvr0.classList.remove("mosaic-host"); cvr0.innerHTML = ""; }
+    fetch("/api/playlists/" + encodeURIComponent(d.pl) + "/covers")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !Array.isArray(data.covers) || !data.covers.length) return;
+        if ($("app").dataset.view !== "detail" || dtState.id !== d.pl) return; // 请求期间已切走
+        var c = document.querySelector("#dt-hero .dt-cvr");
+        var mos = mosaicHtml(data.covers.join("|"));
+        if (c && mos) { c.classList.add("mosaic-host"); c.innerHTML = mos; }
+      })
+      .catch(function () {});
     if (window.htmx) {
       htmx.ajax("GET", "/partials/songs?playlist_id=" + encodeURIComponent(d.pl), {
         target: "#dt-songs",
@@ -142,39 +191,44 @@
 
   function firstRecRow() { return document.querySelector('#dt-songs .trk-rec'); }
 
+  // 曲目列表由 htmx 异步装载：点得早时轮询等待（~4s），不再静默吞掉点击
+  function whenDetailRows(cb) {
+    var tries = 0;
+    (function poll() {
+      if (document.querySelector("#dt-songs [data-play], #dt-songs .trk-rec")) { cb(); return; }
+      if (++tries > 40) { window.__toast("曲目还在加载，稍后再试"); return; }
+      setTimeout(poll, 100);
+    })();
+  }
+
   window.playDetailFirst = function () {
-    if (dtState.kind === "rec") {
-      var r = firstRecRow();
-      if (r) r.click();
-      return;
-    }
-    var row = document.querySelector("#dt-songs [data-play]");
-    if (row && window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
+    whenDetailRows(function () {
+      if (dtState.kind === "rec") {
+        var r = firstRecRow();
+        if (r) r.click();
+        return;
+      }
+      var row = document.querySelector("#dt-songs [data-play]");
+      if (row && window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
+    });
   };
-  window.shuffleDetail = function () {
-    if (dtState.kind === "rec") {
-      var rows = document.querySelectorAll("#dt-songs .trk-rec");
-      if (rows.length) rows[Math.floor(Math.random() * rows.length)].click();
-      return;
-    }
-    var list = document.querySelectorAll("#dt-songs [data-play]");
-    if (!list.length) return;
-    var row = list[Math.floor(Math.random() * list.length)];
-    if (window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
-  };
-  window.detailMenu = async function () {
-    if (dtState.kind === "rec") { window.__toast("线上推荐歌单不支持改名或删除"); return; }
-    if (String(dtState.id) === "0") { focusSearchBar(); return; }
-    var act = window.__promptModal
-      ? await window.__promptModal("歌单「" + dtState.name + "」管理", { placeholder: "输入新名称改名；输入 del 删除" })
-      : prompt("歌单「" + dtState.name + "」操作：\n· 输入新名称 → 改名（B 站夹同步）\n· 输入 del → 删除（歌曲移入我的曲库）");
-    if (!act) return;
-    act = act.trim();
-    if (act.toLowerCase() === "del") {
-      if (window.deletePlaylist) deletePlaylist(dtState.id, dtState.name);
-    } else if (act && act !== dtState.name) {
-      if (window.renamePlaylist) renamePlaylist(dtState.id, dtState.name);
-    }
+  // 分享该歌单：取对应 B 站收藏夹链接（自动复制 + 弹窗展示可手动复制）
+  window.shareDetail = function () {
+    if (dtState.kind === "rec") { window.__toast("线上推荐歌单不支持分享"); return; }
+    fetch("/api/playlists/" + String(dtState.id) + "/share-link")
+      .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+      .then(function (res) {
+        var data = null;
+        try { data = JSON.parse(res.t); } catch (e) {}
+        if (!res.ok) { window.__toast((data && data.detail) || "获取分享链接失败"); return; }
+        var link = (data && data.link) || "";
+        if (link && navigator.clipboard) navigator.clipboard.writeText(link).catch(function () {});
+        var extra = (data && data.folderCount > 1) ? "（共 " + data.folderCount + " 夹，链接为首夹）" : "";
+        if (window.__promptModal) {
+          window.__promptModal("分享「" + ((data && data.name) || "") + "」· 链接已复制" + extra, { value: link });
+        }
+      })
+      .catch(function () { window.__toast("网络错误，请重试"); });
   };
 
   // 推荐行点击 → 实时流试听（胶囊接管）
@@ -183,7 +237,7 @@
     var img = row.querySelector("img");
     window.playStream(row.dataset.bvid, {
       title: (row.querySelector(".t1") || {}).textContent || "",
-      artist: (row.querySelector(".t2") || {}).textContent || "",
+      artist: row.dataset.artist || (row.querySelector(".t2") || {}).textContent || "",
       cover: img ? img.src : "",
     }, null);
   };
@@ -207,6 +261,74 @@
     toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
   };
 
+  // ---------- UP 主作品页：点 UP 名 → 查看投稿（试听/收藏） ----------
+  window.openUp = async function (bvid) {
+    if (!bvid) return;
+    var p = $("up-panel");
+    if (!p) return;
+    try {
+      var r = await fetch("/web/up/resolve?bvid=" + encodeURIComponent(bvid));
+      var owner = await r.json();
+      if (!r.ok || !owner.mid) { window.__toast(owner.error || "未找到 UP 主"); return; }
+      p.classList.remove("hidden");
+      p.dataset.name = owner.name || "";
+      $("up-face").src = owner.face || "";
+      $("up-name").textContent = owner.name || "UP 主";
+      $("up-space").href = "https://space.bilibili.com/" + owner.mid;
+      $("up-list").innerHTML = '<div class="empty">加载中…</div>';
+      if (window.htmx) {
+        htmx.ajax("GET", upUrl(owner.mid, 1), { target: "#up-list", swap: "innerHTML" });
+      }
+    } catch (e) { window.__toast("网络错误，请重试"); }
+  };
+  function upUrl(mid, pn) {
+    var p = $("up-panel");
+    var name = p && p.dataset.name ? "&name=" + encodeURIComponent(p.dataset.name) : "";
+    return "/partials/up?mid=" + mid + "&pn=" + pn + name;
+  }
+  (function () {
+    var close = $("up-close");
+    if (close) close.addEventListener("click", function () { $("up-panel").classList.add("hidden"); });
+    var list = $("up-list");
+    if (list) list.addEventListener("click", function (e) {
+      var more = e.target.closest(".up-more");
+      if (!more || !window.htmx) return;
+      var mid = more.dataset.mid, pn = more.dataset.pn;
+      var loading = document.createElement("div");
+      loading.className = "empty";
+      loading.textContent = "加载中…";
+      more.replaceWith(loading);
+      htmx.ajax("GET", upUrl(mid, pn), { target: "#up-list", swap: "beforeend" });
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      var p = $("up-panel");
+      if (p && !p.classList.contains("hidden")) p.classList.add("hidden");
+    });
+    // 曲目行里点 UP 名（.t2）：进作品页而非播放（捕获阶段拦截，抢在行 onclick 之前）
+    document.addEventListener("click", function (e) {
+      var t2 = e.target.closest(".t2");
+      if (!t2 || t2.closest("#up-panel") || t2.closest(".search-drop")) return;
+      var row = t2.closest(".trk");
+      if (!row) return;
+      var bvid = row.dataset.bvid;
+      if (!bvid) return;
+      e.stopPropagation();
+      e.preventDefault();
+      openUp(bvid);
+    }, true);
+    // 歌词页 / 播放条的 UP 名点击
+    function upFromPlayer() {
+      var t = window.BiliPlayer && BiliPlayer.trialInfo ? BiliPlayer.trialInfo() : null;
+      var s = window.BiliPlayer && BiliPlayer.currentSong ? BiliPlayer.currentSong() : null;
+      var bvid = t ? t.bvid : (s ? s.bvid : null);
+      if (bvid) openUp(bvid); else window.__toast("当前没有播放的歌");
+    }
+    var la = $("lyrics-artist"), pa = $("player-artist");
+    if (la) la.addEventListener("click", upFromPlayer);
+    if (pa) pa.addEventListener("click", upFromPlayer);
+  })();
+
   // ---------- 已收藏状态：爱心灰→点亮 ----------
   var collected = {};
   function markHearts() {
@@ -229,7 +351,7 @@
   };
   document.body.addEventListener("refreshSongs", loadCollected);
   document.body.addEventListener("htmx:afterSwap", function (e) {
-    if (e.target && (e.target.id === "sd-web" || e.target.id === "rec-list")) markHearts();
+    if (e.target && (e.target.id === "sd-web" || e.target.id === "rec-list" || e.target.id === "up-list")) markHearts();
   });
   loadCollected();
 
@@ -355,15 +477,18 @@
     });
   })();
 
-  // ---------- 音量（双 audio 元素同步） ----------
+  // ---------- 音量（双 audio 元素同步；--p 驱动滑条粉色填充） ----------
   (function () {
     var vol = $("vol");
     if (!vol) return;
+    var paint = function () { vol.style.setProperty("--p", vol.value + "%"); };
+    paint();
     vol.addEventListener("input", function () {
       var v = vol.value / 100;
       var a = $("audio"), b = $("audio2");
       if (a) a.volume = v;
       if (b) b.volume = v;
+      paint();
     });
   })();
 
@@ -371,7 +496,25 @@
   (function () {
     var c = $("player-cover"), lc = $("lyrics-cover");
     if (c && window.toggleLyrics) c.addEventListener("click", function () { toggleLyrics(); });
-    if (lc && window.BiliPlayer) lc.addEventListener("click", function () { BiliPlayer.toggle(); });
+    if (lc && window.BiliPlayer) lc.addEventListener("click", function () {
+      // 手机端歌词视图：点顶栏小封面回到大封面视图；其余情况维持原"点封面播放/暂停"
+      var panel = $("lyrics-panel");
+      if (panel.classList.contains("showlyrics") && window.matchMedia("(max-width: 900px)").matches) {
+        panel.classList.remove("showlyrics");
+        return;
+      }
+      BiliPlayer.toggle();
+    });
+  })();
+
+  // ---------- 手机端播放页：封面视图 ↔ 歌词视图（Apple Music 式） ----------
+  (function () {
+    var panel = $("lyrics-panel");
+    if (!panel) return;
+    var big = $("lyrics-cover-big");
+    if (big) big.addEventListener("click", function () { panel.classList.add("showlyrics"); });
+    var bubble = $("ly-bubble");
+    if (bubble) bubble.addEventListener("click", function () { panel.classList.toggle("showlyrics"); });
   })();
 
   // ---------- 歌词页控制条：进度/时间跟随当前媒体（曲库歌或试听流），seek 双向 ----------
@@ -738,42 +881,6 @@
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
   })();
-
-  // ---------- 侧栏镜像模糊层：主内容副本垫在侧栏下（backdrop-filter 不可用环境的真模糊兜底） ----------
-  (function () {
-    if (window.matchMedia("(max-width: 900px)").matches) return; // 手机端无侧栏
-    var mainEl = $("mainEl"), mirror = $("side-mirror"), inner = $("mirrorInner");
-    if (!mirror || !inner) return;
-    var cloneTimer = null;
-
-    function syncScroll() {
-      inner.style.transform = "translateY(" + (-mainEl.scrollTop) + "px)";
-    }
-    function rebuild() {
-      inner.innerHTML = "";
-      var clone = mainEl.cloneNode(true);
-      clone.removeAttribute("id");
-      // 去重 id / 移除 htmx 触发属性：镜像纯视觉（pointer-events:none），不参与交互与请求
-      clone.querySelectorAll("[id]").forEach(function (el) { el.removeAttribute("id"); });
-      clone.querySelectorAll("[hx-get],[hx-post],[hx-trigger]").forEach(function (el) {
-        ["hx-get", "hx-post", "hx-trigger"].forEach(function (a) { el.removeAttribute(a); });
-      });
-      inner.appendChild(clone);
-      syncScroll();
-    }
-    function scheduleRebuild() {
-      clearTimeout(cloneTimer);
-      cloneTimer = setTimeout(rebuild, 400); // htmx swap 后防抖重建
-    }
-
-    mainEl.addEventListener("scroll", function () { requestAnimationFrame(syncScroll); }, { passive: true });
-    window.addEventListener("resize", scheduleRebuild);
-    document.body.addEventListener("htmx:afterSwap", scheduleRebuild);
-    document.body.addEventListener("refreshSongs", scheduleRebuild);
-    document.body.addEventListener("playlistsChanged", scheduleRebuild);
-    rebuild();
-  })();
-
   // ---------- 移动端 Tab / 搜索圆钮 ----------
   window.mTab = function (name, btn) {
     document.body.dataset.mtab = name;

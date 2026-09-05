@@ -341,6 +341,33 @@ async def search_bili(
 
 # ---- 导出（曲库 → B 站收藏夹） ----
 
+@router.get("/playlists/{pid}/covers")
+def playlist_covers(pid: int) -> dict:
+    """用户歌单详情封面素材：取歌单内最新的 4 首视频封面（前端做 mosaic 艺术化）。"""
+    covers = [song_out(s)["coverUrl"] for s in library.list_songs(limit=4, playlist_id=pid)]
+    return {"covers": [c for c in covers if c]}
+
+
+@router.get("/playlists/{pid}/share-link")
+async def playlist_share_link(pid: int, request: Request) -> dict:
+    """歌单详情页「分享」：返回该歌单对应 B 站收藏夹的首夹链接。"""
+    bili = request.app.state.bili
+    mid = int(bili.store.get("mid") or await bili.get_my_mid())
+    if pid == 0:  # 全部歌曲 = 主夹（bilimusic）
+        main_id = await bili.ensure_fav_folder()
+        return {"name": "我的曲库", "link": f"https://space.bilibili.com/{mid}/favlist?fid={main_id}", "folderCount": 1}
+    p = playlists.get_playlist(pid)
+    if p is None:
+        raise HTTPException(status_code=404, detail="歌单不存在")
+    ids = playlists.folder_ids(p)
+    if not ids:  # 本地还没记到夹 id：现场比对一次 B 站收藏夹（按标题认领）
+        await playlists.adopt_folders(bili)
+        ids = playlists.folder_ids(p)
+    if not ids:
+        raise HTTPException(status_code=409, detail="该歌单还没有同步到 B 站收藏夹，先收藏几首歌")
+    return {"name": p.name, "link": f"https://space.bilibili.com/{mid}/favlist?fid={ids[0]}", "folderCount": len(ids)}
+
+
 @router.post("/exports", status_code=202)
 async def create_export(request: Request) -> dict:
     state = request.app.state.exporter.submit()
