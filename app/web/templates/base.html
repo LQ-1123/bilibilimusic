@@ -37,12 +37,12 @@
         <input id="search" type="search" name="q" placeholder="搜索曲库 / B 站" autocomplete="off">
         <button id="search-close" type="button" class="tb-cir" title="关闭搜索">✕</button>
       </div>
-      <div class="tb-right">
-        <button type="button" class="tb-chip" id="btn-sync" hx-post="/web/sync" hx-target="#task-list"
-                hx-swap="innerHTML" title="与 B 站收藏夹双向对账"><span class="dot"></span><span class="lbl">已同步</span></button>
-        <button type="button" class="tb-chip" id="btn-export" title="导出歌单为 B 站收藏夹链接">⤴ <span class="lbl">导出</span></button>
-        <button type="button" class="tb-chip" id="btn-theme" onclick="toggleTheme()" title="亮 / 暗主题">◐</button>
-      </div>
+    </div>
+
+    <!-- 功能触发器（按用户要求不从 UI 显示）：手机端账号 Tab 的同步/导出行为依赖这些 ID -->
+    <div class="hidden">
+      <button id="btn-sync" type="button" hx-post="/web/sync" hx-target="#task-list" hx-swap="innerHTML"></button>
+      <button id="btn-export" type="button"></button>
     </div>
 
     {% block content %}{% endblock %}
