@@ -10,7 +10,7 @@
 </div>
 {% endif %}
 {% for t in tasks %}
-<div class="task st-{{ t.status }}">
+<div class="task st-{{ t.status }}" data-tid="{{ t.id }}">
   {% if t.status == "ready" %}
     <span class="t-icon ok">✓</span><span class="t-text">已收藏</span>
   {% elif t.status == "failed" %}

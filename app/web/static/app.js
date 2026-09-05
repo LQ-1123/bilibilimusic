@@ -171,7 +171,7 @@
   }
 
   function markPlayingCard(songId) {
-    var cards = document.querySelectorAll("#songs .card");
+    var cards = document.querySelectorAll("#songs .card, #dt-songs .card");
     for (var i = 0; i < cards.length; i++) {
       cards[i].classList.toggle("playing", cards[i].dataset.play === String(songId));
     }
@@ -555,6 +555,8 @@
     lyricLines = []; lyricTimed = false; lyricIdx = -1;
     $("lyrics-title").textContent = song.title;
     $("lyrics-artist").textContent = song.artist;
+    var lyCov = $("lyrics-cover");
+    if (lyCov) lyCov.src = song.coverUrl;
     $("lyrics-scroll").innerHTML = '<div class="l-empty">歌词加载中…</div>';
     fetch("/api/songs/" + song.id + "/lyrics")
       .then(function (r) { return r.ok ? r.json() : { lyrics: null }; })
@@ -600,6 +602,8 @@
     $("btn-lyrics").classList.toggle("on", opening);
     if (!opening) return;
     var song = playlist[current];
+    var lyCov = $("lyrics-cover");
+    if (song && lyCov) lyCov.src = song.coverUrl;
     if (song) {
       if (lyricSongId === song.id && lyricLines.length) updateLyricHighlight(audio.currentTime || 0, true);
       else loadLyrics(song);
@@ -744,6 +748,7 @@
       alert((await resp.text()) || "创建失败");
       return;
     }
+    htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
   };
 
@@ -760,6 +765,7 @@
       alert((await resp.text()) || "改名失败");
       return;
     }
+    htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
   };
 
@@ -776,6 +782,7 @@
       return;
     }
     if (activePlaylistId() === String(id)) selectPlaylist(0);
+    htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
   };
 
@@ -788,9 +795,15 @@
 
   var recAudio = null;
 
+  // 迷你圆钮只显示单字符态（▶/⏸/⏳），旧长文案按钮兼容
+  function setRecBtn(btn, label) {
+    if (!btn) return;
+    btn.textContent = btn.classList.contains("mini-act") ? label.charAt(0) : label;
+  }
+
   function resetRecButtons() {
     document.querySelectorAll(".rec-play").forEach(function (b) {
-      b.textContent = "▶ 试听";
+      setRecBtn(b, "▶ 试听");
     });
   }
 
@@ -798,10 +811,10 @@
     if (recAudio && recAudio.dataset.bvid === bvid) {
       if (recAudio.paused) {
         recAudio.play();
-        if (btn) btn.textContent = "⏸ 暂停";
+        setRecBtn(btn, "⏸ 暂停");
       } else {
         recAudio.pause();
-        if (btn) btn.textContent = "▶ 试听";
+        setRecBtn(btn, "▶ 试听");
       }
       return;
     }
@@ -816,10 +829,10 @@
     });
     recAudio.addEventListener("playing", function () {
       var active = document.querySelector('.rec-play[data-bvid="' + bvid + '"]');
-      if (active) active.textContent = "⏸ 暂停";
+      setRecBtn(active, "⏸ 暂停");
     });
     recAudio.play().catch(resetRecButtons);
-    if (btn) btn.textContent = "⏳ 缓冲";
+    setRecBtn(btn, "⏳ 缓冲");
   };
 
   window.dismissRec = function (bvid, el) {

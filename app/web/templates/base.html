@@ -2,131 +2,167 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>BiliMusic · B站音乐收藏</title>
-  <meta name="theme-color" content="#fb7299">
+  <meta name="theme-color" content="#0b0b10">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
-  <link rel="stylesheet" href="/static/style.css?v=11">
+  <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
+  <link rel="stylesheet" href="/static/style.css?v=21">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=12" defer></script>
+  <script src="/static/app.js?v=13" defer></script>
   <script src="/static/export.js?v=7" defer></script>
+  <script src="/static/v3.js?v=2" defer></script>
 </head>
-<body>
-<div class="shell">
+<body {% block bodyclass %}{% endblock %}>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path fill="currentColor" d="M10 20v-6h4v6h5v-8.5h3.2L12 2.7 1.8 11.5H5V20z"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm4.2 4.6l-2.6 6-6 2.6 2.6-6z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><path fill="currentColor" d="M10.2 3.6a6.6 6.6 0 104.7 11.3l5 5 1.4-1.4-5-5A6.6 6.6 0 0010.2 3.6zm0 2a4.6 4.6 0 110 9.2 4.6 4.6 0 010-9.2z"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path fill="currentColor" d="M9 3v11.1A3.8 3.8 0 1011 17.6V7.6l8-1.8v7.3A3.8 3.8 0 1021 15.6V2z"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 20.5c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M21.3 13.2A9.2 9.2 0 1110.8 2.7a7.3 7.3 0 0010.5 10.5z"/></symbol>
+  </defs>
+</svg>
 
-  <aside class="sidebar">
-    <div class="logo">▶<b>BiliMusic</b></div>
+<div class="app" id="app" data-view="home">
 
-    <div class="side-search">
-      <input id="search" type="search" name="q" placeholder="搜索歌名 / UP 主…" autocomplete="off"
-             hx-get="/partials/songs" hx-trigger="input changed delay:300ms"
-             hx-include="this, #collect-playlist-id" hx-target="#songs" hx-swap="innerHTML">
+  <main class="main" id="mainEl">
+
+    <div class="topbar" id="topbar">
+      <div class="tb-search" id="tbSearch">
+        <svg><use href="#i-search"/></svg>
+        <input id="search" type="search" name="q" placeholder="搜索曲库 · 粘贴 BV / 链接收藏" autocomplete="off"
+               hx-get="/partials/songs" hx-trigger="input changed delay:300ms"
+               hx-include="this, #collect-playlist-id" hx-target="#songs" hx-swap="innerHTML">
+        <button id="collect-inline" type="button" hidden>⇣ 收藏</button>
+      </div>
+      <div class="tb-right">
+        <button type="button" class="tb-chip" id="btn-sync" hx-post="/web/sync" hx-target="#task-list"
+                hx-swap="innerHTML" title="与 B 站收藏夹双向对账"><span class="dot"></span><span class="lbl">已同步</span></button>
+        <button type="button" class="tb-chip" id="btn-export" title="导出歌单为 B 站收藏夹链接">⤴ <span class="lbl">导出</span></button>
+        <button type="button" class="tb-chip" id="btn-theme" onclick="toggleTheme()" title="亮 / 暗主题">◐</button>
+      </div>
     </div>
 
-    <nav class="side-nav">
-      <button type="button" class="side-item on" data-view="home" onclick="switchView('home')">
-        <svg viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>主页
-      </button>
-      <button type="button" class="side-item" data-view="discover" onclick="switchView('discover')">
-        <svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>发现
-      </button>
-    </nav>
-
-    <div class="side-sec">我的歌单</div>
-    <nav class="side-playlists" id="playlists-bar"
-         hx-get="/partials/playlists" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML"></nav>
-    <button type="button" class="side-item add" onclick="createPlaylist()">＋ 新建歌单</button>
-
-    <div class="side-bottom">
-      <button id="btn-sync" class="side-action" hx-post="/web/sync" hx-target="#task-list"
-              hx-swap="innerHTML" title="与 B 站「bilimusic」收藏夹双向对账">⇅ 同步</button>
-      <button id="btn-export" class="side-action" title="把歌单导出为 B 站收藏夹链接">⤴ 导出</button>
-      <a class="side-action" href="/login">◎ 账号</a>
-      <span id="auth-badge" class="badge {{ 'ok' if logged_in else 'err' }}">
-        {% if logged_in %}已登录 · 最高 192K{% else %}未登录{% endif %}
-      </span>
-    </div>
-  </aside>
-
-  <main class="main">
     {% block content %}{% endblock %}
   </main>
-</div>
 
-<footer id="player-bar">
-  <div class="p-meta">
-    <img id="player-cover" alt="封面">
-    <div class="pm-text">
-      <div id="player-title">—</div>
-      <div id="player-artist"></div>
+  <aside class="sidebar">
+    <nav class="side-nav">
+      <button type="button" class="side-item on" id="navHome" onclick="goHome()"><svg><use href="#i-home"/></svg>主页</button>
+      <button type="button" class="side-item" onclick="jumpDiscover()"><svg><use href="#i-compass"/></svg>发现</button>
+      <button type="button" class="side-item" onclick="focusSearchBar()"><svg><use href="#i-search"/></svg>搜索</button>
+    </nav>
+    <div class="side-sec">
+      <span class="lb">我的歌单</span>
+      <button class="add" type="button" onclick="createPlaylist()" title="新建歌单（同步创建 B 站收藏夹）">＋</button>
+    </div>
+    <nav class="side-pls" id="playlists-bar"
+         hx-get="/partials/playlists" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML"></nav>
+    <div class="side-user">
+      <div class="ava">♪</div>
+      <div style="min-width:0;flex:1">
+        <div class="un">短腿智慧树</div>
+        <div class="us">已登录 · 最高 192K</div>
+      </div>
+      <button class="u-more" type="button" onclick="syncNow()" title="立即与 B 站收藏夹对账">⇅</button>
+    </div>
+    <div class="side-handle" id="side-handle" title="拖动调整侧栏宽度"></div>
+  </aside>
+
+  <footer id="player-bar" class="hidden">
+    <span class="p-time" id="t-cur">0:00</span>
+    <div class="p-ctl">
+      <button id="btn-prev" type="button" title="上一首">⏮</button>
+      <button id="btn-toggle" type="button" class="big" title="播放/暂停">▶</button>
+      <button id="btn-next" type="button" title="下一首">⏭</button>
+    </div>
+    <div class="p-meta">
+      <img id="player-cover" alt="" referrerpolicy="no-referrer" title="点封面打开歌词">
+      <div class="mtx">
+        <div id="player-title">—</div>
+        <div id="player-artist"></div>
+        <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="进度">
+      </div>
+    </div>
+    <div class="p-acts">
+      <button id="btn-lyrics" type="button" title="歌词" style="font-size:13px;font-weight:800">词</button>
+      <button id="btn-queue" type="button" title="播放队列">☰</button>
+      <span class="volhost">
+        <button type="button" title="音量">🔈</button>
+        <span class="vol"><input id="vol" type="range" min="0" max="100" value="100" aria-label="音量"></span>
+      </span>
+    </div>
+    <span class="p-time" id="t-dur">0:00</span>
+  </footer>
+
+  <div id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></div>
+
+  <div id="queue-panel" class="hidden">
+    <div class="q-head">
+      <div class="t">播放队列 <span id="queue-count"></span></div>
+      <div class="q-toggles">
+        <label class="smart-toggle" title="切歌时自动寻找最佳衔接点">
+          <input type="checkbox" id="smart-toggle"> 智能过渡
+        </label>
+        <label class="smart-toggle" title="当前歌曲循环播放">
+          <input type="checkbox" id="repeat-one-toggle"> 单曲循环
+        </label>
+      </div>
+    </div>
+    <ul id="queue-list"></ul>
+  </div>
+
+  <div id="lyrics-panel" class="hidden">
+    <div class="l-left">
+      <button id="btn-lyrics-close" type="button" title="收起歌词">✕</button>
+      <img id="lyrics-cover" alt="" referrerpolicy="no-referrer">
+      <div class="l-song">
+        <b id="lyrics-title">—</b>
+        <span id="lyrics-artist"></span>
+      </div>
+    </div>
+    <div id="lyrics-scroll"></div>
+  </div>
+
+  <div id="export-modal" class="modal hidden">
+    <div class="modal-box">
+      <h3>导出为 B 站收藏夹</h3>
+      <p class="hint">
+        每次收藏都会自动同步进你账号的公开收藏夹「<b>bilimusic</b>」。
+        此按钮补同步缺失的歌曲（登录前收藏或收藏失败的），随后生成分享链接——
+        他人把链接粘进本应用即可整夹收藏，链接对浏览器 / B 站 App 同样有效。
+      </p>
+      <div id="export-progress" class="hidden">
+        <div class="bar"><div class="fill" id="export-fill" style="width: 0%"></div></div>
+        <span id="export-status">准备中…</span>
+      </div>
+      <div id="export-result" class="hidden">
+        <a id="export-link" target="_blank" rel="noopener"></a>
+        <button id="btn-copy-link">复制链接</button>
+      </div>
+      <div id="export-failures" class="hidden"></div>
+      <div class="modal-actions">
+        <button id="btn-export-close">关闭</button>
+        <button id="btn-export-start">生成链接 / 补同步</button>
+      </div>
     </div>
   </div>
-  <div class="p-controls">
-    <button id="btn-prev" title="上一首">⏮</button>
-    <button id="btn-toggle" title="播放/暂停">▶</button>
-    <button id="btn-next" title="下一首">⏭</button>
+
+  <div id="m-dock">
+    <div class="m-tabs">
+      <button type="button" class="m-tab on" data-mtab="home" onclick="mTab('home',this)"><svg><use href="#i-home"/></svg>主页</button>
+      <button type="button" class="m-tab" data-mtab="library" onclick="mTab('library',this)"><svg><use href="#i-note"/></svg>曲库</button>
+      <button type="button" class="m-tab" data-mtab="account" onclick="mTab('account',this)"><svg><use href="#i-user"/></svg>账号</button>
+    </div>
+    <button type="button" class="m-orb" onclick="orbSearch()" title="搜索"><svg><use href="#i-search"/></svg></button>
   </div>
-  <div class="p-progress">
-    <span id="t-cur">0:00</span>
-    <input id="seek" type="range" min="0" max="1000" value="0" step="1">
-    <span id="t-dur">0:00</span>
-  </div>
-  <button id="btn-lyrics" title="歌词">词</button>
-  <button id="btn-queue" title="播放列表">☰</button>
+
   <audio id="audio" preload="none"></audio>
   <audio id="audio2" preload="none"></audio>
-</footer>
-
-<div id="lyrics-panel" class="hidden">
-  <div class="l-head">
-    <div class="l-song">
-      <b id="lyrics-title">—</b>
-      <span id="lyrics-artist"></span>
-    </div>
-    <button id="btn-lyrics-close" title="收起歌词">✕</button>
-  </div>
-  <div id="lyrics-scroll"></div>
-</div>
-
-<div id="queue-panel" class="hidden">
-  <div class="q-head">
-    <span>播放列表 <span id="queue-count"></span></span>
-    <span class="q-toggles">
-      <label class="smart-toggle" title="切歌时自动寻找最佳衔接点">
-        <input type="checkbox" id="smart-toggle"> 智能过渡
-      </label>
-      <label class="smart-toggle" title="当前歌曲循环播放">
-        <input type="checkbox" id="repeat-one-toggle"> 单曲循环
-      </label>
-    </span>
-  </div>
-  <ul id="queue-list"></ul>
-</div>
-
-<div id="export-modal" class="modal hidden">
-  <div class="modal-box">
-    <h3>导出为 B 站收藏夹</h3>
-    <p class="hint">
-      每次收藏都会自动同步进你账号的公开收藏夹「<b>bilimusic</b>」。
-      此按钮补同步缺失的歌曲（登录前收藏或收藏失败的），随后生成分享链接——
-      他人把链接粘进本应用即可整夹收藏，链接对浏览器 / B 站 App 同样有效。
-    </p>
-    <div id="export-progress" class="hidden">
-      <div class="bar"><div class="fill" id="export-fill" style="width: 0%"></div></div>
-      <span id="export-status">准备中…</span>
-    </div>
-    <div id="export-result" class="hidden">
-      <a id="export-link" target="_blank" rel="noopener"></a>
-      <button id="btn-copy-link">复制链接</button>
-    </div>
-    <div id="export-failures" class="hidden"></div>
-    <div class="modal-actions">
-      <button id="btn-export-close">关闭</button>
-      <button id="btn-export-start">生成链接 / 补同步</button>
-    </div>
-  </div>
 </div>
 </body>
 </html>

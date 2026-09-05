@@ -1,18 +1,21 @@
 {% if songs %}
-<div class="grid">
+<div class="tracklist">
   {% for s in songs %}
-  <div class="card" data-play="{{ s.id }}" title="{{ s.title }}">
-    <div class="cover">
-      <img src="{{ s.cover_url }}" alt="" loading="lazy">
-      <button class="play" title="播放">▶</button>
-      <span class="q-badge">{{ s.quality_label }}</span>
+  <div class="trk card" data-play="{{ s.id }}" title="{{ s.title }}">
+    <span class="no">{{ loop.index }}</span>
+    <span class="eqbox"><span class="eq"><i></i><i></i><i></i></span></span>
+    <span class="im"><img src="{{ s.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+    <div class="tt">
+      <div class="t1">{{ s.title }}</div>
+      <div class="t2">{{ s.artist }}</div>
     </div>
-    <div class="c-title" title="{{ s.title }}">{{ s.title }}</div>
-    <div class="c-sub">{{ s.artist }} · {{ s.duration_text }}</div>
-    <button class="del" data-del="{{ s.id }}" title="删除">✕</button>
+    <span class="pl-pill">{{ s.pl_name or '我的曲库' }}</span>
+    <span class="q{{ '' if s.quality_label == '192K' else ' dim' }}">{{ s.quality_label }}</span>
+    <span class="du">{{ s.duration_text }}</span>
+    <button class="del" type="button" data-del="{{ s.id }}" title="删除（同时取消 B 站收藏）">✕</button>
   </div>
   {% endfor %}
 </div>
 {% else %}
-<div class="empty">曲库还是空的——去 B 站复制一个音乐视频链接，粘贴到上面的输入框吧。</div>
+<div class="empty">曲库还是空的——去 B 站复制一个音乐视频链接，<br>粘进顶部搜索框即可收藏。</div>
 {% endif %}

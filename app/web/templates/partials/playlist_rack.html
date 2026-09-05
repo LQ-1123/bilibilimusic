@@ -1,0 +1,15 @@
+{% for c in cards %}
+<button type="button" class="poster" data-pl="{{ c.id }}" data-name="{{ c.name }}"
+        data-count="{{ c.count }}" data-hue="{{ c.hue }}" data-default="{{ 1 if c.default else 0 }}"
+        style="--h:{{ c.hue }}" onclick="openDetailFrom(this)" title="打开歌单「{{ c.name }}」">
+  <span class="pc">
+    <span class="ct">{{ 'MAIN · 默认歌单' if c.default else 'PLAYLIST' }}</span>
+    <span class="nm">{{ c.name }}</span>
+  </span>
+  <span class="row">
+    <span class="en">{{ c.count }} 首 · 已同步 B 站</span>
+    <span class="fab" aria-hidden="true" title="播放歌单"
+          onclick="event.stopPropagation(); openDetailFrom(this.closest('.poster'), true)"></span>
+  </span>
+</button>
+{% endfor %}

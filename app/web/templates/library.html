@@ -1,32 +1,110 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="view on" id="view-home">
-  <header class="page-head">
-    <h1>主页</h1>
-    <form class="collect-box" hx-post="/web/import" hx-target="#task-list" hx-swap="innerHTML">
-      <input type="hidden" name="playlist_id" id="collect-playlist-id" value="0">
-      <input type="text" name="url" placeholder="粘贴 B 站视频链接，收藏到「全部歌曲」…" required>
-      <button type="submit">收藏</button>
-    </form>
-  </header>
 
-  <div class="tasks-strip" id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></div>
+<section class="view" id="view-home">
 
-  <section class="shelf">
-    <div class="shelf-head">
+  <div class="hero sec-hero">
+    <div class="hero-eyebrow">BILI MUSIC</div>
+    <div class="hero-title" id="hero-hi">晚上好</div>
+    <div class="hero-sub">
+      <span>曲库 {{ stats.songs }} 首</span><span class="sep">·</span>
+      <span>歌单 {{ stats.playlists }} 个</span><span class="sep">·</span>
+      <span>推荐池 {{ stats.recs }} 首</span><span class="sep">·</span>
+      <span>已同步 B 站收藏夹</span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head"><h2>我的歌单</h2></div>
+    <div class="rack" id="poster-rack"
+         hx-get="/partials/playlists?mode=rack" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML"></div>
+  </div>
+
+  <div class="sec sec-discover" id="sec-discover">
+    <div class="sec-head"><h2>发现</h2><span class="hint">试听走实时流，满意就收藏</span></div>
+    <div id="rec-list" hx-get="/partials/recs?mode=today" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
+  </div>
+
+  {% if recent %}
+  <div class="sec sec-recent">
+    <div class="sec-head"><h2>最近收藏</h2></div>
+    <div class="rack">
+      {% for s in recent %}
+      <button type="button" class="songcard" data-play="{{ s.id }}" title="{{ s.title }}">
+        <span class="sc">
+          <span class="im"><img src="{{ s.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+          <span class="nm">{{ s.title }}</span>
+          <span class="ar">{{ s.artist }}</span>
+          <span class="foot">
+            <span class="dur">{{ s.duration_text }}</span>
+            <span class="fab" aria-hidden="true"></span>
+          </span>
+        </span>
+      </button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="sec sec-songs">
+    <div class="sec-head">
       <h2>全部歌曲</h2>
-      <span class="shelf-hint" id="songs-filter-hint">全部歌单 · 按收藏时间</span>
+      <span class="hint" id="songs-filter-hint">全部歌单 · 按收藏时间</span>
+    </div>
+    <div class="list-head">
+      <span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span>
     </div>
     <div id="songs" hx-get="/partials/songs" hx-trigger="load, refreshSongs from:body"
          hx-include="#collect-playlist-id, #search" hx-swap="innerHTML"></div>
-  </section>
+  </div>
+
+  <div style="height:26px"></div>
 </section>
 
-<section class="view" id="view-discover">
-  <header class="page-head">
-    <h1>发现</h1>
-    <p class="page-sub">试听来自 B 站的相关推荐（实时流，不下载）· 满意就收藏进歌单</p>
-  </header>
-  <div id="rec-list" hx-get="/partials/recs?mode=today" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
+<section class="view" id="view-detail">
+  <div class="dt-top">
+    <button class="tb-cir" type="button" onclick="goHome()" title="返回主页">‹</button>
+    <div style="font-size:13px;color:var(--txt2);font-weight:600" id="dt-crumb">主页 / 我的曲库</div>
+  </div>
+  <div class="dt-hero" id="dt-hero">
+    <div class="dt-cvr"></div>
+    <div class="dt-info">
+      <div class="dt-eyebrow" id="dt-eyebrow">歌单</div>
+      <div class="dt-title" id="dt-title">我的曲库</div>
+      <div class="dt-meta" id="dt-meta"></div>
+      <div class="dt-acts">
+        <button class="btn-play" type="button" onclick="playDetailFirst()">播放</button>
+        <button class="dt-ghost" type="button" onclick="shuffleDetail()" title="随机播放">⇄</button>
+        <button class="dt-ghost" type="button" onclick="focusSearchBar()" title="粘贴链接 / 搜索添加歌曲">＋</button>
+        <button class="dt-ghost" type="button" onclick="detailMenu()" title="重命名 / 删除歌单">⋯</button>
+      </div>
+    </div>
+  </div>
+  <div class="list-head">
+    <span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span>
+  </div>
+  <div id="dt-songs"></div>
+  <div style="height:26px"></div>
 </section>
+
+<section class="view" id="view-account">
+  <div class="acct-card">
+    <div class="ava">♪</div>
+    <div style="min-width:0">
+      <div class="n">短腿智慧树</div>
+      <div class="s">已登录 · 音质最高 192K</div>
+    </div>
+  </div>
+  <div class="acct-rows">
+    <button class="acct-row" type="button" onclick="syncNow()"><span>⇅</span>同步 B 站收藏夹<span class="sub">曲库事实源在 B 站</span></button>
+    <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接<span class="sub">bilimusic 夹</span></button>
+    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗<span class="sub">跟随本机</span></button>
+  </div>
+  <div style="text-align:center;font-size:10.5px;color:var(--txt3);margin-top:26px">BiliMusic · 曲库事实源在 B 站侧</div>
+</section>
+
+<form class="collect-box" hidden hx-post="/web/import" hx-target="#task-list" hx-swap="innerHTML">
+  <input type="hidden" name="playlist_id" id="collect-playlist-id" value="0">
+  <input type="text" name="url" placeholder="粘贴 B 站视频链接收藏">
+</form>
 {% endblock %}

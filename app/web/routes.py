@@ -77,16 +77,54 @@ def _task_ctx(t) -> dict:
     }
 
 
+# 歌单封面色相：设计侧固定调色板（默认歌单恒为 B 站粉 340）
+_HUES = [340, 14, 258, 44, 192, 130, 285, 210]
+
+
+def _playlist_cards() -> tuple[list[dict], int]:
+    """侧栏 + 海报架共用的歌单卡片数据（含每歌单曲目数）。返回 (cards, 总曲数)。"""
+    pls = playlists.list_playlists()
+    all_songs = library.list_songs(limit=10000)
+    counts: dict[int, int] = {}
+    for s in all_songs:
+        counts[s.playlist_id or 0] = counts.get(s.playlist_id or 0, 0) + 1
+    cards = [{"id": 0, "name": "全部歌曲", "count": len(all_songs), "default": False, "hue": 340}]
+    for i, p in enumerate(pls):
+        cards.append({
+            "id": p.id,
+            "name": p.name,
+            "count": counts.get(p.id, 0),
+            "default": p.name == playlists.DEFAULT_NAME,
+            "hue": _HUES[i % len(_HUES)],
+        })
+    return cards, len(all_songs)
+
+
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
     """曲库主界面（含歌单、收藏、发现、播放）。未登录一律跳登录页。"""
     gate = _login_redirect(request)
     if gate:
         return gate
+    _, total = _playlist_cards()
+    recent = [_song_ctx(s) for s in library.list_songs()[:8]]
+    try:
+        rec_count = len(recs.list_items())
+    except Exception:
+        rec_count = 0
     return templates.TemplateResponse(
         request,
         "library.html",
-        {"playlists": playlists.list_playlists(), "logged_in": True},
+        {
+            "playlists": playlists.list_playlists(),
+            "logged_in": True,
+            "recent": recent,
+            "stats": {
+                "songs": total,
+                "playlists": len(playlists.list_playlists()),
+                "recs": rec_count,
+            },
+        },
     )
 
 
@@ -96,12 +134,17 @@ def library_page(request: Request):
 
 
 @router.get("/partials/playlists", response_class=HTMLResponse)
-def playlists_partial(request: Request):
+def playlists_partial(request: Request, mode: str = ""):
     gate = _login_redirect(request)
     if gate:
         return gate
+    cards, _ = _playlist_cards()
+    if mode == "rack":  # 主页海报架：只放真实歌单（不含「全部歌曲」伪卡）
+        return templates.TemplateResponse(
+            request, "partials/playlist_rack.html", {"cards": cards[1:]}
+        )
     return templates.TemplateResponse(
-        request, "partials/playlists.html", {"playlists": playlists.list_playlists()}
+        request, "partials/playlists.html", {"cards": cards}
     )
 
 
@@ -149,7 +192,12 @@ def songs_partial(request: Request, q: str = "", playlist_id: int = 0):
     gate = _login_redirect(request)
     if gate:
         return gate
-    songs = [_song_ctx(s) for s in library.list_songs(q, playlist_id=playlist_id)]
+    pl_names = {p.id: p.name for p in playlists.list_playlists()}
+    songs = []
+    for s in library.list_songs(q, playlist_id=playlist_id):
+        d = _song_ctx(s)
+        d["pl_name"] = pl_names.get(s.playlist_id or 0, "")
+        songs.append(d)
     return templates.TemplateResponse(request, "partials/songs.html", {"songs": songs})
 
 
