@@ -247,7 +247,11 @@
     var timer = null, lastQ = null;
 
     function open() { drop.hidden = false; }
-    function close() { drop.hidden = true; }
+    function close() {
+      drop.hidden = true;
+      var tb = $("topbar"); // 手机端：搜索胶囊随关闭一并收起
+      if (tb) tb.classList.remove("searching");
+    }
 
     function esc(s) {
       return String(s || "").replace(/[&<>"']/g, function (c) {
@@ -334,6 +338,8 @@
     input.addEventListener("focus", function () {
       if (input.value.trim()) open();
     });
+    var closeBtn = $("search-close");
+    if (closeBtn) closeBtn.addEventListener("click", function () { close(); input.blur(); });
     lib.addEventListener("click", function (e) {
       var row = e.target.closest("[data-song]");
       if (row && window.BiliPlayer) { BiliPlayer.playById(Number(row.dataset.song)); close(); }
@@ -405,14 +411,26 @@
     if (mainEl) mainEl.scrollTop = 0;
   };
   window.orbSearch = function () {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      // 手机端：顶栏以悬浮搜索胶囊唤出（顶部搜索栏平时隐藏）
+      var tb = $("topbar");
+      if (!tb) return;
+      tb.classList.add("searching");
+      var t = document.querySelector('.m-tab[data-mtab="home"]');
+      document.querySelectorAll(".m-tab").forEach(function (b) {
+        b.classList.toggle("on", b === t);
+      });
+      document.body.dataset.mtab = "home";
+      setTimeout(function () {
+        var s = $("search");
+        if (s) { s.focus(); if (s.value.trim()) openMobileDrop(); }
+      }, 80);
+      return;
+    }
     document.body.dataset.mtab = "home";
-    var t = document.querySelector('.m-tab[data-mtab="home"]');
-    if (t) t.classList.add("on");
-    document.querySelectorAll(".m-tab").forEach(function (b) {
-      b.classList.toggle("on", b === t);
-    });
     focusSearchBar();
   };
+  function openMobileDrop() { var d = $("search-drop"); if (d) d.hidden = false; }
 
   // ---------- 队列 / 歌词 按钮视觉态 ----------
   (function () {
