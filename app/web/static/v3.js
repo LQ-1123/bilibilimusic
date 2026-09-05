@@ -421,6 +421,94 @@
       var rep = $("repeat-one-toggle");
       if (rep) { rep.checked = !rep.checked; rep.dispatchEvent(new Event("change")); }
     });
+
+    // 播放模式钮：顺序 → 列表循环 → 随机 循环切换（引擎行为见 app.js playMode()）
+    var MODES = [
+      { k: "order", name: "顺序播放", icon: "i-queue" },
+      { k: "loop", name: "列表循环", icon: "i-rep" },
+      { k: "random", name: "随机播放", icon: "i-shuf" },
+    ];
+    var lm = $("ly-mode");
+    if (lm) {
+      var applyMode = function () {
+        var cur = localStorage.getItem("bmPlayMode") || "order";
+        var m = MODES.filter(function (x) { return x.k === cur; })[0] || MODES[0];
+        var use = lm.querySelector("use");
+        if (use) use.setAttribute("href", "#" + m.icon);
+        lm.title = "播放模式：" + m.name;
+      };
+      lm.addEventListener("click", function () {
+        var cur = localStorage.getItem("bmPlayMode") || "order";
+        var next = MODES[(MODES.findIndex(function (x) { return x.k === cur; }) + 1) % MODES.length];
+        localStorage.setItem("bmPlayMode", next.k);
+        applyMode();
+        window.__toast("播放模式：" + next.name);
+      });
+      applyMode();
+    }
+
+    // ＋ 添加至歌单（当前歌）
+    var la = $("ly-add");
+    if (la) la.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (!window.__openPlMenu) return;
+      var trial = window.BiliPlayer && BiliPlayer.trialInfo();
+      if (trial) __openPlMenu(la.getBoundingClientRect(), "url", {
+        bvid: trial.bvid, url: "https://www.bilibili.com/video/" + trial.bvid,
+      });
+      else {
+        var song = BiliPlayer.currentSong();
+        if (!song) { window.__toast("当前没有播放的歌"); return; }
+        __openPlMenu(la.getBoundingClientRect(), "song", { song: song.id });
+      }
+    });
+
+    // ··· 详情菜单：加入歌单 / 在 B 站打开
+    var more = $("ly-more");
+    if (more) more.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var sm = $("song-menu");
+      if (!sm) return;
+      var trial = window.BiliPlayer && BiliPlayer.trialInfo();
+      var bvid = trial ? trial.bvid : (BiliPlayer.currentSong() || {}).bvid;
+      if (!bvid) { window.__toast("当前没有播放的歌"); return; }
+      sm.innerHTML =
+        '<button type="button" class="pm-item" data-act="pl">加入歌单</button>' +
+        '<button type="button" class="pm-item" data-act="bili">在 B 站打开</button>';
+      sm.hidden = false;
+      var r = more.getBoundingClientRect();
+      var mh = sm.offsetHeight, mw = sm.offsetWidth;
+      sm.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, r.right - mw)) + "px";
+      sm.style.top = (r.top - mh - 8 > 8 ? r.top - mh - 8 : r.bottom + 8) + "px";
+      sm.dataset.bvid = bvid;
+      sm.dataset.trial = trial ? "1" : "";
+    });
+    var sm2 = $("song-menu");
+    if (sm2) sm2.addEventListener("click", function (e) {
+      e.stopPropagation(); // 防止选动作的点击冒泡到 document 误关刚打开的 pl-menu
+      var act = e.target.closest("[data-act]");
+      if (!act) return;
+      sm2.hidden = true;
+      var bvid = sm2.dataset.bvid;
+      if (act.dataset.act === "bili") {
+        window.open("https://www.bilibili.com/video/" + bvid, "_blank");
+        return;
+      }
+      // 加入歌单：复用 pl-menu（锚定 ··· 按钮位置）
+      var m = $("ly-more");
+      if (m && window.__openPlMenu) {
+        var rect = m.getBoundingClientRect();
+        if (sm2.dataset.trial) __openPlMenu(rect, "url", { bvid: bvid, url: "https://www.bilibili.com/video/" + bvid });
+        else {
+          var song = window.BiliPlayer && BiliPlayer.currentSong();
+          if (song) __openPlMenu(rect, "song", { song: song.id });
+        }
+      }
+    });
+    document.addEventListener("click", function (e) {
+      var sm = $("song-menu");
+      if (sm && !sm.hidden && !e.target.closest("#song-menu") && !e.target.closest("#ly-more")) sm.hidden = true;
+    });
   })();
 
   // ---------- 播放状态 → 全局均衡器动画 ----------
@@ -502,6 +590,33 @@
     var menu = $("pl-menu");
     if (!menu) return;
     function hide() { menu.hidden = true; }
+
+    // 供歌词页 ＋/··· 等处编程调用：rect=锚点，mode="song"(data.song)|"url"(data.bvid/url)
+    window.__openPlMenu = function (rect, mode, data) {
+      var items = [];
+      document.querySelectorAll(".side-pl").forEach(function (el) {
+        if (el.dataset.pl !== "0") {
+          items.push({ id: el.dataset.pl, name: el.dataset.name });
+        }
+      });
+      menu.innerHTML = '<div class="pm-title">' + (mode === "url" ? "加入歌单（收藏入库）" : "加入歌单") + "</div>" +
+        items.map(function (p) {
+          return '<button type="button" class="pm-item" data-pm="' + p.id + '" data-name="' + p.name + '">' +
+            '<span class="nm">' + p.name + "</span></button>";
+        }).join("") +
+        '<button type="button" class="pm-item pm-new" data-new="1">＋ 新建歌单</button>';
+      menu.hidden = false;
+      var mw = menu.offsetWidth, mh = menu.offsetHeight;
+      var left = Math.max(8, Math.min(window.innerWidth - mw - 8, rect.right - mw));
+      var top = rect.bottom + 6;
+      if (top + mh > window.innerHeight - 8) top = rect.top - mh - 6;
+      top = Math.max(8, Math.min(window.innerHeight - mh - 8, top));
+      menu.style.left = left + "px";
+      menu.style.top = top + "px";
+      menu.dataset.mode = mode;
+      if (mode === "url") { menu.dataset.bvid = data.bvid; menu.dataset.url = data.url; }
+      else { menu.dataset.song = data.song; }
+    };
     document.addEventListener("click", function (e) {
       var songBtn = e.target.closest(".addto[data-add]");
       var recBtn = e.target.closest(".addto[data-rec]");

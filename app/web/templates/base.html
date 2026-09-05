@@ -8,12 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=39">
+  <link rel="stylesheet" href="/static/style.css?v=40">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=19" defer></script>
+  <script src="/static/app.js?v=20" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=13" defer></script>
+  <script src="/static/v3.js?v=14" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -126,18 +126,22 @@
         <b id="lyrics-title">—</b>
         <span id="lyrics-artist"></span>
       </div>
+      <div class="ly-morerow">
+        <button id="ly-more" type="button" title="更多操作">···</button>
+      </div>
       <div class="ly-prog">
         <input id="ly-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="歌词页进度">
         <div class="ly-times"><span id="ly-cur">0:00</span><span id="ly-rem">0:00</span></div>
       </div>
       <div class="ly-ctl">
-        <button id="ly-shuf" type="button" title="随机播放"><svg><use href="#i-shuf"/></svg></button>
+        <button id="ly-mode" type="button" title="播放模式"><svg id="ly-mode-icon"><use href="#i-queue"/></svg></button>
         <button id="ly-prev" type="button" title="上一首"><svg><use href="#a-prev"/></svg></button>
         <button id="ly-toggle" type="button" class="big" title="播放/暂停">
           <svg class="i-play"><use href="#a-play"/></svg><svg class="i-pause"><use href="#a-pause"/></svg>
         </button>
         <button id="ly-next" type="button" title="下一首"><svg><use href="#a-next"/></svg></button>
         <button id="ly-rep" type="button" title="单曲循环"><svg><use href="#i-rep"/></svg></button>
+        <button id="ly-add" type="button" title="添加至歌单">＋</button>
       </div>
     </div>
     <div id="lyrics-scroll"></div>
@@ -182,6 +186,7 @@
   <div class="toast" id="toast"><span class="h">♥</span><span id="toast-txt"></span></div>
 
   <div id="pl-menu" hidden></div>
+  <div id="song-menu" hidden></div>
   <div id="mini-modal" class="modal hidden"><div class="modal-box" id="mini-modal-box"></div></div>
 </div>
 </body>

@@ -115,13 +115,27 @@
     return b.entryPoints && b.entryPoints.length ? b.entryPoints[0].t : 0;
   }
 
-  // 链上的上/下一首（环形，播完自动绕回，即隐含循环语义）
+  // 播放模式：order 顺序（到队尾停）/ loop 列表循环 / random 随机（歌词页模式钮切换）
+  function playMode() {
+    return localStorage.getItem("bmPlayMode") || "order";
+  }
+
+  // 链上的上/下一首；order 模式到队尾/队首即止，loop 环绕
   function chainNextIndex(dir) {
     if (!chainOrder.length || !playlist.length) return -1;
+    if (playMode() === "random") return -1; // 随机不走链
     var curId = playlist[current] ? playlist[current].id : null;
     var pos = chainOrder.indexOf(curId);
     if (pos === -1) pos = 0;
-    var next = (pos + dir + chainOrder.length) % chainOrder.length;
+    var next = pos + dir;
+    if (next >= chainOrder.length) {
+      if (playMode() === "loop") next = 0;
+      else return -1;
+    }
+    if (next < 0) {
+      if (playMode() === "loop") next = chainOrder.length - 1;
+      else return -1;
+    }
     var id = chainOrder[next];
     for (var i = 0; i < playlist.length; i++) {
       if (playlist[i].id === id) return i;
@@ -258,8 +272,17 @@
   function skip(delta) {
     stopTrial();
     naturalPlan = null;
+    if (delta === 1 && playMode() === "random" && playlist.length > 1) {
+      var ri = Math.floor(Math.random() * playlist.length);
+      if (ri === current) ri = (ri + 1) % playlist.length;
+      playSongSmart(playlist[ri]);
+      return;
+    }
     var ni = chainNextIndex(delta);
-    if (ni < 0) return;
+    if (ni < 0) {
+      if (delta === 1) { try { audio.pause(); } catch (e) {} } // 顺序模式到队尾：停
+      return;
+    }
     var nextSong = playlist[ni];
     // 只对「下一首」方向且智能过渡开启时做过渡规划（响应速度优先）
     if (delta !== 1 || !smartEnabled()) { playSong(nextSong); return; }
@@ -735,6 +758,12 @@
     isPlaying: function () { return !!audio.src && !audio.paused; },
     songs: fetchSongs, // v3.js 搜索下拉用
     activeMedia: function () { return (recActive && recAudio) ? recAudio : audio; }, // 歌词页进度条寻址
+    currentSong: function () { return playlist[current] || null; }, // 含 bvid
+    trialInfo: function () { // 试听歌元数据（bvid/title/artist/cover），非试听返回 null
+      return (recActive && recAudio)
+        ? { bvid: recAudio.dataset.bvid, title: recAudio.dataset.title, artist: recAudio.dataset.artist, cover: recAudio.dataset.cover }
+        : null;
+    },
   };
 
   // ---------- 歌单（每歌单对应收藏夹 bilimusic- <歌单名>） ----------

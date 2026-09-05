@@ -430,6 +430,13 @@ body:not(.playing) .i-pause{display:none}
 .ly-ctl button svg{width:23px;height:23px;display:block}
 .ly-ctl .big svg{width:46px;height:46px}
 .ly-ctl .on{color:var(--pink)}
+.ly-ctl #ly-add{font-size:20px;font-weight:600}
+.ly-morerow{width:min(320px,26vw);display:flex;justify-content:flex-end;padding:0 4px}
+#ly-more{width:34px;height:30px;border-radius:999px;color:var(--txt2);letter-spacing:2px;font-weight:800;transition:.15s}
+#ly-more:hover{color:var(--txt);background:var(--card2)}
+#song-menu{position:fixed;z-index:150;min-width:170px;border-radius:14px;
+  background:var(--glass-strong);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);
+  border:1px solid var(--stroke);box-shadow:var(--shadow);padding:6px}
 #lyrics-scroll{flex:1;position:relative;overflow-y:auto;padding:90px min(76px,7vw) 90px 6px;
   -webkit-mask-image:linear-gradient(transparent, #000 12%, #000 84%, transparent);
   mask-image:linear-gradient(transparent, #000 12%, #000 84%, transparent)}
