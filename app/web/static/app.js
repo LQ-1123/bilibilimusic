@@ -238,7 +238,7 @@
     markPlayingCard(song.id);
     saveSession();
     renderQueue();
-    if (!$("lyrics-panel").classList.contains("hidden")) loadLyrics(song); // 面板开着：切歌即刷新
+    if (!$("lyrics-panel").classList.contains("hidden")) loadLyrics(libLyricsMeta(song)); // 面板开着：切歌即刷新
   }
 
   // 点选歌曲 = 经算法平滑切入该歌（找当前歌最佳 Exit × 目标歌最佳 Entry），
@@ -557,27 +557,29 @@
     }).join("");
   }
 
-  function loadLyrics(song) {
-    lyricSongId = song.id;
+  function loadLyrics(meta) {
+    // meta: {key, title, artist, cover, fetchUrl, fetchInit} — key 区分库内歌 / 试听歌
+    lyricSongId = meta.key;
     lyricLines = []; lyricTimed = false; lyricIdx = -1;
-    $("lyrics-title").textContent = song.title;
-    $("lyrics-artist").textContent = song.artist;
+    $("lyrics-title").textContent = meta.title;
+    $("lyrics-artist").textContent = meta.artist;
     var lyCov = $("lyrics-cover");
-    if (lyCov) lyCov.src = song.coverUrl;
+    if (lyCov && meta.cover) lyCov.src = meta.cover;
     $("lyrics-scroll").innerHTML = '<div class="l-empty">歌词加载中…</div>';
-    fetch("/api/songs/" + song.id + "/lyrics")
+    fetch(meta.fetchUrl, meta.fetchInit)
       .then(function (r) { return r.ok ? r.json() : { lyrics: null }; })
       .then(function (d) {
-        if (lyricSongId !== song.id) return; // 请求期间已切歌
+        if (lyricSongId !== meta.key) return; // 请求期间已切歌
         var parsed = parseLrc(d.lyrics);
         lyricLines = parsed.lines;
         lyricTimed = parsed.timed;
         lyricIdx = -1;
         renderLyrics();
-        updateLyricHighlight(audio.currentTime || 0, true);
+        var now = meta.isTrial && recAudio ? recAudio.currentTime : (audio.currentTime || 0);
+        updateLyricHighlight(now, true);
       })
       .catch(function () {
-        if (lyricSongId !== song.id) return;
+        if (lyricSongId !== meta.key) return;
         $("lyrics-scroll").innerHTML = '<div class="l-empty">暂无歌词</div>';
       });
   }
@@ -602,18 +604,54 @@
     if (el) box.scrollTop = Math.max(0, el.offsetTop - box.clientHeight / 2 + el.clientHeight / 2);
   }
 
+  function libLyricsMeta(song) {
+    return {
+      key: "lib:" + song.id, title: song.title, artist: song.artist, cover: song.coverUrl,
+      fetchUrl: "/api/songs/" + song.id + "/lyrics",
+    };
+  }
+
+  function trialLyricsMeta() {
+    if (!recAudio) return null;
+    return {
+      key: "trial:" + recAudio.dataset.bvid,
+      title: recAudio.dataset.title || "实时流试听",
+      artist: recAudio.dataset.artist || "",
+      cover: recAudio.dataset.cover || "",
+      isTrial: true,
+      fetchUrl: "/api/lyrics/preview",
+      fetchInit: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bvid: recAudio.dataset.bvid,
+          title: recAudio.dataset.title || "",
+          artist: recAudio.dataset.artist || "",
+          duration: Math.round(recAudio.duration || 0),
+        }),
+      },
+    };
+  }
+
   window.toggleLyrics = function () {
     var panel = $("lyrics-panel");
     var opening = panel.classList.contains("hidden");
     panel.classList.toggle("hidden");
     $("btn-lyrics").classList.toggle("on", opening);
     if (!opening) return;
-    var song = playlist[current];
     var lyCov = $("lyrics-cover");
+    if (recActive && recAudio) { // 试听歌：bvid 直接取词
+      var tm = trialLyricsMeta();
+      if (lyCov) lyCov.src = tm.cover;
+      if (lyricSongId === tm.key && lyricLines.length) updateLyricHighlight(recAudio.currentTime || 0, true);
+      else loadLyrics(tm);
+      return;
+    }
+    var song = playlist[current];
     if (song && lyCov) lyCov.src = song.coverUrl;
     if (song) {
-      if (lyricSongId === song.id && lyricLines.length) updateLyricHighlight(audio.currentTime || 0, true);
-      else loadLyrics(song);
+      if (lyricSongId === "lib:" + song.id && lyricLines.length) updateLyricHighlight(audio.currentTime || 0, true);
+      else loadLyrics(libLyricsMeta(song));
     } else {
       $("lyrics-title").textContent = "—";
       $("lyrics-artist").textContent = "";
@@ -869,6 +907,10 @@
       document.querySelectorAll(".trk-rec").forEach(function (row) {
         row.classList.toggle("playing", row.dataset.bvid === bvid);
       });
+      if (!$("lyrics-panel").classList.contains("hidden")) loadLyrics(trialLyricsMeta()); // 歌词页开着：切试听歌即刷新
+    });
+    recAudio.addEventListener("timeupdate", function () {
+      if (recActive) updateLyricHighlight(recAudio.currentTime); // 歌词跟随试听进度
     });
     recAudio.addEventListener("pause", function () {
       $("btn-toggle").textContent = "▶";

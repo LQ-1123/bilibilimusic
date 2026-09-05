@@ -12,10 +12,12 @@ LRCLIB 请求走独立的 httpx 客户端（不带 B 站 cookie，登录态不�
 
 import logging
 import re
+import time
+from types import SimpleNamespace
 
 import httpx
 
-from app.bili.client import BiliApiError, BiliClient
+from app.bili.client import BiliApiError, BiliClient, VideoRef
 from app.bili.subtitle import subtitle_body_to_lrc
 from app.db.models import Song
 from app.services import library
@@ -152,6 +154,29 @@ class LyricsService:
         if body:
             return subtitle_body_to_lrc(body), "ai"
         return None
+
+    # ---- 试听预览取词（不落库；曲库外 bvid 也能看歌词） ----
+
+    _PREVIEW_TTL = 600
+    _preview_cache: dict[str, tuple[float, tuple[str, str] | None]] = {}
+
+    async def fetch_preview(self, bvid: str, title: str, artist: str, duration: int) -> tuple[str, str] | None:
+        """实时流试听歌取词：现解析 cid/aid 后走与曲库相同的取词链路，结果进程内缓存。"""
+        hit = self._preview_cache.get(bvid)
+        if hit and time.time() < hit[0]:
+            return hit[1]
+        result: tuple[str, str] | None = None
+        try:
+            info = await self.bili.get_video_info(VideoRef(bvid=bvid))
+            fake = SimpleNamespace(
+                bvid=bvid, cid=info.cid, aid=info.avid,
+                title=title, artist=artist, duration=duration,
+            )
+            result = await self.fetch_for_song(fake)  # type: ignore[arg-type]
+        except Exception as exc:  # noqa: BLE001  试听歌取词失败不影响播放
+            log.warning("试听取词失败 %s: %s", bvid, exc)
+        self._preview_cache[bvid] = (time.time() + self._PREVIEW_TTL, result)
+        return result
 
     # ---- B 站字幕 ----
 

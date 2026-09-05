@@ -359,7 +359,6 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .toast .h{color:var(--pink);font-size:15px}
 body.trial #seek,body.trial .p-time{visibility:hidden}
-body.trial #btn-lyrics{display:none}
 
 /* ---------- 队列面板 ---------- */
 #queue-panel{position:absolute;top:14px;right:14px;bottom:100px;width:min(344px,calc(100vw - 28px));z-index:70;border-radius:18px;

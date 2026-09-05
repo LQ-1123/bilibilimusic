@@ -252,6 +252,21 @@ async def song_lyrics(song_id: int, request: Request) -> dict:
     return {"lyrics": song.lyrics or None, "source": song.lyrics_source or None}
 
 
+@router.post("/lyrics/preview")
+async def lyrics_preview(request: Request, payload: dict) -> dict:
+    """实时流试听歌取词（不落库）：按 bvid 现解析 cid/aid，走同一套字幕+LRCLIB 链路。"""
+    bvid = str(payload.get("bvid") or "")
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
+        raise HTTPException(status_code=400, detail="bvid 格式错误")
+    result = await request.app.state.lyrics.fetch_preview(
+        bvid,
+        title=str(payload.get("title") or ""),
+        artist=str(payload.get("artist") or ""),
+        duration=max(0, int(payload.get("duration") or 0)),
+    )
+    return {"lyrics": result[0] if result else None, "source": result[1] if result else None}
+
+
 @router.delete("/songs/{song_id}")
 async def delete_song_api(
     song_id: int, request: Request, files: FileStore = Depends(_files)
