@@ -12,7 +12,7 @@ from app.bili.client import BiliApiError
 from app.core.link_parser import BV_RE, parse_video_url
 from app.db.models import ImportTask
 from app.db.session import new_session
-from app.services import library, playlists, recs
+from app.services import library, playlists, recs, zone
 from app.services.importer import ImportService
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -245,16 +245,22 @@ def tasks_partial(request: Request):
 
 
 @router.get("/partials/rec-playlists", response_class=HTMLResponse)
-def rec_playlists_partial(request: Request):
-    """主页推荐歌单架：每日精选 + 各风格电台卡（线上推荐池，非用户曲库）。
+async def rec_playlists_partial(request: Request):
+    """主页推荐歌单架：每日精选 + B站音乐区电台 + 各风格精选卡（线上内容，非用户曲库）。
 
-    封面用池内前 4 首歌的真实封面拼贴（Apple Music 精选歌单风格），不用渐变。
+    封面用前 4 首歌的真实封面拼贴（Apple Music 精选歌单风格），不用渐变。
     """
     gate = _login_redirect(request)
     if gate:
         return gate
+    bili = request.app.state.bili
 
     def _covers(items: list) -> list[str]:
+        first = items[0] if items else None
+        if first is None:
+            return []
+        if isinstance(first, dict):
+            return [i["cover_url"] for i in items[:4]]
         return [i.cover_url for i in items[:4]]
 
     daily = recs.daily_items()
@@ -262,6 +268,13 @@ def rec_playlists_partial(request: Request):
         "key": "daily", "name": "每日精选",
         "count": len(daily), "hue": 340, "covers": _covers(daily),
     }]
+    for key, _rid, name in zone.RADIOS:
+        items = await zone.items_for(bili, key)
+        cards.append({
+            "key": key, "name": name,
+            "count": len(items), "hue": _HUES[(len(cards) + 1) % len(_HUES)],
+            "covers": _covers(items),
+        })
     for i, g in enumerate(recs.GENRE_KEYWORDS.keys()):
         items = recs.list_items(genre=g)
         if items:
@@ -274,23 +287,41 @@ def rec_playlists_partial(request: Request):
 
 
 @router.get("/partials/rec-genre-tracks", response_class=HTMLResponse)
-def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
-    """推荐歌单详情曲目表：推荐池线上歌曲（实时流），daily = 每日精选。"""
+async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
+    """推荐歌单详情曲目表：daily=每日精选；rank/z*=B站音乐区电台；其余=风格推荐池。"""
     gate = _login_redirect(request)
     if gate:
         return gate
-    items = recs.daily_items() if genre == "daily" else recs.list_items(genre=genre)[:30]
-    ctx_items = [
-        {
-            "bvid": i.bvid,
-            "title": i.title,
-            "artist": i.artist,
-            "duration_text": _fmt_duration(i.duration),
-            "cover_url": i.cover_url,
-            "genre": i.genre,
-        }
-        for i in items
-    ]
+    if genre == "daily":
+        rows = recs.daily_items()
+        ctx_items = [
+            {
+                "bvid": i.bvid, "title": i.title, "artist": i.artist,
+                "duration_text": _fmt_duration(i.duration),
+                "cover_url": i.cover_url, "genre": i.genre,
+            }
+            for i in rows
+        ]
+    elif zone.is_zone_key(genre):
+        rows = (await zone.items_for(request.app.state.bili, genre))[:30]
+        ctx_items = [
+            {
+                "bvid": i["bvid"], "title": i["title"], "artist": i["artist"],
+                "duration_text": _fmt_duration(i["duration"]),
+                "cover_url": i["cover_url"], "genre": i["genre"],
+            }
+            for i in rows
+        ]
+    else:
+        rows = recs.list_items(genre=genre)[:30]
+        ctx_items = [
+            {
+                "bvid": i.bvid, "title": i.title, "artist": i.artist,
+                "duration_text": _fmt_duration(i.duration),
+                "cover_url": i.cover_url, "genre": i.genre,
+            }
+            for i in rows
+        ]
     return templates.TemplateResponse(
         request, "partials/rec_genre_tracks.html", {"items": ctx_items, "genre": genre}
     )

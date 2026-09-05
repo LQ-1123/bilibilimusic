@@ -369,6 +369,16 @@ class BiliClient:
             return []
         return [str(t.get("tag_name") or "").strip() for t in data if isinstance(t, dict)]
 
+    async def music_rank(self, rid: int = 3) -> list[dict]:
+        """分区排行榜（ranking/v2，音乐区 rid=3；无需 WBI 签名）。"""
+        data = await self._get_json("/x/web-interface/ranking/v2", {"rid": rid, "type": "all"})
+        return data.get("list") or []
+
+    async def region_videos(self, rid: int, ps: int = 50) -> list[dict]:
+        """子分区热门视频（dynamic/region，如演奏 59 / MV 30 / 音乐现场 31 / 音乐综合 28）。"""
+        data = await self._get_json("/x/web-interface/dynamic/region", {"rid": rid, "ps": ps})
+        return data.get("archives") or []
+
     # ---- 音频/封面下载 ----
 
     def candidate_urls(self, stream: AudioStream) -> list[str]:
