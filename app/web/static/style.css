@@ -236,8 +236,7 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 
 /* ---------- 侧栏（Uiverse 玻璃配方：顶部白渐变底 + 淡白描边 + 下坠阴影 + 轻模糊） ---------- */
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
-  background:linear-gradient(rgba(255,255,255,.133), rgba(255,255,255,0));
-  border:1px solid rgba(255,255,255,.1);box-shadow:0 25px 25px rgba(0,0,0,.25);
+  background:var(--glass);border:1px solid rgba(255,255,255,.1);box-shadow:0 25px 25px rgba(0,0,0,.25);
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
   border-radius:0 10px 10px 0;padding:20px 6px 14px 18px}
 .sidebar::before,.sidebar::after{display:none}
