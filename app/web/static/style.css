@@ -282,16 +282,32 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 #vol::-moz-range-track{height:3px;border-radius:3px;background:var(--stroke2)}
 #vol::-moz-range-thumb{width:10px;height:10px;border:none;border-radius:50%;background:var(--txt2)}
 
-/* ---------- 真实封面拼贴（推荐歌单卡 / 详情大封面） ---------- */
+/* ---------- 真实封面拼贴（推荐歌单卡 / 详情大封面）· 艺术化处理 ---------- */
+/* 虚化拉伸成抽象色场 → 柔光色罩统一色调 → 暗部渐变保文字可读 */
 .pc-img{padding:0;background:none}
-.pc-img::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
-  background:linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,0) 38%, rgba(0,0,0,.5))}
+.pc-img .mosaic{transform:scale(1.16)}  /* 放大吃掉虚化边缘 */
+.pc-img .mosaic img{filter:blur(7px) saturate(1.32) brightness(.94) contrast(1.05)}
+.pc-img::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;mix-blend-mode:soft-light;
+  background:
+    radial-gradient(130% 130% at 10% 6%, hsl(var(--h) 95% 60% / .95), transparent 58%),
+    radial-gradient(140% 140% at 92% 94%, hsl(calc(var(--h) + 55) 90% 48% / .85), transparent 62%)}
+.pc-img::after{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(180deg, rgba(8,8,14,.18), rgba(8,8,14,0) 40%, rgba(8,8,14,.55))}
+.pc-img .ct,.pc-img .nm{z-index:3}
 .mosaic{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;
   overflow:hidden;border-radius:inherit;background:var(--raise)}
 .mosaic img{width:100%;height:100%;object-fit:cover}
 .mosaic.one{grid-template-columns:1fr;grid-template-rows:1fr}
 .dt-cvr{overflow:hidden}
 .dt-cvr.mosaic-host{background:none}
+.dt-cvr.mosaic-host .mosaic{transform:scale(1.1)}
+.dt-cvr.mosaic-host .mosaic img{filter:blur(5px) saturate(1.28) brightness(.96)}
+.dt-cvr.mosaic-host::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;mix-blend-mode:soft-light;
+  background:
+    radial-gradient(130% 130% at 12% 8%, hsl(var(--dh,340) 95% 60% / .9), transparent 60%),
+    radial-gradient(140% 140% at 90% 92%, hsl(calc(var(--dh,340) + 55) 90% 48% / .8), transparent 64%)}
+.dt-cvr.mosaic-host::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg, rgba(8,8,14,.12), rgba(8,8,14,.3))}
 
 /* ---------- 收藏任务浮片（用户要求隐藏：DOM 保留作为 htmx 容器） ---------- */
 #task-list{display:none !important}
