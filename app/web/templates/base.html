@@ -8,12 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=41">
+  <link rel="stylesheet" href="/static/style.css?v=42">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
   <script src="/static/app.js?v=20" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=14" defer></script>
+  <script src="/static/v3.js?v=15" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -143,7 +143,6 @@
           <svg class="i-play"><use href="#a-play"/></svg><svg class="i-pause"><use href="#a-pause"/></svg>
         </button>
         <button id="ly-next" type="button" title="下一首"><svg><use href="#a-next"/></svg></button>
-        <button id="ly-rep" type="button" title="单曲循环"><svg><use href="#i-rep"/></svg></button>
         <button id="ly-add" type="button" title="添加至歌单">＋</button>
       </div>
     </div>

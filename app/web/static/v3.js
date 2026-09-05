@@ -388,9 +388,6 @@
       if (!dragging) seekEl.value = Math.round((m.currentTime / m.duration) * 1000);
       $("ly-cur").textContent = fmtTime(m.currentTime);
       $("ly-rem").textContent = "-" + fmtTime(Math.max(0, m.duration - m.currentTime));
-      var rep = $("repeat-one-toggle");
-      var lyRep = $("ly-rep");
-      if (rep && lyRep) lyRep.classList.toggle("on", rep.checked);
     }, 500);
     function fmtTime(s) {
       s = Math.max(0, Math.floor(s || 0));
@@ -414,13 +411,6 @@
     if (lp) lp.addEventListener("click", function () { BiliPlayer.skip(-1); });
     var ln = $("ly-next");
     if (ln) ln.addEventListener("click", function () { BiliPlayer.skip(1); });
-    var ls = $("ly-shuf");
-    if (ls) ls.addEventListener("click", function () { window.__toast("随机播放：跳到链上随机一首（演示）"); });
-    var lr = $("ly-rep");
-    if (lr) lr.addEventListener("click", function () {
-      var rep = $("repeat-one-toggle");
-      if (rep) { rep.checked = !rep.checked; rep.dispatchEvent(new Event("change")); }
-    });
 
     // 播放模式钮：顺序 → 列表循环 → 随机 循环切换（引擎行为见 app.js playMode()）
     var MODES = [

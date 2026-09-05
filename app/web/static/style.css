@@ -413,7 +413,7 @@ body.trial #seek,body.trial .p-time{visibility:hidden}
 .l-song b{display:block;font-size:20px;font-weight:800;line-height:1.35}
 .l-song span{display:block;font-size:13px;color:var(--txt2);margin-top:6px}
 /* 歌词页控制条（Apple Music 式：进度+时间+五键） */
-.ly-prog{width:min(320px,26vw);padding:0 4px}
+.ly-prog{width:min(560px,44vw);padding:0 4px}
 #ly-seek{width:100%;height:14px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
 #ly-seek::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:var(--stroke2)}
 #ly-seek::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--pink);margin-top:-4px}
@@ -431,7 +431,7 @@ body:not(.playing) .i-pause{display:none}
 .ly-ctl .big svg{width:46px;height:46px}
 .ly-ctl .on{color:var(--pink)}
 .ly-ctl #ly-add{font-size:20px;font-weight:600}
-.ly-morerow{width:min(320px,26vw);display:flex;justify-content:flex-end;padding:0 4px}
+.ly-morerow{width:min(560px,44vw);display:flex;justify-content:flex-end;padding:0 4px}
 #ly-more{width:34px;height:30px;border-radius:999px;color:var(--txt2);letter-spacing:2px;font-weight:800;transition:.15s}
 #ly-more:hover{color:var(--txt);background:var(--card2)}
 #song-menu{position:fixed;z-index:150;min-width:170px;border-radius:14px;
@@ -573,7 +573,7 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   #queue-panel{top:10px;bottom:150px}
   #lyrics-panel{flex-direction:column}
   .l-left{flex:none;padding:64px 24px 8px;gap:14px}
-  .ly-prog{width:min(320px,100%)}
+  .ly-prog,.ly-morerow{width:min(460px,100%)}
   .ly-ctl{gap:22px}
   .ly-ctl .big svg{width:42px;height:42px}
   #lyrics-cover{width:190px}
