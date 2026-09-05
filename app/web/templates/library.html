@@ -74,9 +74,13 @@
 
 <section class="view" id="view-account">
   <div class="acct-card">
+    {% if user.face %}
+    <img class="ava" src="{{ user.face }}" alt="" referrerpolicy="no-referrer">
+    {% else %}
     <div class="ava">♪</div>
+    {% endif %}
     <div style="min-width:0">
-      <div class="n">短腿智慧树</div>
+      <div class="n">{{ user.uname }}</div>
       <div class="s">已登录 · 音质最高 192K</div>
     </div>
   </div>

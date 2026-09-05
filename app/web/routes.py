@@ -101,7 +101,7 @@ def _playlist_cards() -> tuple[list[dict], int]:
 
 
 @router.get("/", response_class=HTMLResponse)
-def home(request: Request):
+async def home(request: Request):
     """曲库主界面（含歌单、收藏、发现、播放）。未登录一律跳登录页。"""
     gate = _login_redirect(request)
     if gate:
@@ -112,6 +112,8 @@ def home(request: Request):
         rec_count = len(recs.list_items())
     except Exception:
         rec_count = 0
+    me = await request.app.state.bili.my_info()
+    user = {"uname": str(me.get("uname") or "未登录"), "face": str(me.get("face") or "")}
     return templates.TemplateResponse(
         request,
         "library.html",
@@ -119,6 +121,7 @@ def home(request: Request):
             "playlists": playlists.list_playlists(),
             "logged_in": True,
             "recent": recent,
+            "user": user,
             "stats": {
                 "songs": total,
                 "playlists": len(playlists.list_playlists()),

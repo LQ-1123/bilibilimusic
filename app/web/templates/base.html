@@ -8,7 +8,7 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=33">
+  <link rel="stylesheet" href="/static/style.css?v=34">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
   <script src="/static/app.js?v=17" defer></script>
@@ -56,8 +56,12 @@
     <nav class="side-pls" id="playlists-bar"
          hx-get="/partials/playlists" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML"></nav>
     <div class="side-user">
+      {% if user.face %}
+      <img class="ava" src="{{ user.face }}" alt="" referrerpolicy="no-referrer">
+      {% else %}
       <div class="ava">♪</div>
-      <div class="un">短腿智慧树</div>
+      {% endif %}
+      <div class="un">{{ user.uname }}</div>
     </div>
     <div class="side-handle" id="side-handle" title="拖动调整侧栏宽度"></div>
   </aside>

@@ -175,6 +175,7 @@ class BiliClient:
         self._wbi_at = 0.0
         self._fav_lock = asyncio.Lock()
         self._folders: tuple[float, list[dict]] | None = None  # (时间戳, 夹池)，TTL 缓存
+        self._me: tuple[float, dict] | None = None  # (过期时间, nav 用户信息)，TTL 缓存
         self.http = httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=False,
@@ -378,6 +379,18 @@ class BiliClient:
         """子分区热门视频（dynamic/region，如演奏 59 / MV 30 / 音乐现场 31 / 音乐综合 28）。"""
         data = await self._get_json("/x/web-interface/dynamic/region", {"rid": rid, "ps": ps})
         return data.get("archives") or []
+
+    async def my_info(self) -> dict:
+        """当前登录用户信息（nav：mid/uname/face 等），进程内缓存 10 分钟；失败返回空 dict。"""
+        now = time.time()
+        if self._me and now < self._me[0]:
+            return self._me[1]
+        try:
+            data = await self._get_json("/x/web-interface/nav")
+            self._me = (now + 600, data or {})
+        except Exception:
+            self._me = (now + 60, {})  # 失败短缓存，避免每次请求都打接口
+        return self._me[1]
 
     # ---- 音频/封面下载 ----
 
