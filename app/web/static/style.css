@@ -206,9 +206,9 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
   background:var(--glass-strong);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow);padding:6px}
 #pl-menu .pm-title{font-size:10.5px;font-weight:700;letter-spacing:1.2px;color:var(--txt3);padding:7px 12px 5px}
-#pl-menu .pm-item{display:flex;width:100%;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;
+#pl-menu .pm-item,#song-menu .pm-item{display:flex;width:100%;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;
   font-size:13px;font-weight:600;color:var(--txt);transition:.15s;text-align:left}
-#pl-menu .pm-item:hover{background:var(--card2)}
+#pl-menu .pm-item:hover,#song-menu .pm-item:hover{background:var(--card2)}
 #pl-menu .pm-item.on .nm{color:var(--pink-txt)}
 #pl-menu .pm-item .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #pl-menu .pm-new{border-top:1px solid var(--stroke);margin-top:4px;padding-top:8px;color:var(--pink-txt)}

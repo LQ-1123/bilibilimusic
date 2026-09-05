@@ -453,35 +453,76 @@
       }
     });
 
-    // ··· 详情菜单：加入歌单 / 在 B 站打开
+    // ··· 详情菜单：加入歌单 / 打开原链接 / 分享 / 推荐相似歌曲（试听歌无曲库 id，无相似推荐）/ 在 B 站打开
     var more = $("ly-more");
     if (more) more.addEventListener("click", function (e) {
       e.stopPropagation();
       var sm = $("song-menu");
       if (!sm) return;
       var trial = window.BiliPlayer && BiliPlayer.trialInfo();
-      var bvid = trial ? trial.bvid : (BiliPlayer.currentSong() || {}).bvid;
+      var song = trial ? null : (BiliPlayer.currentSong() || null);
+      var bvid = trial ? trial.bvid : (song ? song.bvid : null);
       if (!bvid) { window.__toast("当前没有播放的歌"); return; }
-      sm.innerHTML =
-        '<button type="button" class="pm-item" data-act="pl">加入歌单</button>' +
-        '<button type="button" class="pm-item" data-act="bili">在 B 站打开</button>';
+      var url = "https://www.bilibili.com/video/" + bvid;
+      var items = [
+        '<button type="button" class="pm-item" data-act="pl">加入歌单</button>',
+        '<button type="button" class="pm-item" data-act="open">打开原链接</button>',
+        '<button type="button" class="pm-item" data-act="share">分享</button>',
+      ];
+      if (song) items.push('<button type="button" class="pm-item" data-act="similar">推荐相似歌曲</button>');
+      items.push('<button type="button" class="pm-item" data-act="bili">在 B 站打开</button>');
+      sm.innerHTML = items.join("");
       sm.hidden = false;
       var r = more.getBoundingClientRect();
       var mh = sm.offsetHeight, mw = sm.offsetWidth;
       sm.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, r.right - mw)) + "px";
       sm.style.top = (r.top - mh - 8 > 8 ? r.top - mh - 8 : r.bottom + 8) + "px";
       sm.dataset.bvid = bvid;
+      sm.dataset.url = url;
       sm.dataset.trial = trial ? "1" : "";
+      sm.dataset.songid = song ? song.id : "";
     });
     var sm2 = $("song-menu");
     if (sm2) sm2.addEventListener("click", function (e) {
       e.stopPropagation(); // 防止选动作的点击冒泡到 document 误关刚打开的 pl-menu
       var act = e.target.closest("[data-act]");
       if (!act) return;
+      var kind = act.dataset.act;
       sm2.hidden = true;
       var bvid = sm2.dataset.bvid;
-      if (act.dataset.act === "bili") {
-        window.open("https://www.bilibili.com/video/" + bvid, "_blank");
+      if (kind === "bili") { window.open("https://www.bilibili.com/video/" + bvid, "_blank"); return; }
+      if (kind === "share") {
+        var link = "https://www.bilibili.com/video/" + bvid;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(link).then(
+            function () { window.__toast("链接已复制 · 可粘贴给朋友或本应用整单收藏"); },
+            function () { window.__toast("复制失败，请手动复制：" + link); }
+          );
+        } else {
+          window.__toast(link);
+        }
+        return;
+      }
+      if (kind === "similar") {
+        var sid = Number(sm2.dataset.songid);
+        if (!sid) { window.__toast("试听歌暂不支持推荐相似"); return; }
+        fetch("/api/recs/seed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ songId: sid }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d && d.queued) {
+              window.__toast("已提交相似推荐采集 · 稍后到发现页看看");
+              setTimeout(function () { // 后台采集 2-4s，完成后刷新发现区
+                if (window.htmx) htmx.trigger(document.body, "recsChanged");
+              }, 4500);
+            } else {
+              window.__toast("相似歌曲有采集频控，稍后再来");
+            }
+          })
+          .catch(function () { window.__toast("网络错误，请重试"); });
         return;
       }
       // 加入歌单：复用 pl-menu（锚定 ··· 按钮位置）
@@ -490,8 +531,8 @@
         var rect = m.getBoundingClientRect();
         if (sm2.dataset.trial) __openPlMenu(rect, "url", { bvid: bvid, url: "https://www.bilibili.com/video/" + bvid });
         else {
-          var song = window.BiliPlayer && BiliPlayer.currentSong();
-          if (song) __openPlMenu(rect, "song", { song: song.id });
+          var sid2 = Number(sm2.dataset.songid);
+          if (sid2) __openPlMenu(rect, "song", { song: sid2 });
         }
       }
     });
