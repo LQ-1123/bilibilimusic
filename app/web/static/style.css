@@ -8,7 +8,7 @@
   --bg:#0b0b10; --bg2:#101017; --card:#16161e; --card2:#1d1d27; --raise:#262633;
   --txt:#f4f4f7; --txt2:#9c9cab; --txt3:#62626e;
   --pink:#fb7299; --pink-strong:#ff8fad; --pink-tint:rgba(251,114,153,.16); --pink-txt:#ffa8c1;
-  --glass:rgba(16,16,23,.66); --glass-strong:rgba(14,14,20,.84);
+  --glass:rgba(16,16,23,.84); --glass-strong:rgba(14,14,20,.88);
   --stroke:rgba(255,255,255,.085); --stroke2:rgba(255,255,255,.16);
   --shadow:0 16px 48px rgba(0,0,0,.5); --shadow-sm:0 6px 22px rgba(0,0,0,.36);
   --hero-op:.55; --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.55'/></svg>");
@@ -18,7 +18,7 @@ html[data-theme="light"]{
   --bg:#f0f1f5; --bg2:#f6f6f9; --card:#ffffff; --card2:#ffffff; --raise:#ececf2;
   --txt:#16161d; --txt2:#6d6d7a; --txt3:#a3a3af;
   --pink:#f0507f; --pink-strong:#e64a78; --pink-tint:rgba(240,80,127,.13); --pink-txt:#d63d6c;
-  --glass:rgba(255,255,255,.62); --glass-strong:rgba(255,255,255,.9);
+  --glass:rgba(255,255,255,.8); --glass-strong:rgba(255,255,255,.93);
   --stroke:rgba(20,20,35,.09); --stroke2:rgba(20,20,35,.16);
   --shadow:0 18px 50px rgba(30,30,60,.14); --shadow-sm:0 6px 20px rgba(30,30,60,.10);
   --hero-op:.4; color-scheme:light;
