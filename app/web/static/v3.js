@@ -19,13 +19,7 @@
     el.textContent = hi + "，该听歌了";
   })();
 
-  // ---------- 顶栏滚动态 ----------
-  var mainEl = $("mainEl"), topbar = $("topbar");
-  if (mainEl && topbar) {
-    mainEl.addEventListener("scroll", function () {
-      topbar.classList.toggle("scrolled", mainEl.scrollTop > 12);
-    });
-  }
+  var mainEl = $("mainEl");
 
   // ---------- 侧栏拖宽（仅桌面有意义；范围 200–420） ----------
   (function () {
