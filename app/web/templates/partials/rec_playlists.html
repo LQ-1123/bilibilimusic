@@ -1,8 +1,16 @@
 {% for c in cards %}
 <button type="button" class="poster" data-rgenre="{{ c.key }}" data-name="{{ c.name }}"
         data-count="{{ c.count }}" data-hue="{{ c.hue }}"
+        data-covers="{{ c.covers | join('|') }}"
         style="--h:{{ c.hue }}" onclick="openDetailFrom(this)" title="打开推荐歌单「{{ c.name }}」">
-  <span class="pc">
+  <span class="pc{{ ' pc-img' if c.covers }}">
+    {% if c.covers | length >= 4 %}
+    <span class="mosaic">
+      {% for u in c.covers %}<img src="{{ u }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% endfor %}
+    </span>
+    {% elif c.covers %}
+    <span class="mosaic one"><img src="{{ c.covers[0] }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+    {% endif %}
     <span class="ct">{{ 'REC · 每日轮换' if c.key == 'daily' else 'REC · 线上推荐' }}</span>
     <span class="nm">{{ c.name }}</span>
   </span>

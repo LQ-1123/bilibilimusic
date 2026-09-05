@@ -282,6 +282,17 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 #vol::-moz-range-track{height:3px;border-radius:3px;background:var(--stroke2)}
 #vol::-moz-range-thumb{width:10px;height:10px;border:none;border-radius:50%;background:var(--txt2)}
 
+/* ---------- 真实封面拼贴（推荐歌单卡 / 详情大封面） ---------- */
+.pc-img{padding:0;background:none}
+.pc-img::before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,0) 38%, rgba(0,0,0,.5))}
+.mosaic{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;
+  overflow:hidden;border-radius:inherit;background:var(--raise)}
+.mosaic img{width:100%;height:100%;object-fit:cover}
+.mosaic.one{grid-template-columns:1fr;grid-template-rows:1fr}
+.dt-cvr{overflow:hidden}
+.dt-cvr.mosaic-host{background:none}
+
 /* ---------- 收藏任务浮片（用户要求隐藏：DOM 保留作为 htmx 容器） ---------- */
 #task-list{display:none !important}
 .task{border-radius:12px;background:var(--glass-strong);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);

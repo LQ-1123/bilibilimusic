@@ -246,15 +246,30 @@ def tasks_partial(request: Request):
 
 @router.get("/partials/rec-playlists", response_class=HTMLResponse)
 def rec_playlists_partial(request: Request):
-    """主页推荐歌单架：每日精选 + 各风格电台卡（线上推荐池，非用户曲库）。"""
+    """主页推荐歌单架：每日精选 + 各风格电台卡（线上推荐池，非用户曲库）。
+
+    封面用池内前 4 首歌的真实封面拼贴（Apple Music 精选歌单风格），不用渐变。
+    """
     gate = _login_redirect(request)
     if gate:
         return gate
-    cards = [{"key": "daily", "name": "每日精选", "count": len(recs.daily_items()), "hue": 340}]
+
+    def _covers(items: list) -> list[str]:
+        return [i.cover_url for i in items[:4]]
+
+    daily = recs.daily_items()
+    cards = [{
+        "key": "daily", "name": "每日精选",
+        "count": len(daily), "hue": 340, "covers": _covers(daily),
+    }]
     for i, g in enumerate(recs.GENRE_KEYWORDS.keys()):
-        n = len(recs.list_items(genre=g))
-        if n:
-            cards.append({"key": g, "name": f"{g}精选", "count": n, "hue": _HUES[(i + 1) % len(_HUES)]})
+        items = recs.list_items(genre=g)
+        if items:
+            cards.append({
+                "key": g, "name": f"{g}精选",
+                "count": len(items), "hue": _HUES[(i + 1) % len(_HUES)],
+                "covers": _covers(items),
+            })
     return templates.TemplateResponse(request, "partials/rec_playlists.html", {"cards": cards})
 
 

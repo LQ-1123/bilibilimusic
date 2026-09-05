@@ -94,12 +94,35 @@
     if (mainEl) mainEl.scrollTop = 0;
   }
 
+  function mosaicHtml(covers) {
+    var esc = function (s) {
+      return String(s || "").replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    };
+    var urls = (covers || "").split("|").filter(Boolean);
+    if (!urls.length) return "";
+    if (urls.length >= 4) {
+      var imgs = urls.slice(0, 4).map(function (u) {
+        return '<img src="' + esc(u) + '" alt="" referrerpolicy="no-referrer">';
+      }).join("");
+      return '<span class="mosaic">' + imgs + "</span>";
+    }
+    return '<span class="mosaic one"><img src="' + esc(urls[0]) + '" alt="" referrerpolicy="no-referrer"></span>';
+  }
+
   function fillRecDetail(el, autoplay) {
     var d = el.dataset;
     dtState = { kind: "rec", id: "rec:" + d.rgenre, name: d.name, hue: d.hue || 340 };
     $("app").dataset.view = "detail";
     var hero = document.getElementById("dt-hero");
     if (hero) hero.style.setProperty("--dh", dtState.hue);
+    var cvr = document.querySelector("#dt-hero .dt-cvr");
+    var mos = mosaicHtml(d.covers);
+    if (cvr) {
+      cvr.classList.toggle("mosaic-host", !!mos);
+      cvr.innerHTML = mos;
+    }
     document.getElementById("dt-eyebrow").textContent =
       d.rgenre === "daily" ? "REC · 每日轮换推荐" : "REC · 线上推荐歌单";
     document.getElementById("dt-title").textContent = d.name;
