@@ -104,6 +104,10 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .rack{display:flex;gap:18px;overflow-x:auto;margin:0 -28px 4px calc(-1 * (var(--side) + 28px));
   padding:4px 28px 14px calc(var(--side) + 28px);scroll-snap-type:x proximity;
   scroll-padding-left:calc(var(--side) + 28px)}
+/* 横滑架不显示滚动条（滚动功能保留；滚动条看着像进度条，按用户要求隐藏） */
+.rack,.rec-grid,.rec-genres,.chips{scrollbar-width:none}
+.rack::-webkit-scrollbar,.rec-grid::-webkit-scrollbar,
+.rec-genres::-webkit-scrollbar,.chips::-webkit-scrollbar{display:none}
 .rack>*{scroll-snap-align:start}
 
 /* ---------- 歌单海报卡（渐变封面） ---------- */
@@ -256,8 +260,12 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .p-meta .mtx{min-width:0;flex:1}
 #player-title{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #player-artist{font-size:11.5px;color:var(--txt2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 进度条按用户要求取消（元素保留：app.js 绑定依赖，隐藏即可） */
-#seek{display:none}
+#seek{width:100%;height:14px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;margin-top:3px}
+#seek::-webkit-slider-runnable-track{height:3px;border-radius:3px;background:var(--stroke2)}
+#seek::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--pink);
+  margin-top:-4px;box-shadow:0 1px 6px rgba(0,0,0,.4)}
+#seek::-moz-range-track{height:3px;border-radius:3px;background:var(--stroke2)}
+#seek::-moz-range-thumb{width:11px;height:11px;border:none;border-radius:50%;background:var(--pink)}
 .p-acts{display:flex;align-items:center}
 .p-acts button{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--txt2);transition:.18s;font-size:15px}
 .p-acts button:hover{color:var(--txt);background:var(--card2)}
