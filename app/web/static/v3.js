@@ -738,6 +738,42 @@
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
   })();
+
+  // ---------- 侧栏镜像模糊层：主内容副本垫在侧栏下（backdrop-filter 不可用环境的真模糊兜底） ----------
+  (function () {
+    if (window.matchMedia("(max-width: 900px)").matches) return; // 手机端无侧栏
+    var mainEl = $("mainEl"), mirror = $("side-mirror"), inner = $("mirrorInner");
+    if (!mirror || !inner) return;
+    var cloneTimer = null;
+
+    function syncScroll() {
+      inner.style.transform = "translateY(" + (-mainEl.scrollTop) + "px)";
+    }
+    function rebuild() {
+      inner.innerHTML = "";
+      var clone = mainEl.cloneNode(true);
+      clone.removeAttribute("id");
+      // 去重 id / 移除 htmx 触发属性：镜像纯视觉（pointer-events:none），不参与交互与请求
+      clone.querySelectorAll("[id]").forEach(function (el) { el.removeAttribute("id"); });
+      clone.querySelectorAll("[hx-get],[hx-post],[hx-trigger]").forEach(function (el) {
+        ["hx-get", "hx-post", "hx-trigger"].forEach(function (a) { el.removeAttribute(a); });
+      });
+      inner.appendChild(clone);
+      syncScroll();
+    }
+    function scheduleRebuild() {
+      clearTimeout(cloneTimer);
+      cloneTimer = setTimeout(rebuild, 400); // htmx swap 后防抖重建
+    }
+
+    mainEl.addEventListener("scroll", function () { requestAnimationFrame(syncScroll); }, { passive: true });
+    window.addEventListener("resize", scheduleRebuild);
+    document.body.addEventListener("htmx:afterSwap", scheduleRebuild);
+    document.body.addEventListener("refreshSongs", scheduleRebuild);
+    document.body.addEventListener("playlistsChanged", scheduleRebuild);
+    rebuild();
+  })();
+
   // ---------- 移动端 Tab / 搜索圆钮 ----------
   window.mTab = function (name, btn) {
     document.body.dataset.mtab = name;

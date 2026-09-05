@@ -8,8 +8,8 @@
   --bg:#0b0b10; --bg2:#101017; --card:#16161e; --card2:#1d1d27; --raise:#262633;
   --txt:#f4f4f7; --txt2:#9c9cab; --txt3:#62626e;
   --pink:#fb7299; --pink-strong:#ff8fad; --pink-tint:rgba(251,114,153,.16); --pink-txt:#ffa8c1;
-  --glass:rgba(30,30,44,.88); --glass-strong:rgba(24,24,36,.92);
-  --glass-border:rgba(255,255,255,.18); --glass-inset:inset 0 1px 0 rgba(255,255,255,.16);
+  --glass:rgba(22,22,32,.58); --glass-strong:rgba(16,16,24,.66);
+  --glass-border:rgba(255,255,255,.26); --glass-inset:inset 0 1px 0 rgba(255,255,255,.26);
   --stroke:rgba(255,255,255,.085); --stroke2:rgba(255,255,255,.16);
   --shadow:0 16px 48px rgba(0,0,0,.5); --shadow-sm:0 6px 22px rgba(0,0,0,.36);
   --hero-op:.55; --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.55'/></svg>");
@@ -19,8 +19,8 @@ html[data-theme="light"]{
   --bg:#f0f1f5; --bg2:#f6f6f9; --card:#ffffff; --card2:#ffffff; --raise:#ececf2;
   --txt:#16161d; --txt2:#6d6d7a; --txt3:#a3a3af;
   --pink:#f0507f; --pink-strong:#e64a78; --pink-tint:rgba(240,80,127,.13); --pink-txt:#d63d6c;
-  --glass:rgba(255,255,255,.88); --glass-strong:rgba(255,255,255,.92);
-  --glass-border:rgba(255,255,255,.7); --glass-inset:inset 0 1px 0 rgba(255,255,255,.8);
+  --glass:rgba(255,255,255,.55); --glass-strong:rgba(255,255,255,.68);
+  --glass-border:rgba(255,255,255,.6); --glass-inset:inset 0 1px 0 rgba(255,255,255,.65);
   --stroke:rgba(20,20,35,.09); --stroke2:rgba(20,20,35,.16);
   --shadow:0 18px 50px rgba(30,30,60,.14); --shadow-sm:0 6px 20px rgba(30,30,60,.10);
   --hero-op:.4; color-scheme:light;
@@ -221,6 +221,12 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .trk .del.love:hover{color:var(--pink-txt)}
 .trk .del.love.on{color:var(--pink);opacity:1}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
+
+/* ---------- 侧栏镜像模糊层：主内容副本垫在侧栏下（backdrop-filter 不可用环境的真模糊兜底） ---------- */
+#side-mirror{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:30;overflow:hidden;pointer-events:none;
+  filter:blur(26px) saturate(1.6);opacity:.85;background:var(--bg)}
+.mirror-inner{position:absolute;top:0;left:0;width:100vw;box-sizing:border-box;
+  padding:0 28px 150px calc(var(--side) + 28px)} /* 与 .main 相同布局，几何对齐 */
 
 /* ---------- 侧栏（玻璃覆盖层）：Apple 配方 = 强模糊 + 饱和度补偿 + 低透明度底 + 边缘高光 + 光源渐变 ---------- */
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
@@ -541,6 +547,7 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
 @media (max-width: 900px){
   .app{--side:0px}
   .sidebar,.side-handle{display:none}
+  #side-mirror{display:none}
   .app .main{padding:0 16px 170px}
   .hero,.rack,.rec-genres,.dt-hero{margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px}
   .rack{scroll-padding-left:16px}
