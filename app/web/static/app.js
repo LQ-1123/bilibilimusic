@@ -350,7 +350,8 @@
   function onTimeUpdate(e) {
     if (e.target !== audio) return;
     if (audio.duration && !seekDragging) {
-      $("seek").value = Math.round((audio.currentTime / audio.duration) * 1000);
+      seek.value = Math.round((audio.currentTime / audio.duration) * 1000);
+      seek.style.setProperty("--p", (seek.value / 10) + "%"); // 已播粉色填充
       $("t-cur").textContent = fmt(audio.currentTime);
       $("t-dur").textContent = fmt(audio.duration);
     }
@@ -373,6 +374,7 @@
   var seek = $("seek");
   seek.addEventListener("input", function () {
     seekDragging = true;
+    seek.style.setProperty("--p", (seek.value / 10) + "%"); // 拖动实时填充
     if (audio.duration) {
       $("t-cur").textContent = fmt((seek.value / 1000) * audio.duration);
     }

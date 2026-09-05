@@ -385,7 +385,10 @@
       if (!panelOpen()) return;
       var m = BiliPlayer.activeMedia();
       if (!m || !m.duration || !isFinite(m.duration)) return;
-      if (!dragging) seekEl.value = Math.round((m.currentTime / m.duration) * 1000);
+      if (!dragging) {
+        seekEl.value = Math.round((m.currentTime / m.duration) * 1000);
+        seekEl.style.setProperty("--p", (seekEl.value / 10) + "%"); // 已播粉色填充
+      }
       $("ly-cur").textContent = fmtTime(m.currentTime);
       $("ly-rem").textContent = "-" + fmtTime(Math.max(0, m.duration - m.currentTime));
     }, 500);
@@ -395,6 +398,7 @@
     }
     seekEl.addEventListener("input", function () {
       dragging = true;
+      seekEl.style.setProperty("--p", (seekEl.value / 10) + "%"); // 拖动实时填充
       var m = BiliPlayer.activeMedia();
       if (m && m.duration) $("ly-cur").textContent = fmtTime((seekEl.value / 1000) * m.duration);
     });
