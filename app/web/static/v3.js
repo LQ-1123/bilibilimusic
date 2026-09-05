@@ -250,7 +250,9 @@
     function close() {
       drop.hidden = true;
       var tb = $("topbar"); // 手机端：搜索胶囊随关闭一并收起
-      if (tb) tb.classList.remove("searching");
+      if (tb) { tb.classList.remove("searching"); tb.style.bottom = ""; }
+      document.body.classList.remove("msearching");
+      var d = $("search-drop"); if (d) d.style.bottom = "";
     }
 
     function esc(s) {
@@ -415,8 +417,9 @@
     var tb = $("topbar");
     if (!tb) return;
     if (getComputedStyle(tb).display === "none") {
-      // 手机端：顶栏以悬浮搜索胶囊唤出（顶部搜索栏平时隐藏）
+      // 手机端：搜索胶囊从底部圆钮位置向左展开
       tb.classList.add("searching");
+      document.body.classList.add("msearching");
       var t = document.querySelector('.m-tab[data-mtab="home"]');
       document.querySelectorAll(".m-tab").forEach(function (b) {
         b.classList.toggle("on", b === t);
@@ -431,6 +434,21 @@
     focusSearchBar();
   };
   function openMobileDrop() { var d = $("search-drop"); if (d) d.hidden = false; }
+
+  // 键盘弹起时：搜索胶囊与结果面板跟随可视视口上移，避免被键盘遮住
+  (function () {
+    var vv = window.visualViewport;
+    if (!vv) return;
+    vv.addEventListener("resize", function () {
+      var tb = $("topbar");
+      if (!tb || !tb.classList.contains("searching")) return;
+      var overlap = window.innerHeight - vv.height - vv.offsetTop; // 键盘占位高度
+      var lift = overlap > 0 ? overlap + 12 : 14;
+      tb.style.bottom = lift + "px";
+      var d = $("search-drop");
+      if (d && !d.hidden) d.style.bottom = (lift + 64) + "px";
+    });
+  })();
 
   // ---------- 队列 / 歌词 按钮视觉态 ----------
   (function () {

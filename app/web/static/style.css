@@ -494,13 +494,21 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   .rack{scroll-padding-left:16px}
   .hero::before{inset:-30px -16px -70px -16px}
   .topbar{display:none}
-  /* 手机端：点底部搜索圆钮 → 顶栏以悬浮胶囊形态唤出（仅搜索框） */
-  .topbar.searching{display:flex;position:absolute;top:12px;left:12px;right:12px;z-index:110;
+  /* 手机端：点底部搜索圆钮 → 搜索胶囊从圆钮位置向左展开（与底部 Dock 同一水平线） */
+  .topbar.searching{display:flex;position:absolute;left:12px;right:86px;bottom:14px;top:auto;z-index:110;
     background:var(--glass-strong);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
-    border:1px solid var(--stroke);border-radius:999px;padding:8px 10px;box-shadow:var(--shadow);gap:8px}
+    border:1px solid var(--stroke);border-radius:999px;padding:8px 10px;box-shadow:var(--shadow);gap:8px;
+    transform-origin:100% 50%;animation:msExpand .32s cubic-bezier(.3,.85,.3,1)}
+  @keyframes msExpand{from{transform:scaleX(.18);opacity:.3}to{transform:none;opacity:1}}
   .topbar.searching .tb-right,.topbar.searching .tb-cir{display:none}
   #search-close{display:none}
   .topbar.searching #search-close{display:grid;flex:none;width:32px;height:32px;font-size:13px}
+  /* 搜索态：Tab 胶囊与圆钮缩隐，搜索胶囊取而代之 */
+  body.msearching .m-tabs{opacity:0;transform:scale(.9);pointer-events:none}
+  body.msearching .m-orb{opacity:0;transform:scale(.6);pointer-events:none}
+  .m-tabs,.m-orb{transition:opacity .3s,transform .3s cubic-bezier(.3,.85,.3,1)}
+  /* 结果面板从胶囊上方展开 */
+  .search-drop{top:auto;bottom:86px;left:12px;right:12px;width:auto;max-height:calc(100% - 260px)}
   .tb-search{flex:1}
   .tb-right .tb-chip{padding:0 11px}
   .tb-chip .lbl{display:none}
