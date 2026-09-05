@@ -228,9 +228,8 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .trk .del.love.on{color:var(--pink);opacity:1}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
-/* ---------- 侧栏镜像模糊层（完整 compositing：blur 65 + 降饱和 + 降对比 + 提亮 + 暖灰白 overlay + 右缘羽化） ---------- */
-#side-mirror{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:30;overflow:hidden;pointer-events:none;
-  filter:var(--frost-filter);background:var(--bg)}
+/* ---------- 侧栏镜像模糊层（当前关闭：用户定夺中） ---------- */
+#side-mirror{display:none}
 .mirror-inner{position:absolute;top:0;left:0;width:100vw;box-sizing:border-box;
   padding:0 28px 150px calc(var(--side) + 28px)} /* 与 .main 相同布局，几何对齐 */
 /* 暖灰白 overlay：压对比、抬灰，黑不透成透明黑 */
@@ -244,8 +243,7 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
   background:var(--frost-overlay);padding:20px 6px 14px 18px}
 /* 右缘 30px 羽化：无硬边界（模糊层超出+渐变过渡） */
-.sidebar::after{content:"";position:absolute;top:0;right:-30px;width:30px;height:100%;pointer-events:none;
-  background:linear-gradient(to right,var(--frost-edge-a),var(--frost-edge-b))}
+.sidebar::after{display:none}
 /* 注意：不要给 .sidebar/#player-bar 加 transform/will-change——合成层提升会让 backdrop 采样失效（打开瞬间有效、随后消失） */
 .sidebar::before{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.03) 55%, rgba(255,255,255,.09))}
