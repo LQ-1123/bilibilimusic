@@ -8,8 +8,11 @@
   --bg:#0b0b10; --bg2:#101017; --card:#16161e; --card2:#1d1d27; --raise:#262633;
   --txt:#f4f4f7; --txt2:#9c9cab; --txt3:#62626e;
   --pink:#fb7299; --pink-strong:#ff8fad; --pink-tint:rgba(251,114,153,.16); --pink-txt:#ffa8c1;
-  --glass:rgba(22,22,32,.46); --glass-strong:rgba(16,16,24,.58);
-  --glass-border:rgba(255,255,255,.26); --glass-inset:inset 0 1px 0 rgba(255,255,255,.26);
+  --glass:rgba(30,30,40,.6); --glass-strong:rgba(16,16,24,.92);
+  --glass-border:rgba(255,255,255,.18); --glass-inset:inset 0 1px 0 rgba(255,255,255,.16);
+  --frost-filter:blur(65px) saturate(75%) contrast(88%) brightness(1.06);
+  --frost-overlay:linear-gradient(rgba(32,32,40,.6), rgba(32,32,40,.6));
+  --frost-edge-a:rgba(32,32,40,.5); --frost-edge-b:rgba(32,32,40,0);
   --stroke:rgba(255,255,255,.085); --stroke2:rgba(255,255,255,.16);
   --shadow:0 16px 48px rgba(0,0,0,.5); --shadow-sm:0 6px 22px rgba(0,0,0,.36);
   --hero-op:.55; --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.55'/></svg>");
@@ -19,8 +22,11 @@ html[data-theme="light"]{
   --bg:#f0f1f5; --bg2:#f6f6f9; --card:#ffffff; --card2:#ffffff; --raise:#ececf2;
   --txt:#16161d; --txt2:#6d6d7a; --txt3:#a3a3af;
   --pink:#f0507f; --pink-strong:#e64a78; --pink-tint:rgba(240,80,127,.13); --pink-txt:#d63d6c;
-  --glass:rgba(255,255,255,.42); --glass-strong:rgba(255,255,255,.58);
+  --glass:rgba(235,232,232,.6); --glass-strong:rgba(255,255,255,.92);
   --glass-border:rgba(255,255,255,.6); --glass-inset:inset 0 1px 0 rgba(255,255,255,.65);
+  --frost-filter:blur(65px) saturate(75%) contrast(88%) brightness(1.03);
+  --frost-overlay:linear-gradient(rgba(235,232,232,.6), rgba(235,232,232,.6));
+  --frost-edge-a:rgba(235,232,232,.5); --frost-edge-b:rgba(235,232,232,0);
   --stroke:rgba(20,20,35,.09); --stroke2:rgba(20,20,35,.16);
   --shadow:0 18px 50px rgba(30,30,60,.14); --shadow-sm:0 6px 20px rgba(30,30,60,.10);
   --hero-op:.4; color-scheme:light;
@@ -222,16 +228,24 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .trk .del.love.on{color:var(--pink);opacity:1}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
-/* ---------- 侧栏镜像模糊层：主内容副本垫在侧栏下（backdrop-filter 不可用环境的真模糊兜底） ---------- */
+/* ---------- 侧栏镜像模糊层（完整 compositing：blur 65 + 降饱和 + 降对比 + 提亮 + 暖灰白 overlay + 右缘羽化） ---------- */
 #side-mirror{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:30;overflow:hidden;pointer-events:none;
-  filter:blur(26px) saturate(1.6);opacity:.95;background:var(--bg)}
+  filter:var(--frost-filter);background:var(--bg)}
 .mirror-inner{position:absolute;top:0;left:0;width:100vw;box-sizing:border-box;
   padding:0 28px 150px calc(var(--side) + 28px)} /* 与 .main 相同布局，几何对齐 */
+/* 暖灰白 overlay：压对比、抬灰，黑不透成透明黑 */
+#side-mirror::before{content:"";position:absolute;inset:0;background:var(--frost-overlay);pointer-events:none}
+/* 右缘 30px 渐变羽化：过渡到清晰内容无硬边 */
+#side-mirror::after{content:"";position:absolute;top:0;right:-30px;width:30px;height:100%;pointer-events:none;
+  background:linear-gradient(to right,var(--frost-edge-a),var(--frost-edge-b))}
 
 /* ---------- 侧栏（玻璃覆盖层）：Apple 配方 = 强模糊 + 饱和度补偿 + 低透明度底 + 边缘高光 + 光源渐变 ---------- */
+/* ---------- 侧栏（玻璃覆盖层）：暖灰白 overlay 铺在镜像模糊层上，右缘渐变羽化 ---------- */
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
-  background:var(--glass);backdrop-filter:blur(36px) saturate(1.8);-webkit-backdrop-filter:blur(36px) saturate(1.8);
-  border-right:1px solid var(--glass-border);box-shadow:var(--glass-inset);padding:20px 6px 14px 18px}
+  background:var(--frost-overlay);padding:20px 6px 14px 18px}
+/* 右缘 30px 羽化：无硬边界（模糊层超出+渐变过渡） */
+.sidebar::after{content:"";position:absolute;top:0;right:-30px;width:30px;height:100%;pointer-events:none;
+  background:linear-gradient(to right,var(--frost-edge-a),var(--frost-edge-b))}
 /* 注意：不要给 .sidebar/#player-bar 加 transform/will-change——合成层提升会让 backdrop 采样失效（打开瞬间有效、随后消失） */
 .sidebar::before{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.03) 55%, rgba(255,255,255,.09))}
