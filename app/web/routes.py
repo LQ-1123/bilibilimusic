@@ -244,6 +244,43 @@ def tasks_partial(request: Request):
     return resp
 
 
+@router.get("/partials/rec-playlists", response_class=HTMLResponse)
+def rec_playlists_partial(request: Request):
+    """主页推荐歌单架：每日精选 + 各风格电台卡（线上推荐池，非用户曲库）。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    cards = [{"key": "daily", "name": "每日精选", "count": len(recs.daily_items()), "hue": 340}]
+    for i, g in enumerate(recs.GENRE_KEYWORDS.keys()):
+        n = len(recs.list_items(genre=g))
+        if n:
+            cards.append({"key": g, "name": f"{g}精选", "count": n, "hue": _HUES[(i + 1) % len(_HUES)]})
+    return templates.TemplateResponse(request, "partials/rec_playlists.html", {"cards": cards})
+
+
+@router.get("/partials/rec-genre-tracks", response_class=HTMLResponse)
+def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
+    """推荐歌单详情曲目表：推荐池线上歌曲（实时流），daily = 每日精选。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    items = recs.daily_items() if genre == "daily" else recs.list_items(genre=genre)[:30]
+    ctx_items = [
+        {
+            "bvid": i.bvid,
+            "title": i.title,
+            "artist": i.artist,
+            "duration_text": _fmt_duration(i.duration),
+            "cover_url": i.cover_url,
+            "genre": i.genre,
+        }
+        for i in items
+    ]
+    return templates.TemplateResponse(
+        request, "partials/rec_genre_tracks.html", {"items": ctx_items, "genre": genre}
+    )
+
+
 @router.get("/partials/recent", response_class=HTMLResponse)
 def recent_partial(request: Request):
     """最近收藏架（refreshSongs 触发实时刷新）。"""

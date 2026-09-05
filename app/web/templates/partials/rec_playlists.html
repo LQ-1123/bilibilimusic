@@ -1,0 +1,18 @@
+{% for c in cards %}
+<button type="button" class="poster" data-rgenre="{{ c.key }}" data-name="{{ c.name }}"
+        data-count="{{ c.count }}" data-hue="{{ c.hue }}"
+        style="--h:{{ c.hue }}" onclick="openDetailFrom(this)" title="打开推荐歌单「{{ c.name }}」">
+  <span class="pc">
+    <span class="ct">{{ 'REC · 每日轮换' if c.key == 'daily' else 'REC · 线上推荐' }}</span>
+    <span class="nm">{{ c.name }}</span>
+  </span>
+  <span class="row">
+    <span class="en">{{ c.count }} 首 · 实时流试听</span>
+    <span class="fab" aria-hidden="true" title="播放"
+          onclick="event.stopPropagation(); openDetailFrom(this.closest('.poster'), true)"></span>
+  </span>
+</button>
+{% endfor %}
+{% if not cards %}
+<div class="empty" style="padding:20px 4px">推荐池还空着——去听几首歌，推荐歌单会慢慢生成。</div>
+{% endif %}

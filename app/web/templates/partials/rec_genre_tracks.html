@@ -1,0 +1,26 @@
+{% if items %}
+<div class="tracklist">
+  {% for r in items %}
+  <div class="trk trk-rec" data-bvid="{{ r.bvid }}" onclick="playRecRow(this)" title="{{ r.title }}">
+    <span class="no">{{ loop.index }}</span>
+    <span class="eqbox"><span class="eq"><i></i><i></i><i></i></span></span>
+    <span class="im"><img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+    <div class="tt">
+      <div class="t1">{{ r.title }}</div>
+      <div class="t2">{{ r.artist }}</div>
+    </div>
+    <span class="pl-pill">{{ r.genre }}</span>
+    <span class="q dim">REC</span>
+    <span class="du">{{ r.duration_text }}</span>
+    <button class="del love rec-collect" type="button" data-bvid="{{ r.bvid }}" title="收藏入库（自动同步 B 站夹）"
+            hx-post="/web/import"
+            hx-vals='{"url": "https://www.bilibili.com/video/{{ r.bvid }}"}'
+            hx-include="#collect-playlist-id"
+            hx-target="#task-list" hx-swap="innerHTML">♥</button>
+  </div>
+  {% endfor %}
+</div>
+<div style="text-align:center;font-size:11px;color:var(--txt3);padding:14px 0 4px">实时流试听 · 不下载 · 满意点 ♥ 收藏入库</div>
+{% else %}
+<div class="empty">这个风格暂时没有推荐——去听几首歌，推荐会慢慢懂你。</div>
+{% endif %}

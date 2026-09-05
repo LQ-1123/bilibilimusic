@@ -15,9 +15,9 @@
   </div>
 
   <div class="sec">
-    <div class="sec-head"><h2>我的歌单</h2></div>
-    <div class="rack" id="poster-rack"
-         hx-get="/partials/playlists?mode=rack" hx-trigger="load, playlistsChanged from:body, refreshSongs from:body" hx-swap="innerHTML"></div>
+    <div class="sec-head"><h2>推荐歌单</h2><span class="hint">线上内容 · 实时流试听，满意点 ♥ 收藏</span></div>
+    <div class="rack" id="recpl-rack"
+         hx-get="/partials/rec-playlists" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
 
   <div class="sec sec-discover" id="sec-discover">

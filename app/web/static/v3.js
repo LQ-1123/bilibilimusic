@@ -69,14 +69,12 @@
     if (b) b.click();
   };
 
-  // ---------- 歌单详情 ----------
-  var dtState = { id: "0", name: "全部歌曲", hue: 340 };
+  // ---------- 歌单详情（user = 曲库歌单 / rec = 线上推荐歌单） ----------
+  var dtState = { kind: "user", id: "0", name: "全部歌曲", hue: 340 };
 
-  function fillDetail(el) {
+  function fillUserDetail(el) {
     var d = el.dataset;
-    dtState.id = d.pl;
-    dtState.name = d.name;
-    dtState.hue = d.hue || 340;
+    dtState = { kind: "user", id: d.pl, name: d.name, hue: d.hue || 340 };
     $("app").dataset.view = "detail";
     var hero = document.getElementById("dt-hero");
     if (hero) hero.style.setProperty("--dh", dtState.hue);
@@ -96,24 +94,59 @@
     if (mainEl) mainEl.scrollTop = 0;
   }
 
+  function fillRecDetail(el, autoplay) {
+    var d = el.dataset;
+    dtState = { kind: "rec", id: "rec:" + d.rgenre, name: d.name, hue: d.hue || 340 };
+    $("app").dataset.view = "detail";
+    var hero = document.getElementById("dt-hero");
+    if (hero) hero.style.setProperty("--dh", dtState.hue);
+    document.getElementById("dt-eyebrow").textContent =
+      d.rgenre === "daily" ? "REC · 每日轮换推荐" : "REC · 线上推荐歌单";
+    document.getElementById("dt-title").textContent = d.name;
+    document.getElementById("dt-meta").innerHTML =
+      "<b>" + d.count + " 首</b><span>·</span><span>来自 B 站推荐池</span><span>·</span><span>实时流试听 · 不下载</span>";
+    document.getElementById("dt-crumb").textContent = "主页 / " + d.name;
+    if (window.htmx) {
+      htmx.ajax("GET", "/partials/rec-genre-tracks?genre=" + encodeURIComponent(d.rgenre), {
+        target: "#dt-songs",
+        swap: "innerHTML",
+      });
+    }
+    if (mainEl) mainEl.scrollTop = 0;
+    if (autoplay) setTimeout(window.playDetailFirst, 900); // 等曲目列表加载
+  }
+
   window.openDetailFrom = function (el, autoplay) {
     // 先选中歌单（决定收藏目标 + 主页列表联动），再进详情
-    if (window.selectPlaylist) selectPlaylist(el.dataset.pl, el);
-    fillDetail(el);
-    if (autoplay) setTimeout(window.playDetailFirst, 700); // 等曲目列表加载完成
+    if (el.dataset.rgenre === undefined && window.selectPlaylist) selectPlaylist(el.dataset.pl, el);
+    if (el.dataset.rgenre !== undefined) fillRecDetail(el, autoplay);
+    else fillUserDetail(el);
   };
 
+  function firstRecRow() { return document.querySelector('#dt-songs .trk-rec'); }
+
   window.playDetailFirst = function () {
+    if (dtState.kind === "rec") {
+      var r = firstRecRow();
+      if (r) r.click();
+      return;
+    }
     var row = document.querySelector("#dt-songs [data-play]");
     if (row && window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
   };
   window.shuffleDetail = function () {
-    var rows = document.querySelectorAll("#dt-songs [data-play]");
-    if (!rows.length) return;
-    var row = rows[Math.floor(Math.random() * rows.length)];
+    if (dtState.kind === "rec") {
+      var rows = document.querySelectorAll("#dt-songs .trk-rec");
+      if (rows.length) rows[Math.floor(Math.random() * rows.length)].click();
+      return;
+    }
+    var list = document.querySelectorAll("#dt-songs [data-play]");
+    if (!list.length) return;
+    var row = list[Math.floor(Math.random() * list.length)];
     if (window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
   };
   window.detailMenu = function () {
+    if (dtState.kind === "rec") { window.__toast("线上推荐歌单不支持改名或删除"); return; }
     if (String(dtState.id) === "0") { focusSearchBar(); return; }
     var act = prompt(
       "歌单「" + dtState.name + "」操作：\n· 输入新名称 → 改名（B 站夹同步）\n· 输入 del → 删除（歌曲移入我的曲库）",
@@ -127,11 +160,22 @@
     }
   };
 
-  // 歌单增删改后：刷新海报架的同时同步详情页（歌单没了就回主页）
+  // 推荐行点击 → 实时流试听（胶囊接管）
+  window.playRecRow = function (row) {
+    if (!window.playStream) return;
+    var img = row.querySelector("img");
+    window.playStream(row.dataset.bvid, {
+      title: (row.querySelector(".t1") || {}).textContent || "",
+      artist: (row.querySelector(".t2") || {}).textContent || "",
+      cover: img ? img.src : "",
+    }, null);
+  };
+
+  // 歌单增删改后：刷新侧栏；正在看的用户歌单没了就回主页（推荐歌单详情不受影响）
   document.body.addEventListener("playlistsChanged", function () {
-    if ($("app").dataset.view !== "detail") return;
+    if ($("app").dataset.view !== "detail" || dtState.kind === "rec") return;
     var el = document.querySelector('.side-pl[data-pl="' + dtState.id + '"]');
-    if (el) fillDetail(el);
+    if (el) fillUserDetail(el);
     else goHome();
   });
 

@@ -198,6 +198,9 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .trk .del{opacity:0;color:var(--txt3);transition:.2s;display:grid;place-items:center;font-size:13px}
 .trk:hover .del{opacity:1}
 .trk .del:hover{color:#f87171}
+.trk .del.love{font-size:14px}
+.trk .del.love:hover{color:var(--pink-txt)}
+.trk .del.love.on{color:var(--pink);opacity:1}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
 /* ---------- 侧栏（玻璃覆盖层） ---------- */

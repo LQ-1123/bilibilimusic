@@ -822,7 +822,8 @@
     });
   }
 
-  window.playRec = function (bvid, btn) {
+  // 通用实时流试听：接管播放胶囊（meta: {title, artist, cover}）
+  window.playStream = function (bvid, meta, btn) {
     if (recAudio && recAudio.dataset.bvid === bvid) {
       if (recAudio.paused || recAudio.ended) {
         recActive = true;
@@ -841,13 +842,9 @@
     try { audioA.pause(); audioB.pause(); } catch (e) {} // 主音轨让位（不动会话，主播放器随时可切回）
     recAudio = new Audio("/api/stream/" + bvid);
     recAudio.dataset.bvid = bvid;
-    var card = btn && btn.closest ? btn.closest(".reccard") : null;
-    if (card) {
-      var nm = card.querySelector(".nm"), ar = card.querySelector(".ar"), im = card.querySelector("img");
-      recAudio.dataset.title = nm ? nm.textContent : "实时流试听";
-      recAudio.dataset.artist = ar ? ar.textContent : "";
-      recAudio.dataset.cover = im ? im.src : "";
-    }
+    recAudio.dataset.title = meta.title || "实时流试听";
+    recAudio.dataset.artist = meta.artist || "";
+    recAudio.dataset.cover = meta.cover || "";
     recActive = true;
     document.body.classList.add("trial");
     syncTrialUI();
@@ -869,6 +866,9 @@
       $("btn-toggle").textContent = "⏸";
       document.body.classList.add("playing");
       syncTrialUI();
+      document.querySelectorAll(".trk-rec").forEach(function (row) {
+        row.classList.toggle("playing", row.dataset.bvid === bvid);
+      });
     });
     recAudio.addEventListener("pause", function () {
       $("btn-toggle").textContent = "▶";
@@ -876,6 +876,17 @@
     });
     recAudio.play().catch(resetRecButtons);
     setRecBtn(btn, "⏳ 缓冲");
+  };
+
+  window.playRec = function (bvid, btn) {
+    if (recAudio && recAudio.dataset.bvid === bvid) { playStream(bvid, {}, btn); return; }
+    var meta = {};
+    var card = btn && btn.closest ? btn.closest(".reccard") : null;
+    if (card) {
+      var nm = card.querySelector(".nm"), ar = card.querySelector(".ar"), im = card.querySelector("img");
+      meta = { title: nm ? nm.textContent : "", artist: ar ? ar.textContent : "", cover: im ? im.src : "" };
+    }
+    playStream(bvid, meta, btn);
   };
 
   window.dismissRec = function (bvid, el) {
