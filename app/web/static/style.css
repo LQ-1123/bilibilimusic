@@ -228,22 +228,19 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .trk .del.love.on{color:var(--pink);opacity:1}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
-/* ---------- 侧栏镜像模糊层（用户方案：纯 filter blur 30px，无 overlay 无羽化） ---------- */
+/* ---------- 侧栏镜像模糊层（blur 10px 与侧栏 backdrop 配套） ---------- */
 #side-mirror{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:30;overflow:hidden;pointer-events:none;
-  background:var(--bg)}
-.blur-effect{filter:blur(30px)}
+  background:var(--bg);filter:blur(10px)}
 .mirror-inner{position:absolute;top:0;left:0;width:100vw;box-sizing:border-box;
   padding:0 28px 150px calc(var(--side) + 28px)} /* 与 .main 相同布局，几何对齐 */
 
-/* ---------- 侧栏（玻璃覆盖层）：Apple 配方 = 强模糊 + 饱和度补偿 + 低透明度底 + 边缘高光 + 光源渐变 ---------- */
-/* ---------- 侧栏（玻璃覆盖层）：暖灰白 overlay 铺在镜像模糊层上，右缘渐变羽化 ---------- */
+/* ---------- 侧栏（Uiverse 玻璃配方：顶部白渐变底 + 淡白描边 + 下坠阴影 + 轻模糊） ---------- */
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
-  background:transparent;padding:20px 6px 14px 18px}
-/* 右缘 30px 羽化：无硬边界（模糊层超出+渐变过渡） */
-.sidebar::after{display:none}
-/* 注意：不要给 .sidebar/#player-bar 加 transform/will-change——合成层提升会让 backdrop 采样失效（打开瞬间有效、随后消失） */
-.sidebar::before{content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.03) 55%, rgba(255,255,255,.09))}
+  background:linear-gradient(rgba(255,255,255,.133), rgba(255,255,255,0));
+  border:1px solid rgba(255,255,255,.1);box-shadow:0 25px 25px rgba(0,0,0,.25);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border-radius:0 10px 10px 0;padding:20px 6px 14px 18px}
+.sidebar::before,.sidebar::after{display:none}
 .side-nav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
 .side-item{display:flex;align-items:center;gap:12px;height:40px;border-radius:10px;padding:0 12px;
   font-size:14px;font-weight:600;color:var(--txt2);transition:.18s;position:relative;width:100%;text-align:left}
