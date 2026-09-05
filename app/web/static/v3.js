@@ -454,23 +454,27 @@
     if (!menu) return;
     function hide() { menu.hidden = true; }
     document.addEventListener("click", function (e) {
-      var btn = e.target.closest(".addto[data-add]");
-      if (btn) {
+      var songBtn = e.target.closest(".addto[data-add]");
+      var recBtn = e.target.closest(".addto[data-rec]");
+      if (songBtn || recBtn) {
         e.stopPropagation();
-        var songId = btn.dataset.add;
+        menu.dataset.mode = recBtn ? "url" : "song";
+        if (recBtn) { menu.dataset.bvid = recBtn.dataset.rec; menu.dataset.url = recBtn.dataset.url; }
+        else { menu.dataset.song = songBtn.dataset.add; }
         var items = [];
         document.querySelectorAll(".side-pl").forEach(function (el) {
           if (el.dataset.pl !== "0") {
             items.push({ id: el.dataset.pl, name: el.dataset.name });
           }
         });
-        menu.innerHTML = '<div class="pm-title">加入歌单</div>' +
+        menu.innerHTML = '<div class="pm-title">' + (recBtn ? "加入歌单（收藏入库）" : "加入歌单") + "</div>" +
           items.map(function (p) {
             return '<button type="button" class="pm-item" data-pm="' + p.id + '" data-name="' + p.name + '">' +
               '<span class="nm">' + p.name + "</span></button>";
           }).join("") +
           '<button type="button" class="pm-item pm-new" data-new="1">＋ 新建歌单</button>';
-        var r = btn.getBoundingClientRect();
+        var anchor = recBtn || songBtn;
+        var r = anchor.getBoundingClientRect();
         menu.hidden = false;
         var mw = menu.offsetWidth, mh = menu.offsetHeight;
         var left = Math.max(8, Math.min(window.innerWidth - mw - 8, r.right - mw));
@@ -479,14 +483,36 @@
         top = Math.max(8, Math.min(window.innerHeight - mh - 8, top)); // 目标行在视口外时钳回视口内
         menu.style.left = left + "px";
         menu.style.top = top + "px";
-        menu.dataset.song = songId;
         return;
       }
       var pick = e.target.closest("[data-pm]");
-      if (pick && menu.dataset.song) {
-        var songId = menu.dataset.song;
+      if (pick && !menu.hidden) {
         var pid = pick.dataset.pm, name = pick.dataset.name;
         hide();
+        if (menu.dataset.mode === "url") {
+          // 推荐卡：收藏入库到所选歌单（转正出池）
+          fetch("/web/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ url: menu.dataset.url, playlist_id: pid }),
+          })
+            .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+            .then(function (res) {
+              if (!res.ok) { window.__toast(res.t || "加入失败"); return; }
+              window.__markCollected && window.__markCollected(menu.dataset.bvid);
+              window.__toast("已加入「" + name + "」· B 站收藏夹已同步");
+              var card = document.querySelector('.reccard .addto[data-rec="' + menu.dataset.bvid + '"]');
+              var rc = card ? card.closest(".reccard") : null;
+              if (rc) {
+                rc.classList.add("gone");
+                setTimeout(function () { if (rc.parentNode) rc.remove(); }, 450);
+              }
+              if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+            })
+            .catch(function () { window.__toast("网络错误，请重试"); });
+          return;
+        }
+        var songId = menu.dataset.song;
         fetch("/web/playlists/add-song", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },

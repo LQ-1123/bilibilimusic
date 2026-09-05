@@ -20,13 +20,13 @@
       <div class="acts">
         <button type="button" class="mini-act rec-play" data-bvid="{{ r.bvid }}" title="实时流试听（不下载）"
                 onclick="playRec('{{ r.bvid }}', this)">▶</button>
-        <button type="button" class="mini-act love rec-collect" data-bvid="{{ r.bvid }}" title="收藏入库（自动同步 B 站夹）"
+        <button type="button" class="mini-act love rec-collect" data-bvid="{{ r.bvid }}" title="收藏到我的曲库"
                 hx-post="/web/import"
-                hx-vals='{"url": "https://www.bilibili.com/video/{{ r.bvid }}"}'
-                hx-include="#collect-playlist-id"
+                hx-vals='{"url": "https://www.bilibili.com/video/{{ r.bvid }}", "playlist_id": "0"}'
                 hx-target="#task-list" hx-swap="innerHTML">♥</button>
-        <button type="button" class="mini-act" title="不感兴趣（移出推荐池）"
-                onclick="dismissRec('{{ r.bvid }}', this)">✕</button>
+        <button type="button" class="mini-act addto" data-rec="{{ r.bvid }}"
+                data-url="https://www.bilibili.com/video/{{ r.bvid }}"
+                title="加入指定歌单（B 站夹同步）">＋</button>
       </div>
     </div>
   </div>
