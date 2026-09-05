@@ -12,7 +12,10 @@
     <span class="pl-pill">{{ s.pl_name or '我的曲库' }}</span>
     <span class="q{{ '' if s.quality_label == '192K' else ' dim' }}">{{ s.quality_label }}</span>
     <span class="du">{{ s.duration_text }}</span>
-    <button class="del" type="button" data-del="{{ s.id }}" title="删除（同时取消 B 站收藏）">✕</button>
+    <span class="row-acts">
+      <button class="addto" type="button" data-add="{{ s.id }}" title="加入歌单">＋</button>
+      <button class="del" type="button" data-del="{{ s.id }}" title="删除（同时取消 B 站收藏）">✕</button>
+    </span>
   </div>
   {% endfor %}
 </div>

@@ -8,12 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=36">
+  <link rel="stylesheet" href="/static/style.css?v=37">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=17" defer></script>
+  <script src="/static/app.js?v=18" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=10" defer></script>
+  <script src="/static/v3.js?v=11" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -163,6 +163,9 @@
   <audio id="audio2" preload="none"></audio>
 
   <div class="toast" id="toast"><span class="h">♥</span><span id="toast-txt"></span></div>
+
+  <div id="pl-menu" hidden></div>
+  <div id="mini-modal" class="modal hidden"><div class="modal-box" id="mini-modal-box"></div></div>
 </div>
 </body>
 </html>

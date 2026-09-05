@@ -197,6 +197,21 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
   border-radius:6px;padding:3px 7px;width:fit-content}
 .trk .q.dim{color:var(--txt3);background:var(--raise);letter-spacing:.3px}
 .trk .du{font-size:12px;color:var(--txt3);font-variant-numeric:tabular-nums;text-align:right}
+.trk .row-acts{display:flex;align-items:center;gap:2px;justify-content:flex-end}
+.trk .addto{opacity:0;color:var(--txt3);transition:.2s;display:grid;place-items:center;font-size:14px}
+.trk:hover .addto{opacity:1}
+.trk .addto:hover{color:var(--pink-txt)}
+/* 加入歌单弹出菜单 */
+#pl-menu{position:fixed;z-index:150;min-width:190px;max-height:300px;overflow-y:auto;border-radius:14px;
+  background:var(--glass-strong);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);
+  border:1px solid var(--stroke);box-shadow:var(--shadow);padding:6px}
+#pl-menu .pm-title{font-size:10.5px;font-weight:700;letter-spacing:1.2px;color:var(--txt3);padding:7px 12px 5px}
+#pl-menu .pm-item{display:flex;width:100%;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;
+  font-size:13px;font-weight:600;color:var(--txt);transition:.15s;text-align:left}
+#pl-menu .pm-item:hover{background:var(--card2)}
+#pl-menu .pm-item.on .nm{color:var(--pink-txt)}
+#pl-menu .pm-item .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#pl-menu .pm-new{border-top:1px solid var(--stroke);margin-top:4px;padding-top:8px;color:var(--pink-txt)}
 .trk .del{opacity:0;color:var(--txt3);transition:.2s;display:grid;place-items:center;font-size:13px}
 .trk:hover .del{opacity:1}
 .trk .del:hover{color:#f87171}
@@ -514,7 +529,8 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   .tb-chip .lbl{display:none}
   .list-head{display:none}
   .trk{grid-template-columns:26px 44px minmax(0,1fr) 50px;gap:10px;min-height:54px}
-  .trk .pl-pill,.trk .del{display:none}
+  .trk .pl-pill,.trk .row-acts .del{display:none}
+  .trk .addto{display:grid;opacity:1}  /* 触屏无 hover：加入歌单常显 */
   #player-bar{left:12px;right:12px;bottom:86px;max-width:none;grid-template-columns:auto minmax(0,1fr) auto;
     grid-template-areas:"ctl meta acts";min-height:56px;padding:6px 10px;gap:6px}
   #player-bar .p-time{display:none}

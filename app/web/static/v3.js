@@ -162,12 +162,12 @@
     var row = list[Math.floor(Math.random() * list.length)];
     if (window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
   };
-  window.detailMenu = function () {
+  window.detailMenu = async function () {
     if (dtState.kind === "rec") { window.__toast("线上推荐歌单不支持改名或删除"); return; }
     if (String(dtState.id) === "0") { focusSearchBar(); return; }
-    var act = prompt(
-      "歌单「" + dtState.name + "」操作：\n· 输入新名称 → 改名（B 站夹同步）\n· 输入 del → 删除（歌曲移入我的曲库）",
-      "");
+    var act = window.__promptModal
+      ? await window.__promptModal("歌单「" + dtState.name + "」管理", { placeholder: "输入新名称改名；输入 del 删除" })
+      : prompt("歌单「" + dtState.name + "」操作：\n· 输入新名称 → 改名（B 站夹同步）\n· 输入 del → 删除（歌曲移入我的曲库）");
     if (!act) return;
     act = act.trim();
     if (act.toLowerCase() === "del") {
@@ -404,6 +404,115 @@
     if ($("app").dataset.view === "detail") goHome();
   });
 
+  // ---------- 轻量弹窗（in-app 浏览器常拦截 prompt/confirm，改用页面内弹窗） ----------
+  window.__promptModal = function (title, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      var box = $("mini-modal-box"), wrap = $("mini-modal");
+      box.innerHTML =
+        '<h3 style="margin-bottom:12px">' + title + "</h3>" +
+        '<input id="mm-input" type="text" style="width:100%;height:42px;border-radius:12px;background:var(--card);' +
+        'border:1px solid var(--stroke);padding:0 14px;font-size:14px" placeholder="' + (opts.placeholder || "") + '" ' +
+        'value="' + (opts.value || "") + '">' +
+        '<div class="modal-actions"><button id="mm-cancel">取消</button><button id="mm-ok">确定</button></div>';
+      wrap.classList.remove("hidden");
+      var input = $("mm-input");
+      input.focus();
+      input.select();
+      var done = function (val) {
+        wrap.classList.add("hidden");
+        document.removeEventListener("keydown", onKey, true);
+        resolve(val);
+      };
+      var onKey = function (ev) {
+        if (ev.key === "Enter") { ev.preventDefault(); done(input.value.trim() || null); }
+        if (ev.key === "Escape") { ev.preventDefault(); done(null); }
+      };
+      document.addEventListener("keydown", onKey, true);
+      $("mm-ok").addEventListener("click", function () { done(input.value.trim() || null); });
+      $("mm-cancel").addEventListener("click", function () { done(null); });
+    });
+  };
+  window.__confirmModal = function (title, text) {
+    return new Promise(function (resolve) {
+      var box = $("mini-modal-box"), wrap = $("mini-modal");
+      box.innerHTML =
+        '<h3 style="margin-bottom:10px">' + title + "</h3>" +
+        '<p style="font-size:12.5px;color:var(--txt2);line-height:1.8">' + text + "</p>" +
+        '<div class="modal-actions"><button id="mm-cancel">取消</button>' +
+        '<button id="mm-ok" style="background:#e05252">删除</button></div>';
+      wrap.classList.remove("hidden");
+      var done = function (val) { wrap.classList.add("hidden"); resolve(val); };
+      $("mm-ok").addEventListener("click", function () { done(true); });
+      $("mm-cancel").addEventListener("click", function () { done(false); });
+    });
+  };
+
+  // ---------- 行内"加入歌单"菜单 ----------
+  (function () {
+    var menu = $("pl-menu");
+    if (!menu) return;
+    function hide() { menu.hidden = true; }
+    document.addEventListener("click", function (e) {
+      var btn = e.target.closest(".addto[data-add]");
+      if (btn) {
+        e.stopPropagation();
+        var songId = btn.dataset.add;
+        var items = [];
+        document.querySelectorAll(".side-pl").forEach(function (el) {
+          if (el.dataset.pl !== "0") {
+            items.push({ id: el.dataset.pl, name: el.dataset.name });
+          }
+        });
+        menu.innerHTML = '<div class="pm-title">加入歌单</div>' +
+          items.map(function (p) {
+            return '<button type="button" class="pm-item" data-pm="' + p.id + '" data-name="' + p.name + '">' +
+              '<span class="nm">' + p.name + "</span></button>";
+          }).join("") +
+          '<button type="button" class="pm-item pm-new" data-new="1">＋ 新建歌单</button>';
+        var r = btn.getBoundingClientRect();
+        menu.hidden = false;
+        var mw = menu.offsetWidth, mh = menu.offsetHeight;
+        var left = Math.max(8, Math.min(window.innerWidth - mw - 8, r.right - mw));
+        var top = r.bottom + 6;
+        if (top + mh > window.innerHeight - 8) top = r.top - mh - 6; // 放按钮上方
+        top = Math.max(8, Math.min(window.innerHeight - mh - 8, top)); // 目标行在视口外时钳回视口内
+        menu.style.left = left + "px";
+        menu.style.top = top + "px";
+        menu.dataset.song = songId;
+        return;
+      }
+      var pick = e.target.closest("[data-pm]");
+      if (pick && menu.dataset.song) {
+        var songId = menu.dataset.song;
+        var pid = pick.dataset.pm, name = pick.dataset.name;
+        hide();
+        fetch("/web/playlists/add-song", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ song_id: songId, playlist_id: pid }),
+        })
+          .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+          .then(function (res) {
+            if (!res.ok) { window.__toast(res.t || "加入失败"); return; }
+            window.__toast("已加入「" + name + "」· B 站收藏夹已同步");
+            if (window.htmx) {
+              htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
+              htmx.trigger(document.body, "refreshSongs");
+            }
+          })
+          .catch(function () { window.__toast("网络错误，请重试"); });
+        return;
+      }
+      if (e.target.closest("[data-new]")) {
+        hide();
+        if (window.createPlaylist) createPlaylist();
+        return;
+      }
+      if (!e.target.closest("#pl-menu")) hide();
+    });
+    document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
+  })();
   // ---------- 移动端 Tab / 搜索圆钮 ----------
   window.mTab = function (name, btn) {
     document.body.dataset.mtab = name;

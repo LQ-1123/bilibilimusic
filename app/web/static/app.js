@@ -772,7 +772,9 @@
   };
 
   window.createPlaylist = async function () {
-    var name = prompt("歌单名（将创建同名收藏夹 bilimusic- <歌单名>，总长约 20 字以内）：");
+    var name = window.__promptModal
+      ? await window.__promptModal("新建歌单", { placeholder: "歌单名（B 站将创建收藏夹 bilimusic- <名>）" })
+      : prompt("歌单名（将创建同名收藏夹 bilimusic- <歌单名>，总长约 20 字以内）：");
     if (!name || !name.trim()) return;
     var body = new URLSearchParams({ name: name.trim() });
     var resp = await fetch("/web/playlists/create", {
@@ -781,16 +783,19 @@
       body: body,
     });
     if (!resp.ok) {
-      alert((await resp.text()) || "创建失败");
+      window.__toast ? window.__toast((await resp.text()) || "创建失败") : alert((await resp.text()) || "创建失败");
       return;
     }
+    window.__toast && window.__toast("歌单已创建 · B 站收藏夹已同步");
     htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
   };
 
   window.renamePlaylist = async function (id, oldName) {
-    var name = prompt("新的歌单名（B 站收藏夹将同步改名）：", oldName);
-    if (!name || name === oldName) return;
+    var name = window.__promptModal
+      ? await window.__promptModal("重命名歌单", { value: oldName })
+      : prompt("新的歌单名（B 站收藏夹将同步改名）：", oldName);
+    if (!name || !name.trim() || name === oldName) return;
     var body = new URLSearchParams({ id: id, name: name.trim() });
     var resp = await fetch("/web/playlists/rename", {
       method: "POST",
@@ -798,15 +803,20 @@
       body: body,
     });
     if (!resp.ok) {
-      alert((await resp.text()) || "改名失败");
+      window.__toast ? window.__toast((await resp.text()) || "改名失败") : alert((await resp.text()) || "改名失败");
       return;
     }
+    window.__toast && window.__toast("已改名 · B 站收藏夹同步更新");
     htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
   };
 
   window.deletePlaylist = async function (id, name) {
-    if (!confirm("删除歌单「" + name + "」？\n\n· 歌单内的歌曲会移入「我的曲库」（不会丢失）\n· 对应的 B 站收藏夹 bilimusic- " + name + " 将一并删除\n· 歌曲的 B 站收藏会转移到主夹（后台进行）")) return;
+    var ok = window.__confirmModal
+      ? await window.__confirmModal("删除歌单「" + name + "」？",
+          "歌单内的歌曲会移入「我的曲库」（不会丢失）；对应的 B 站收藏夹 bilimusic- " + name + " 将一并删除；歌曲的 B 站收藏会后台转移到主夹。")
+      : confirm("删除歌单「" + name + "」？\n\n· 歌单内的歌曲会移入「我的曲库」（不会丢失）\n· 对应的 B 站收藏夹 bilimusic- " + name + " 将一并删除\n· 歌曲的 B 站收藏会转移到主夹（后台进行）");
+    if (!ok) return;
     var body = new URLSearchParams({ id: id });
     var resp = await fetch("/web/playlists/delete", {
       method: "POST",
@@ -814,7 +824,7 @@
       body: body,
     });
     if (!resp.ok) {
-      alert((await resp.text()) || "删除失败");
+      window.__toast ? window.__toast((await resp.text()) || "删除失败") : alert((await resp.text()) || "删除失败");
       return;
     }
     if (activePlaylistId() === String(id)) selectPlaylist(0);

@@ -190,6 +190,21 @@ async def web_playlist_delete(request: Request, id: int = Form(default=0)):
     return PlainTextResponse(f"ok {result['moved']}")
 
 
+@router.post("/web/playlists/add-song", response_class=PlainTextResponse)
+async def web_playlist_add_song(
+    request: Request, song_id: int = Form(default=0), playlist_id: int = Form(default=0)
+):
+    """把曲库内已有歌曲加入歌单（playlist_id=0 → 默认歌单），同步 B 站收藏转移。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    try:
+        await playlists.add_song(playlist_id, song_id, request.app.state.bili)
+    except (ValueError, BiliApiError) as exc:
+        return PlainTextResponse(str(exc), status_code=400)
+    return PlainTextResponse("ok")
+
+
 @router.get("/partials/songs", response_class=HTMLResponse)
 def songs_partial(request: Request, q: str = "", playlist_id: int = 0):
     gate = _login_redirect(request)

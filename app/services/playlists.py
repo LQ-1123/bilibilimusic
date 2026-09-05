@@ -139,6 +139,48 @@ async def create(name: str, bili: BiliClient, folder_id: int = 0) -> Playlist:
         return row
 
 
+async def add_song(pid: int, song_id: int, bili: BiliClient) -> dict:
+    """把曲库内已有歌曲加入歌单（pid=0 → 默认歌单），并同步 B 站收藏转移。
+
+    DB 的 playlist_id 是归属唯一事实源；B 站侧先从原夹取消收藏（失败不阻塞，
+    后台同步会自愈），再收进目标歌单的夹组（满则溢出建夹）。
+    """
+    song = library.get_song(song_id)
+    if song is None:
+        raise ValueError("歌曲不存在")
+    if pid:
+        target = get_playlist(pid)
+        if target is None:
+            raise ValueError("歌单不存在")
+    else:
+        target = ensure_default()
+    if song.playlist_id == (target.id or 0):
+        return {"moved": False, "name": target.name}
+
+    old_folder = song.fav_folder_id or 0
+    if old_folder:
+        try:
+            aid0 = song.aid or (await bili.bvid_to_aid(song.bvid) or 0)
+            if aid0:
+                await bili.unfavorite_song(aid0, old_folder)
+        except Exception:  # noqa: BLE001  收藏转移失败不阻塞归属更新，后台同步自愈
+            pass
+
+    aid = song.aid or (await bili.bvid_to_aid(song.bvid) or 0)
+    folder_id = 0
+    if aid:
+        ids = folder_ids(target)
+        folder_id = (
+            await bili.favorite_into(aid, ids, next_title_maker(target.name))
+            if ids
+            else await bili.favorite_song(aid)  # 默认夹池（含收养）
+        )
+    library.update_playlist(song.id, target.id or 0)
+    if folder_id:
+        library.update_fav_folder(song.id, folder_id)
+    return {"moved": True, "name": target.name}
+
+
 async def rename(pid: int, new_name: str, bili: BiliClient) -> None:
     """改歌单名，收藏夹名同步更新（首夹新名，溢出夹追加编号）。"""
     new_name = (new_name or "").strip()
