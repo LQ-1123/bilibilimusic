@@ -447,6 +447,7 @@ body:not(.playing) .i-pause{display:none}
   mask-image:linear-gradient(transparent, #000 12%, #000 84%, transparent)}
 .l-line{font-size:26px;font-weight:800;line-height:1.5;padding:12px 0;color:var(--txt3);opacity:.55;transition:.35s;letter-spacing:.3px}
 .l-line.on{color:var(--txt);opacity:1}
+#lyrics-scroll.timed .l-line{cursor:pointer}
 .l-empty{color:var(--txt3);text-align:center;padding:40px 0;font-size:14px}
 
 /* ---------- 歌单详情 ---------- */

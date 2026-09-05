@@ -586,7 +586,20 @@
       var t = l.text || "· · ·"; // 纯音乐/间奏行：圆点代替 ♪
       return '<p class="l-line" data-idx="' + i + '">' + escapeHtml(t) + "</p>";
     }).join("");
+    box.classList.toggle("timed", lyricTimed); // 有轴歌词可点击跳转
   }
+
+  // 点击歌词行跳转到该行时间（曲库歌与试听流都支持；无轴歌词不响应）
+  $("lyrics-scroll").addEventListener("click", function (e) {
+    var line = e.target.closest(".l-line");
+    if (!line || !lyricTimed) return;
+    var l = lyricLines[Number(line.dataset.idx)];
+    if (!l || l.t < 0) return;
+    var m = (recActive && recAudio) ? recAudio : audio;
+    if (!m) return;
+    try { m.currentTime = l.t; } catch (err) {}
+    updateLyricHighlight(l.t, true);
+  });
 
   function loadLyrics(meta) {
     // meta: {key, title, artist, cover, fetchUrl, fetchInit} — key 区分库内歌 / 试听歌
