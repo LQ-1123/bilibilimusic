@@ -374,6 +374,55 @@
     if (lc && window.BiliPlayer) lc.addEventListener("click", function () { BiliPlayer.toggle(); });
   })();
 
+  // ---------- 歌词页控制条：进度/时间跟随当前媒体（曲库歌或试听流），seek 双向 ----------
+  (function () {
+    var seekEl = $("ly-seek");
+    if (!seekEl || !window.BiliPlayer) return;
+    var dragging = false;
+    var panelOpen = function () { return !$("lyrics-panel").classList.contains("hidden"); };
+
+    setInterval(function () {
+      if (!panelOpen()) return;
+      var m = BiliPlayer.activeMedia();
+      if (!m || !m.duration || !isFinite(m.duration)) return;
+      if (!dragging) seekEl.value = Math.round((m.currentTime / m.duration) * 1000);
+      $("ly-cur").textContent = fmtTime(m.currentTime);
+      $("ly-rem").textContent = "-" + fmtTime(Math.max(0, m.duration - m.currentTime));
+      var rep = $("repeat-one-toggle");
+      var lyRep = $("ly-rep");
+      if (rep && lyRep) lyRep.classList.toggle("on", rep.checked);
+    }, 500);
+    function fmtTime(s) {
+      s = Math.max(0, Math.floor(s || 0));
+      return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
+    seekEl.addEventListener("input", function () {
+      dragging = true;
+      var m = BiliPlayer.activeMedia();
+      if (m && m.duration) $("ly-cur").textContent = fmtTime((seekEl.value / 1000) * m.duration);
+    });
+    seekEl.addEventListener("change", function () {
+      var m = BiliPlayer.activeMedia();
+      if (m && m.duration) {
+        try { m.currentTime = (seekEl.value / 1000) * m.duration; } catch (e) {}
+      }
+      dragging = false;
+    });
+    var lt = $("ly-toggle");
+    if (lt) lt.addEventListener("click", function () { BiliPlayer.toggle(); });
+    var lp = $("ly-prev");
+    if (lp) lp.addEventListener("click", function () { BiliPlayer.skip(-1); });
+    var ln = $("ly-next");
+    if (ln) ln.addEventListener("click", function () { BiliPlayer.skip(1); });
+    var ls = $("ly-shuf");
+    if (ls) ls.addEventListener("click", function () { window.__toast("随机播放：跳到链上随机一首（演示）"); });
+    var lr = $("ly-rep");
+    if (lr) lr.addEventListener("click", function () {
+      var rep = $("repeat-one-toggle");
+      if (rep) { rep.checked = !rep.checked; rep.dispatchEvent(new Event("change")); }
+    });
+  })();
+
   // ---------- 播放状态 → 全局均衡器动画 ----------
   (function () {
     ["audio", "audio2"].forEach(function (id) {

@@ -529,18 +529,23 @@
   });
 
   // ---------- 歌词面板（B站字幕 + LRCLIB 混合，后端返回 LRC/纯文本） ----------
+  var NOTE_RE = /[♪♫♩♬]/g; // 歌词行装饰符号（LRCLIB/AI 字幕常见），展示前剥掉
+
   function parseLrc(text) {
     var out = [], timed = 0;
     String(text || "").split(/\r?\n/).forEach(function (raw) {
       var line = raw.trim();
       if (!line) return;
       var m = line.match(/^\[(\d{1,2}):(\d{1,2}(?:\.\d{1,2})?)\](.*)$/);
+      var body;
       if (m) {
         timed++;
-        out.push({ t: parseInt(m[1], 10) * 60 + parseFloat(m[2]), text: m[3].trim() });
+        body = m[3].trim();
       } else {
-        out.push({ t: -1, text: line.replace(/^\[[^\]]*\]/, "").trim() });
+        body = line.replace(/^\[[^\]]*\]/, "").trim();
       }
+      body = body.replace(NOTE_RE, " ").replace(/\s+/g, " ").trim();
+      out.push({ t: m ? parseInt(m[1], 10) * 60 + parseFloat(m[2]) : -1, text: body });
     });
     out.sort(function (a, b) { return (a.t < 0 ? 1e9 : a.t) - (b.t < 0 ? 1e9 : b.t); });
     return { lines: out, timed: timed >= 2 };
@@ -553,7 +558,8 @@
       return;
     }
     box.innerHTML = lyricLines.map(function (l, i) {
-      return '<p class="l-line" data-idx="' + i + '">' + escapeHtml(l.text || "♪") + "</p>";
+      var t = l.text || "· · ·"; // 纯音乐/间奏行：圆点代替 ♪
+      return '<p class="l-line" data-idx="' + i + '">' + escapeHtml(t) + "</p>";
     }).join("");
   }
 
@@ -728,6 +734,7 @@
     currentId: function () { return playlist[current] ? playlist[current].id : null; },
     isPlaying: function () { return !!audio.src && !audio.paused; },
     songs: fetchSongs, // v3.js 搜索下拉用
+    activeMedia: function () { return (recActive && recAudio) ? recAudio : audio; }, // 歌词页进度条寻址
   };
 
   // ---------- 歌单（每歌单对应收藏夹 bilimusic- <歌单名>） ----------
