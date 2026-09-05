@@ -330,18 +330,25 @@
       }
     }
 
+    var closeBtn = $("search-close");
+    var syncClose = function () { // 桌面端：有输入才显示 ✕（点击清空）；手机端搜索态由 CSS 接管
+      if (closeBtn) closeBtn.style.display = (input.value.trim() && !drop.hidden) ? "grid" : "";
+    };
     input.addEventListener("input", function () {
       clearTimeout(timer);
       var q = input.value.trim();
-      if (!q) { close(); lastQ = null; return; }
-      open();
-      timer = setTimeout(function () { run(q); }, 350);
+      if (!q) { close(); lastQ = null; } else { open(); timer = setTimeout(function () { run(q); }, 350); }
+      syncClose();
     });
     input.addEventListener("focus", function () {
       if (input.value.trim()) open();
     });
-    var closeBtn = $("search-close");
-    if (closeBtn) closeBtn.addEventListener("click", function () { close(); input.blur(); });
+    if (closeBtn) closeBtn.addEventListener("click", function () {
+      input.value = "";
+      close();
+      input.blur();
+      syncClose();
+    });
     lib.addEventListener("click", function (e) {
       var row = e.target.closest("[data-song]");
       if (row && window.BiliPlayer) { BiliPlayer.playById(Number(row.dataset.song)); close(); }

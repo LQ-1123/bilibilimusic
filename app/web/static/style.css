@@ -60,12 +60,15 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .tb-cir{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--stroke);
   display:grid;place-items:center;color:var(--txt2);transition:.2s;flex:none;font-size:15px}
 .tb-cir:hover{color:var(--txt);background:var(--card2)}
-.tb-search{flex:0 1 480px;height:40px;border-radius:999px;background:var(--card);border:1px solid var(--stroke);
-  display:flex;align-items:center;gap:10px;padding:0 17px;color:var(--txt3);transition:.25s;box-shadow:var(--shadow-sm);min-width:0}
-.tb-search:focus-within{border-color:var(--pink);box-shadow:0 0 0 3.5px var(--pink-tint)}
+.tb-search{flex:0 1 480px;height:42px;border-radius:999px;background:var(--card);border:1px solid var(--stroke);
+  display:flex;align-items:center;gap:10px;padding:0 17px;color:var(--txt3);transition:.22s;box-shadow:var(--shadow-sm);min-width:0}
+.tb-search:focus-within{border:2px solid var(--pink);box-shadow:0 0 0 3.5px var(--pink-tint);background:var(--bg2)}
+.tb-search:focus-within svg{color:var(--pink)}
 .tb-search svg{width:16px;height:16px;flex:none}
 .tb-search input{flex:1;font-size:13.5px;color:var(--txt);min-width:0}
 #search::-webkit-search-cancel-button{display:none}
+/* 桌面端 ✕：仅在有输入时出现（v3.js 控制内联显示）；手机端搜索态由媒体查询接管 */
+#search-close{display:none}
 .tb-search input::placeholder{color:var(--txt3)}
 #collect-inline{flex:none;height:28px;border-radius:999px;background:var(--pink);color:#fff;
   font-size:12px;font-weight:700;padding:0 13px;display:flex;align-items:center;gap:5px;transition:.2s;white-space:nowrap}
@@ -501,7 +504,6 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
     transform-origin:100% 50%;animation:msExpand .32s cubic-bezier(.3,.85,.3,1)}
   @keyframes msExpand{from{transform:scaleX(.18);opacity:.3}to{transform:none;opacity:1}}
   .topbar.searching .tb-right,.topbar.searching .tb-cir{display:none}
-  #search-close{display:none}
   .topbar.searching #search-close{display:grid;flex:none;width:32px;height:32px;font-size:13px}
   /* 搜索态：Tab 胶囊与圆钮缩隐，搜索胶囊取而代之 */
   body.msearching .m-tabs{opacity:0;transform:scale(.9);pointer-events:none}
