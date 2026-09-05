@@ -241,7 +241,7 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 /* ---------- 侧栏（玻璃覆盖层）：Apple 配方 = 强模糊 + 饱和度补偿 + 低透明度底 + 边缘高光 + 光源渐变 ---------- */
 /* ---------- 侧栏（玻璃覆盖层）：暖灰白 overlay 铺在镜像模糊层上，右缘渐变羽化 ---------- */
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
-  background:var(--frost-overlay);padding:20px 6px 14px 18px}
+  background:transparent;padding:20px 6px 14px 18px}
 /* 右缘 30px 羽化：无硬边界（模糊层超出+渐变过渡） */
 .sidebar::after{display:none}
 /* 注意：不要给 .sidebar/#player-bar 加 transform/will-change——合成层提升会让 backdrop 采样失效（打开瞬间有效、随后消失） */
