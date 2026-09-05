@@ -133,17 +133,16 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .reccard:hover .rc{box-shadow:none}
 .poster:hover .fab,.songcard:hover .fab{opacity:1;transform:translateY(0)}
 
-/* ---------- 最近收藏卡 ---------- */
+/* ---------- 最近收藏卡（无框，同发现卡） ---------- */
 .songcard{width:186px;flex:none;cursor:pointer;background:none;border:none;padding:0;text-align:left}
-.songcard .sc{display:block;background:var(--card);border:1px solid var(--stroke);border-radius:14px;padding:13px;
-  transition:transform .28s cubic-bezier(.2,.7,.3,1),box-shadow .28s}
+.songcard .sc{display:block;background:none;border:none;padding:0;
+  transition:transform .28s cubic-bezier(.2,.7,.3,1)}
 .songcard .im{display:block;width:100%;aspect-ratio:1;border-radius:9px;overflow:hidden;background:var(--raise)}
 .songcard .im img{width:100%;height:100%;object-fit:cover}
 .songcard .nm{display:block;font-size:13.5px;font-weight:700;margin-top:11px;line-height:1.35;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
 .songcard .ar{display:block;font-size:11.5px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.songcard .foot{display:flex;align-items:center;justify-content:space-between;margin-top:9px}
-.songcard .dur{font-size:11px;color:var(--txt3)}
+.songcard .foot{display:flex;align-items:center;justify-content:flex-end;margin-top:6px}
 
 /* ---------- 推荐卡（发现池）：无框，封面下直接放字 ---------- */
 .reccard{width:170px;flex:none;position:relative}
