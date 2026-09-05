@@ -193,10 +193,13 @@
     });
   })();
 
-  // ---------- 点封面 → 歌词 ----------
+  // ---------- 点封面 → 歌词（试听态无歌词，跳过） ----------
   (function () {
     var c = $("player-cover"), lc = $("lyrics-cover");
-    if (c && window.toggleLyrics) c.addEventListener("click", function () { toggleLyrics(); });
+    if (c && window.toggleLyrics) c.addEventListener("click", function () {
+      if (document.body.classList.contains("trial")) return;
+      toggleLyrics();
+    });
     if (lc && window.BiliPlayer) lc.addEventListener("click", function () { BiliPlayer.toggle(); });
   })();
 

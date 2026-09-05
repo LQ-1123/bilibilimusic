@@ -206,6 +206,7 @@
   }
 
   function playSong(song) {
+    stopTrial();
     cancelTransition();
     naturalPlan = null;
     playlist.forEach(function (s, i) { if (s.id === song.id) current = i; });
@@ -255,6 +256,7 @@
   }
 
   function skip(delta) {
+    stopTrial();
     naturalPlan = null;
     var ni = chainNextIndex(delta);
     if (ni < 0) return;
@@ -295,6 +297,11 @@
   });
 
   $("btn-toggle").addEventListener("click", function () {
+    if (recActive && recAudio) { // 发现池试听接管胶囊
+      if (recAudio.paused || recAudio.ended) { recAudio.play().catch(function () {}); }
+      else { recAudio.pause(); }
+      return;
+    }
     if (!audio.src) return;
     if (audio.paused) { audio.play().catch(function () {}); } else { audio.pause(); }
   });
@@ -794,6 +801,23 @@
   // ---------- 发现/推荐池（实时流试听，不下载；过期自动出池） ----------
 
   var recAudio = null;
+  var recActive = false; // 发现池试听时，播放胶囊由实时流接管
+
+  function stopTrial() {
+    if (!recAudio) return;
+    try { recAudio.pause(); } catch (e) {}
+    recActive = false;
+    document.body.classList.remove("trial");
+  }
+
+  function syncTrialUI() {
+    if (!recActive || !recAudio) return;
+    $("player-bar").classList.remove("hidden");
+    $("player-title").textContent = recAudio.dataset.title || "实时流试听";
+    $("player-artist").textContent =
+      (recAudio.dataset.artist ? recAudio.dataset.artist + " · " : "") + "发现 · 实时流（未入库）";
+    if (recAudio.dataset.cover) $("player-cover").src = recAudio.dataset.cover;
+  }
 
   // 迷你圆钮只显示单字符态（▶/⏸/⏳），旧长文案按钮兼容
   function setRecBtn(btn, label) {
@@ -809,8 +833,11 @@
 
   window.playRec = function (bvid, btn) {
     if (recAudio && recAudio.dataset.bvid === bvid) {
-      if (recAudio.paused) {
-        recAudio.play();
+      if (recAudio.paused || recAudio.ended) {
+        recActive = true;
+        document.body.classList.add("trial");
+        syncTrialUI();
+        recAudio.play().catch(function () {});
         setRecBtn(btn, "⏸ 暂停");
       } else {
         recAudio.pause();
@@ -820,16 +847,41 @@
     }
     if (recAudio) recAudio.pause();
     resetRecButtons();
+    try { audioA.pause(); audioB.pause(); } catch (e) {} // 主音轨让位（不动会话，主播放器随时可切回）
     recAudio = new Audio("/api/stream/" + bvid);
     recAudio.dataset.bvid = bvid;
-    recAudio.addEventListener("ended", resetRecButtons);
+    var card = btn && btn.closest ? btn.closest(".reccard") : null;
+    if (card) {
+      var nm = card.querySelector(".nm"), ar = card.querySelector(".ar"), im = card.querySelector("img");
+      recAudio.dataset.title = nm ? nm.textContent : "实时流试听";
+      recAudio.dataset.artist = ar ? ar.textContent : "";
+      recAudio.dataset.cover = im ? im.src : "";
+    }
+    recActive = true;
+    document.body.classList.add("trial");
+    syncTrialUI();
+    recAudio.addEventListener("ended", function () {
+      resetRecButtons();
+      $("btn-toggle").textContent = "▶";
+      if (audioA.paused && audioB.paused) document.body.classList.remove("playing");
+    });
     recAudio.addEventListener("error", function () {
       resetRecButtons();
+      stopTrial();
       alert("试听失败：该视频可能已失效");
     });
     recAudio.addEventListener("playing", function () {
       var active = document.querySelector('.rec-play[data-bvid="' + bvid + '"]');
       setRecBtn(active, "⏸ 暂停");
+    });
+    recAudio.addEventListener("play", function () {
+      $("btn-toggle").textContent = "⏸";
+      document.body.classList.add("playing");
+      syncTrialUI();
+    });
+    recAudio.addEventListener("pause", function () {
+      $("btn-toggle").textContent = "▶";
+      if (audioA.paused && audioB.paused) document.body.classList.remove("playing");
     });
     recAudio.play().catch(resetRecButtons);
     setRecBtn(btn, "⏳ 缓冲");

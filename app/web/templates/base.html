@@ -8,12 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=21">
+  <link rel="stylesheet" href="/static/style.css?v=22">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=13" defer></script>
+  <script src="/static/app.js?v=14" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=2" defer></script>
+  <script src="/static/v3.js?v=3" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -51,12 +51,7 @@
   </main>
 
   <aside class="sidebar">
-    <nav class="side-nav">
-      <button type="button" class="side-item on" id="navHome" onclick="goHome()"><svg><use href="#i-home"/></svg>主页</button>
-      <button type="button" class="side-item" onclick="jumpDiscover()"><svg><use href="#i-compass"/></svg>发现</button>
-      <button type="button" class="side-item" onclick="focusSearchBar()"><svg><use href="#i-search"/></svg>搜索</button>
-    </nav>
-    <div class="side-sec">
+    <div class="side-sec" style="margin-top:2px">
       <span class="lb">我的歌单</span>
       <button class="add" type="button" onclick="createPlaylist()" title="新建歌单（同步创建 B 站收藏夹）">＋</button>
     </div>

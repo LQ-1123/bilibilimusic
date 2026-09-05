@@ -272,10 +272,8 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 #vol::-moz-range-track{height:3px;border-radius:3px;background:var(--stroke2)}
 #vol::-moz-range-thumb{width:10px;height:10px;border:none;border-radius:50%;background:var(--txt2)}
 
-/* ---------- 收藏任务浮片堆 ---------- */
-#task-list{position:absolute;left:calc(var(--side) + 26px);bottom:96px;z-index:55;display:flex;flex-direction:column;gap:8px;
-  max-width:320px;pointer-events:none}
-#task-list>*{pointer-events:auto}
+/* ---------- 收藏任务浮片（用户要求隐藏：DOM 保留作为 htmx 容器） ---------- */
+#task-list{display:none !important}
 .task{border-radius:12px;background:var(--glass-strong);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
   border:1px solid var(--stroke);box-shadow:var(--shadow-sm);padding:9px 13px;font-size:11.5px;color:var(--txt2);
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:320px}
@@ -289,6 +287,10 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .task .t-src{color:var(--txt3);font-size:10.5px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .task.summary{font-size:10.5px;color:var(--txt3);padding:6px 12px}
 .task.bye{opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s}
+
+/* ---------- 试听态（发现池实时流接管播放胶囊：无时长，隐藏进度/时间码/歌词） ---------- */
+body.trial #seek,body.trial .p-time{visibility:hidden}
+body.trial #btn-lyrics{display:none}
 
 /* ---------- 队列面板 ---------- */
 #queue-panel{position:absolute;top:14px;right:14px;bottom:100px;width:min(344px,calc(100vw - 28px));z-index:70;border-radius:18px;
