@@ -13,7 +13,7 @@
   <script src="/static/transition.js?v=7" defer></script>
   <script src="/static/app.js?v=17" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=6" defer></script>
+  <script src="/static/v3.js?v=7" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -157,7 +157,7 @@
       <button type="button" class="m-tab" data-mtab="library" onclick="mTab('library',this)"><svg><use href="#i-note"/></svg>曲库</button>
       <button type="button" class="m-tab" data-mtab="account" onclick="mTab('account',this)"><svg><use href="#i-user"/></svg>账号</button>
     </div>
-    <button type="button" class="m-orb" onclick="orbSearch()" title="搜索"><svg><use href="#i-search"/></svg></button>
+    <button type="button" class="m-orb" onclick="orbSearch(event)" title="搜索"><svg><use href="#i-search"/></svg></button>
   </div>
 
   <audio id="audio" preload="none"></audio>

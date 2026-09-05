@@ -410,11 +410,12 @@
     if (name === "home" && $("app").dataset.view === "detail") goHome();
     if (mainEl) mainEl.scrollTop = 0;
   };
-  window.orbSearch = function () {
-    if (window.matchMedia("(max-width: 900px)").matches) {
+  window.orbSearch = function (e) {
+    if (e) e.stopPropagation(); // 防止开启搜索的这次点击冒泡到 document 触发"点击外部关闭"
+    var tb = $("topbar");
+    if (!tb) return;
+    if (getComputedStyle(tb).display === "none") {
       // 手机端：顶栏以悬浮搜索胶囊唤出（顶部搜索栏平时隐藏）
-      var tb = $("topbar");
-      if (!tb) return;
       tb.classList.add("searching");
       var t = document.querySelector('.m-tab[data-mtab="home"]');
       document.querySelectorAll(".m-tab").forEach(function (b) {
@@ -427,7 +428,6 @@
       }, 80);
       return;
     }
-    document.body.dataset.mtab = "home";
     focusSearchBar();
   };
   function openMobileDrop() { var d = $("search-drop"); if (d) d.hidden = false; }
