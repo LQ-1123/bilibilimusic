@@ -225,8 +225,8 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 /* ---------- 侧栏（玻璃覆盖层）：Apple 配方 = 强模糊 + 饱和度补偿 + 低透明度底 + 边缘高光 + 光源渐变 ---------- */
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
   background:var(--glass);backdrop-filter:blur(36px) saturate(1.8);-webkit-backdrop-filter:blur(36px) saturate(1.8);
-  transform:translateZ(0);will-change:transform; /* 强制独立合成层：部分 WebView/内置浏览器 backdrop-filter 失效的修复 */
   border-right:1px solid var(--glass-border);box-shadow:var(--glass-inset);padding:20px 6px 14px 18px}
+/* 注意：不要给 .sidebar/#player-bar 加 transform/will-change——合成层提升会让 backdrop 采样失效（打开瞬间有效、随后消失） */
 .sidebar::before{content:"";position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(160deg, rgba(255,255,255,.14), rgba(255,255,255,.03) 55%, rgba(255,255,255,.09))}
 .side-nav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
@@ -270,7 +270,7 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 
 /* ---------- 播放胶囊 ---------- */
 #player-bar{position:absolute;left:calc(var(--side) + 24px);right:24px;bottom:18px;max-width:1000px;margin-inline:auto;
-  z-index:60;min-height:64px;border-radius:999px;display:grid;align-items:center;transform:translateZ(0);will-change:transform;
+  z-index:60;min-height:64px;border-radius:999px;display:grid;align-items:center;
   grid-template-columns:44px auto minmax(120px,1fr) auto 44px;gap:8px 14px;padding:8px 22px;
   background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8);
   border:1px solid var(--glass-border);box-shadow:var(--shadow),var(--glass-inset)}
