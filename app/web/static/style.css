@@ -8,7 +8,7 @@
   --bg:#0b0b10; --bg2:#101017; --card:#16161e; --card2:#1d1d27; --raise:#262633;
   --txt:#f4f4f7; --txt2:#9c9cab; --txt3:#62626e;
   --pink:#fb7299; --pink-strong:#ff8fad; --pink-tint:rgba(251,114,153,.16); --pink-txt:#ffa8c1;
-  --glass:rgba(22,22,32,.58); --glass-strong:rgba(16,16,24,.66);
+  --glass:rgba(22,22,32,.46); --glass-strong:rgba(16,16,24,.58);
   --glass-border:rgba(255,255,255,.26); --glass-inset:inset 0 1px 0 rgba(255,255,255,.26);
   --stroke:rgba(255,255,255,.085); --stroke2:rgba(255,255,255,.16);
   --shadow:0 16px 48px rgba(0,0,0,.5); --shadow-sm:0 6px 22px rgba(0,0,0,.36);
@@ -19,7 +19,7 @@ html[data-theme="light"]{
   --bg:#f0f1f5; --bg2:#f6f6f9; --card:#ffffff; --card2:#ffffff; --raise:#ececf2;
   --txt:#16161d; --txt2:#6d6d7a; --txt3:#a3a3af;
   --pink:#f0507f; --pink-strong:#e64a78; --pink-tint:rgba(240,80,127,.13); --pink-txt:#d63d6c;
-  --glass:rgba(255,255,255,.55); --glass-strong:rgba(255,255,255,.68);
+  --glass:rgba(255,255,255,.42); --glass-strong:rgba(255,255,255,.58);
   --glass-border:rgba(255,255,255,.6); --glass-inset:inset 0 1px 0 rgba(255,255,255,.65);
   --stroke:rgba(20,20,35,.09); --stroke2:rgba(20,20,35,.16);
   --shadow:0 18px 50px rgba(30,30,60,.14); --shadow-sm:0 6px 20px rgba(30,30,60,.10);
@@ -224,7 +224,7 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 
 /* ---------- 侧栏镜像模糊层：主内容副本垫在侧栏下（backdrop-filter 不可用环境的真模糊兜底） ---------- */
 #side-mirror{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:30;overflow:hidden;pointer-events:none;
-  filter:blur(26px) saturate(1.6);opacity:.85;background:var(--bg)}
+  filter:blur(26px) saturate(1.6);opacity:.95;background:var(--bg)}
 .mirror-inner{position:absolute;top:0;left:0;width:100vw;box-sizing:border-box;
   padding:0 28px 150px calc(var(--side) + 28px)} /* 与 .main 相同布局，几何对齐 */
 
