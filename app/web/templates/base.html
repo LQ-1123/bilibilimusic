@@ -8,7 +8,7 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=58">
+  <link rel="stylesheet" href="/static/style.css?v=59">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
   <script src="/static/app.js?v=23" defer></script>
@@ -41,7 +41,7 @@
 <div class="app" id="app" data-view="home">
 
   <!-- 侧栏毛玻璃的镜像模糊层：把主内容复制一份垫在侧栏下做模糊（backdrop-filter 不可用的环境兜底） -->
-  <div id="side-mirror" aria-hidden="true"><div class="mirror-inner" id="mirrorInner"></div></div>
+  <div id="side-mirror" class="blur-effect" aria-hidden="true"><div class="mirror-inner" id="mirrorInner"></div></div>
 
   <main class="main" id="mainEl">
 

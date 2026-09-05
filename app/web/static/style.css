@@ -228,15 +228,12 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .trk .del.love.on{color:var(--pink);opacity:1}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
-/* ---------- 侧栏镜像模糊层（当前关闭：用户定夺中） ---------- */
-#side-mirror{display:none}
+/* ---------- 侧栏镜像模糊层（用户方案：纯 filter blur 30px，无 overlay 无羽化） ---------- */
+#side-mirror{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:30;overflow:hidden;pointer-events:none;
+  background:var(--bg)}
+.blur-effect{filter:blur(30px)}
 .mirror-inner{position:absolute;top:0;left:0;width:100vw;box-sizing:border-box;
   padding:0 28px 150px calc(var(--side) + 28px)} /* 与 .main 相同布局，几何对齐 */
-/* 暖灰白 overlay：压对比、抬灰，黑不透成透明黑 */
-#side-mirror::before{content:"";position:absolute;inset:0;background:var(--frost-overlay);pointer-events:none}
-/* 右缘 30px 渐变羽化：过渡到清晰内容无硬边 */
-#side-mirror::after{content:"";position:absolute;top:0;right:-30px;width:30px;height:100%;pointer-events:none;
-  background:linear-gradient(to right,var(--frost-edge-a),var(--frost-edge-b))}
 
 /* ---------- 侧栏（玻璃覆盖层）：Apple 配方 = 强模糊 + 饱和度补偿 + 低透明度底 + 边缘高光 + 光源渐变 ---------- */
 /* ---------- 侧栏（玻璃覆盖层）：暖灰白 overlay 铺在镜像模糊层上，右缘渐变羽化 ---------- */
