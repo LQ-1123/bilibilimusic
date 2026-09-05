@@ -100,9 +100,10 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
   display:grid;place-items:center;font-size:14px;font-weight:700;cursor:pointer;align-self:center;transition:.2s}
 .sec-head .addpl:hover{background:var(--pink);color:#fff}
 
-/* 全幅出血横滑架 */
+/* 全幅出血横滑架（scroll-padding 让吸附起点对齐侧栏右缘，防止重排后自动滚动钻到侧栏下） */
 .rack{display:flex;gap:18px;overflow-x:auto;margin:0 -28px 4px calc(-1 * (var(--side) + 28px));
-  padding:4px 28px 14px calc(var(--side) + 28px);scroll-snap-type:x proximity}
+  padding:4px 28px 14px calc(var(--side) + 28px);scroll-snap-type:x proximity;
+  scroll-padding-left:calc(var(--side) + 28px)}
 .rack>*{scroll-snap-align:start}
 
 /* ---------- 歌单海报卡（渐变封面） ---------- */
@@ -456,6 +457,7 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   .sidebar,.side-handle{display:none}
   .app .main{padding:0 16px 170px}
   .hero,.rack,.rec-genres,.dt-hero{margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px}
+  .rack{scroll-padding-left:16px}
   .hero::before{inset:-30px -16px -70px -16px}
   .topbar{gap:8px}
   .tb-cir{display:none}
