@@ -127,13 +127,13 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 
 /* ---------- 最近收藏卡 ---------- */
 .songcard{width:186px;flex:none;cursor:pointer;background:none;border:none;padding:0;text-align:left}
-.songcard .sc{background:var(--card);border:1px solid var(--stroke);border-radius:14px;padding:13px;
-  transition:transform .28s cubic-bezier(.2,.7,.3,1),box-shadow .28s;height:100%}
-.songcard .im{width:100%;aspect-ratio:1;border-radius:9px;overflow:hidden;background:var(--raise)}
+.songcard .sc{display:block;background:var(--card);border:1px solid var(--stroke);border-radius:14px;padding:13px;
+  transition:transform .28s cubic-bezier(.2,.7,.3,1),box-shadow .28s}
+.songcard .im{display:block;width:100%;aspect-ratio:1;border-radius:9px;overflow:hidden;background:var(--raise)}
 .songcard .im img{width:100%;height:100%;object-fit:cover}
-.songcard .nm{font-size:13.5px;font-weight:700;margin-top:11px;line-height:1.35;
+.songcard .nm{display:block;font-size:13.5px;font-weight:700;margin-top:11px;line-height:1.35;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
-.songcard .ar{font-size:11.5px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.songcard .ar{display:block;font-size:11.5px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .songcard .foot{display:flex;align-items:center;justify-content:space-between;margin-top:9px}
 .songcard .dur{font-size:11px;color:var(--txt3)}
 
@@ -151,7 +151,9 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .reccard:hover .acts{opacity:1;transform:translateY(0)}
 .mini-act{width:34px;height:34px;border-radius:50%;backdrop-filter:blur(8px);background:rgba(12,12,16,.6);color:#fff;
   display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.35);font-size:12px}
-.mini-act.love{background:var(--pink);color:#fff}
+.mini-act.love{color:rgba(255,255,255,.55)}
+.mini-act.love.on{background:var(--pink);color:#fff}
+.reccard.gone{opacity:0;transform:scale(.92);transition:opacity .4s,transform .4s}
 .rec-grid{display:flex;gap:18px;overflow-x:auto;margin:0 -28px 4px calc(-1 * (var(--side) + 28px));
   padding:4px 28px 14px calc(var(--side) + 28px)}
 
@@ -288,7 +290,39 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .task.summary{font-size:10.5px;color:var(--txt3);padding:6px 12px}
 .task.bye{opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s}
 
-/* ---------- 试听态（发现池实时流接管播放胶囊：无时长，隐藏进度/时间码/歌词） ---------- */
+/* ---------- 搜索下拉 ---------- */
+.search-drop{position:absolute;top:62px;left:calc(var(--side) + 28px);width:min(600px,calc(100% - var(--side) - 60px));
+  max-height:min(560px,calc(100% - 130px));z-index:75;border-radius:16px;overflow-y:auto;padding:8px;
+  background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);
+  border:1px solid var(--stroke);box-shadow:var(--shadow)}
+.sd-sec{font-size:11px;font-weight:700;letter-spacing:1.4px;color:var(--txt3);padding:12px 14px 6px}
+.sd-row{display:flex;align-items:center;gap:12px;padding:7px 10px;border-radius:12px;cursor:pointer;min-width:0}
+.sd-row:hover{background:var(--card)}
+.sd-cov{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none;background:var(--raise)}
+.sd-meta{min-width:0;flex:1}
+.sd-t{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-s{font-size:11.5px;color:var(--txt2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-play{flex:none;width:32px;height:32px;border-radius:50%;background:var(--pink-tint);color:var(--pink-txt);
+  display:grid;place-items:center;font-size:12px}
+.sd-heart{flex:none;width:34px;height:34px;border-radius:50%;background:var(--raise);color:var(--txt3);
+  display:grid;place-items:center;font-size:15px;transition:.2s}
+.sd-heart:hover{color:var(--pink-txt);background:var(--pink-tint)}
+.sd-heart.on{background:var(--pink);color:#fff}
+.sd-empty{padding:22px 14px;text-align:center;font-size:12.5px;color:var(--txt3)}
+.sd-collect{margin:8px;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--stroke);
+  display:flex;gap:13px;align-items:center;min-width:0}
+.sd-collect .sd-t{font-size:14px;font-weight:700}
+.sd-go{margin-left:auto;flex:none;height:36px;padding:0 18px;border-radius:999px;background:var(--pink);color:#fff;
+  font-size:13px;font-weight:700;transition:.2s}
+.sd-go:hover{background:var(--pink-strong)}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;bottom:34px;transform:translate(-50%,16px);z-index:300;border-radius:999px;
+  background:var(--glass-strong);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:var(--txt);
+  border:1px solid var(--stroke);box-shadow:var(--shadow);padding:11px 22px;font-size:13px;font-weight:600;
+  display:flex;gap:9px;align-items:center;opacity:0;pointer-events:none;transition:.3s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast .h{color:var(--pink);font-size:15px}
 body.trial #seek,body.trial .p-time{visibility:hidden}
 body.trial #btn-lyrics{display:none}
 

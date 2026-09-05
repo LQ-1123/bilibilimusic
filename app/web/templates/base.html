@@ -8,12 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=22">
+  <link rel="stylesheet" href="/static/style.css?v=23">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=14" defer></script>
+  <script src="/static/app.js?v=15" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=3" defer></script>
+  <script src="/static/v3.js?v=4" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -34,10 +34,7 @@
     <div class="topbar" id="topbar">
       <div class="tb-search" id="tbSearch">
         <svg><use href="#i-search"/></svg>
-        <input id="search" type="search" name="q" placeholder="搜索曲库 · 粘贴 BV / 链接收藏" autocomplete="off"
-               hx-get="/partials/songs" hx-trigger="input changed delay:300ms"
-               hx-include="this, #collect-playlist-id" hx-target="#songs" hx-swap="innerHTML">
-        <button id="collect-inline" type="button" hidden>⇣ 收藏</button>
+        <input id="search" type="search" name="q" placeholder="搜索曲库 / B 站" autocomplete="off">
       </div>
       <div class="tb-right">
         <button type="button" class="tb-chip" id="btn-sync" hx-post="/web/sync" hx-target="#task-list"
@@ -64,6 +61,7 @@
         <div class="us">已登录 · 最高 192K</div>
       </div>
       <button class="u-more" type="button" onclick="syncNow()" title="立即与 B 站收藏夹对账">⇅</button>
+      <button class="u-more" type="button" id="btn-logout" title="退出登录（B 站授权保留在本地）">⏻</button>
     </div>
     <div class="side-handle" id="side-handle" title="拖动调整侧栏宽度"></div>
   </aside>
@@ -93,6 +91,11 @@
     </div>
     <span class="p-time" id="t-dur">0:00</span>
   </footer>
+
+  <div class="search-drop" id="search-drop" hidden>
+    <div id="sd-lib"></div>
+    <div id="sd-web"></div>
+  </div>
 
   <div id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></div>
 
@@ -158,6 +161,8 @@
 
   <audio id="audio" preload="none"></audio>
   <audio id="audio2" preload="none"></audio>
+
+  <div class="toast" id="toast"><span class="h">♥</span><span id="toast-txt"></span></div>
 </div>
 </body>
 </html>

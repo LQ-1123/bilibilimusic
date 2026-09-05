@@ -135,49 +135,147 @@
     else goHome();
   });
 
-  // ---------- 搜索框：检测链接 / BV 号 → 一键收藏 ----------
+  // ---------- toast 轻提示 ----------
+  var toastTimer = null;
+  window.__toast = function (msg) {
+    var el = $("toast");
+    if (!el) return;
+    $("toast-txt").textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
+  };
+
+  // ---------- 已收藏状态：爱心灰→点亮 ----------
+  var collected = {};
+  function markHearts() {
+    document.querySelectorAll("[data-bvid]").forEach(function (n) {
+      var h = (n.classList.contains("sd-heart") || n.classList.contains("love")) ? n : n.querySelector(".sd-heart, .love");
+      if (h) h.classList.toggle("on", !!collected[n.dataset.bvid]);
+    });
+  }
+  function loadCollected() {
+    if (!window.BiliPlayer || !BiliPlayer.songs) return;
+    BiliPlayer.songs("").then(function (songs) {
+      collected = {};
+      (songs || []).forEach(function (s) { collected[s.bvid] = 1; });
+      markHearts();
+    }).catch(function () {});
+  }
+  window.__markCollected = function (bvid) {
+    collected[bvid] = 1;
+    markHearts();
+  };
+  document.body.addEventListener("refreshSongs", loadCollected);
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (e.target && (e.target.id === "sd-web" || e.target.id === "rec-list")) markHearts();
+  });
+  loadCollected();
+
+  // ---------- 搜索下拉：曲库命中（点击即播）+ B 站结果（♥ 收藏） ----------
   (function () {
-    var input = $("search"), btn = $("collect-inline");
-    if (!input || !btn) return;
+    var input = $("search"), drop = $("search-drop"), lib = $("sd-lib"), web = $("sd-web");
+    if (!input || !drop) return;
     var LINK = /^\s*(https?:\/\/|b23\.|bv|av)/i;
-    var BASE_TEXT = "⇣ 收藏到当前歌单";
-    var toggle = function () {
-      var isLink = LINK.test(input.value);
-      btn.hidden = !isLink;
-      if (isLink && !btn.disabled) btn.textContent = BASE_TEXT;
-    };
-    input.addEventListener("input", toggle);
-    btn.addEventListener("click", function () {
-      var url = input.value.trim();
-      if (!url) return;
-      var pid = document.getElementById("collect-playlist-id");
-      var body = new URLSearchParams({ url: url, playlist_id: pid ? pid.value : "0" });
-      btn.disabled = true;
-      btn.textContent = "收藏中…";
-      fetch("/web/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body,
-      })
-        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
-        .then(function (res) {
-          btn.disabled = false;
-          if (!res.ok) {
-            alert(res.t || "收藏失败");
-            btn.textContent = BASE_TEXT;
-            return;
-          }
-          input.value = "";
-          btn.hidden = true;
-          if (window.htmx) {
-            htmx.ajax("GET", "/partials/tasks", { target: "#task-list", swap: "innerHTML" });
-            htmx.trigger(document.body, "refreshSongs");
-          }
+    var timer = null, lastQ = null;
+
+    function open() { drop.hidden = false; }
+    function close() { drop.hidden = true; }
+
+    function esc(s) {
+      return String(s || "").replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    function renderLib(songs) {
+      if (!songs.length) {
+        lib.innerHTML = '<div class="sd-sec">曲库</div><div class="sd-empty">曲库没有匹配 · 去 B 站找找 ↓</div>';
+        return;
+      }
+      lib.innerHTML = '<div class="sd-sec">曲库 · 点击播放</div>' + songs.map(function (s) {
+        return '<div class="sd-row" data-song="' + s.id + '">' +
+          '<img class="sd-cov" src="' + s.coverUrl + '" alt="" referrerpolicy="no-referrer">' +
+          '<div class="sd-meta"><div class="sd-t">' + esc(s.title) + '</div>' +
+          '<div class="sd-s">' + esc(s.artist) + '</div></div>' +
+          '<span class="sd-play">▶</span></div>';
+      }).join("");
+    }
+
+    function renderLinkCard(url) {
+      lib.innerHTML = '<div class="sd-collect">' +
+        '<span style="font-size:24px;flex:none">🎬</span>' +
+        '<div class="sd-meta"><div class="sd-t">识别到视频链接</div>' +
+        '<div class="sd-s">' + esc(url) + '</div></div>' +
+        '<button class="sd-go" type="button">♥ 收藏</button></div>';
+      var btn = lib.querySelector(".sd-go");
+      btn.addEventListener("click", function () {
+        var pid = document.getElementById("collect-playlist-id");
+        var body = new URLSearchParams({ url: url, playlist_id: pid ? pid.value : "0" });
+        btn.disabled = true;
+        btn.textContent = "收藏中…";
+        fetch("/web/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body,
         })
-        .catch(function () {
-          btn.disabled = false;
-          btn.textContent = "⇣ 重试收藏";
-        });
+          .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+          .then(function (res) {
+            btn.disabled = false;
+            btn.textContent = "♥ 收藏";
+            if (!res.ok) { window.__toast(res.t || "收藏失败"); return; }
+            window.__toast("已提交收藏 · 完成后自动入库");
+            input.value = "";
+            close();
+            if (window.htmx) {
+              htmx.ajax("GET", "/partials/tasks", { target: "#task-list", swap: "innerHTML" });
+              htmx.trigger(document.body, "refreshSongs");
+            }
+          })
+          .catch(function () {
+            btn.disabled = false;
+            btn.textContent = "♥ 收藏";
+            window.__toast("网络错误，请重试");
+          });
+      });
+    }
+
+    function run(q) {
+      if (q === lastQ) return;
+      lastQ = q;
+      if (LINK.test(q)) { // 粘贴链接 / BV 号：仅显示收藏卡
+        renderLinkCard(q);
+        web.innerHTML = "";
+        return;
+      }
+      if (window.BiliPlayer && BiliPlayer.songs) {
+        BiliPlayer.songs(q).then(function (songs) { renderLib((songs || []).slice(0, 5)); })
+          .catch(function () { renderLib([]); });
+      }
+      if (window.htmx) {
+        htmx.ajax("GET", "/partials/web-search?q=" + encodeURIComponent(q), { target: "#sd-web", swap: "innerHTML" });
+      }
+    }
+
+    input.addEventListener("input", function () {
+      clearTimeout(timer);
+      var q = input.value.trim();
+      if (!q) { close(); lastQ = null; return; }
+      open();
+      timer = setTimeout(function () { run(q); }, 350);
+    });
+    input.addEventListener("focus", function () {
+      if (input.value.trim()) open();
+    });
+    lib.addEventListener("click", function (e) {
+      var row = e.target.closest("[data-song]");
+      if (row && window.BiliPlayer) { BiliPlayer.playById(Number(row.dataset.song)); close(); }
+    });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest("#search-drop") && !e.target.closest("#tbSearch")) close();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") close();
     });
   })();
 

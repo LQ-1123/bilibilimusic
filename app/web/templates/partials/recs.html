@@ -20,7 +20,7 @@
       <div class="acts">
         <button type="button" class="mini-act rec-play" data-bvid="{{ r.bvid }}" title="实时流试听（不下载）"
                 onclick="playRec('{{ r.bvid }}', this)">▶</button>
-        <button type="button" class="mini-act love rec-collect" title="收藏入库（自动同步 B 站夹）"
+        <button type="button" class="mini-act love rec-collect" data-bvid="{{ r.bvid }}" title="收藏入库（自动同步 B 站夹）"
                 hx-post="/web/import"
                 hx-vals='{"url": "https://www.bilibili.com/video/{{ r.bvid }}"}'
                 hx-include="#collect-playlist-id"

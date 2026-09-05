@@ -17,7 +17,7 @@
   <div class="sec">
     <div class="sec-head"><h2>我的歌单</h2></div>
     <div class="rack" id="poster-rack"
-         hx-get="/partials/playlists?mode=rack" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML"></div>
+         hx-get="/partials/playlists?mode=rack" hx-trigger="load, playlistsChanged from:body, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
 
   <div class="sec sec-discover" id="sec-discover">
@@ -25,26 +25,11 @@
     <div id="rec-list" hx-get="/partials/recs?mode=today" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
   </div>
 
-  {% if recent %}
   <div class="sec sec-recent">
     <div class="sec-head"><h2>最近收藏</h2></div>
-    <div class="rack">
-      {% for s in recent %}
-      <button type="button" class="songcard" data-play="{{ s.id }}" title="{{ s.title }}">
-        <span class="sc">
-          <span class="im"><img src="{{ s.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
-          <span class="nm">{{ s.title }}</span>
-          <span class="ar">{{ s.artist }}</span>
-          <span class="foot">
-            <span class="dur">{{ s.duration_text }}</span>
-            <span class="fab" aria-hidden="true"></span>
-          </span>
-        </span>
-      </button>
-      {% endfor %}
-    </div>
+    <div class="rack" id="recent-rack"
+         hx-get="/partials/recent" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
-  {% endif %}
 
   <div class="sec sec-songs">
     <div class="sec-head">
@@ -55,7 +40,7 @@
       <span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span>
     </div>
     <div id="songs" hx-get="/partials/songs" hx-trigger="load, refreshSongs from:body"
-         hx-include="#collect-playlist-id, #search" hx-swap="innerHTML"></div>
+         hx-include="#collect-playlist-id" hx-swap="innerHTML"></div>
   </div>
 
   <div style="height:26px"></div>

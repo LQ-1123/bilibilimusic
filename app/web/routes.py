@@ -244,6 +244,16 @@ def tasks_partial(request: Request):
     return resp
 
 
+@router.get("/partials/recent", response_class=HTMLResponse)
+def recent_partial(request: Request):
+    """最近收藏架（refreshSongs 触发实时刷新）。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    recent = [_song_ctx(s) for s in library.list_songs()[:8]]
+    return templates.TemplateResponse(request, "partials/recent_rack.html", {"recent": recent})
+
+
 @router.get("/partials/web-search", response_class=HTMLResponse)
 async def web_search(request: Request, q: str = ""):
     """B 站站内搜索结果（曲库搜索框联动）；导入按钮复用 /web/import 链路。"""
@@ -261,6 +271,7 @@ async def web_search(request: Request, q: str = ""):
             try:
                 results = [
                     {
+                        "bvid": h.bvid,
                         "title": h.title,
                         "artist": h.artist,
                         "duration_text": _fmt_duration(h.duration),

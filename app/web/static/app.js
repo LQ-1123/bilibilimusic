@@ -626,17 +626,7 @@
     $("btn-lyrics").classList.remove("on");
   });
 
-  // 搜索框联动：播放队列跟随当前筛选结果
-  var search = $("search");
-  var searchTimer = null;
-  if (search) {
-    search.addEventListener("input", function () {
-      currentQuery = search.value.trim();
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(refreshPlaylist, 400);
-    });
-  }
-
+  // 搜索框由 v3.js 接管（下拉：曲库命中 + B 站结果）；播放队列不再跟随搜索词
   refreshPlaylist();
 
   // ---------- 扫码登录页 ----------
@@ -699,6 +689,7 @@
     skip: skip,
     currentId: function () { return playlist[current] ? playlist[current].id : null; },
     isPlaying: function () { return !!audio.src && !audio.paused; },
+    songs: fetchSongs, // v3.js 搜索下拉用
   };
 
   // ---------- 歌单（每歌单对应收藏夹 bilimusic- <歌单名>） ----------
@@ -898,17 +889,24 @@
     if (card) card.remove();
   };
 
-  // 收藏成功后再移除卡片（不能在请求发出时立刻移除元素——htmx 1.x 会中止该请求）
+  // 收藏成功：点亮爱心 + toast；失败：toast 提示（不能在请求发出时立刻改 DOM——htmx 1.x 会中止该请求）
   document.addEventListener("htmx:afterRequest", function (e) {
     var elt = e.detail && e.detail.elt;
     if (!elt || !elt.classList || !elt.classList.contains("rec-collect")) return;
     if (e.detail.successful) {
-      var card = elt.closest(".rec-card");
-      if (card) card.remove();
+      var bvid = elt.dataset.bvid;
+      if (bvid && window.__markCollected) window.__markCollected(bvid);
+      if (window.__toast) window.__toast("已收藏 · 已同步 B 站「bilimusic」夹");
+      var card = elt.closest(".reccard, .rec-card");
+      if (card) { // 发现池：转正出池，延迟淡出（让爱心点亮被看到）
+        setTimeout(function () {
+          if (!card.parentNode) return;
+          card.classList.add("gone");
+          setTimeout(function () { if (card.parentNode) card.remove(); }, 450);
+        }, 900);
+      }
     } else {
-      var tip = elt.textContent;
-      elt.textContent = "收藏失败";
-      setTimeout(function () { elt.textContent = tip; }, 2000);
+      if (window.__toast) window.__toast("收藏失败，请稍后重试");
     }
   });
 

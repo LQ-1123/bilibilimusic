@@ -1,23 +1,19 @@
 {% if error %}
-<div class="web-error">B 站搜索失败：{{ error }}</div>
+<div class="sd-empty">B 站搜索失败：{{ error }}</div>
 {% elif results %}
-<section class="web-search">
-  <div class="ws-head">B 站搜索结果 <span>点「收藏」入所选歌单，进度见下方</span></div>
-  <div class="ws-list">
-    {% for r in results %}
-    <div class="ws-row">
-      <img class="ws-cover" src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
-      <div class="ws-meta">
-        <div class="ws-title" title="{{ r.title }}">{{ r.title }}</div>
-        <div class="ws-sub">{{ r.artist }} · {{ r.duration_text }} · {{ r.play_text }}播放</div>
-      </div>
-      <button class="ws-import"
-              hx-post="/web/import"
-              hx-vals='{"url": "{{ r.import_url }}"}'
-              hx-include="#collect-playlist-id"
-              hx-target="#task-list" hx-swap="innerHTML">收藏</button>
-    </div>
-    {% endfor %}
+<div class="sd-sec">B 站</div>
+{% for r in results %}
+<div class="sd-row" data-bvid="{{ r.bvid }}">
+  <img class="sd-cov" src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+  <div class="sd-meta">
+    <div class="sd-t" title="{{ r.title }}">{{ r.title }}</div>
+    <div class="sd-s">{{ r.artist }} · {{ r.duration_text }} · {{ r.play_text }}播放</div>
   </div>
-</section>
+  <button type="button" class="sd-heart rec-collect" data-bvid="{{ r.bvid }}" title="收藏入库（自动同步 B 站夹）"
+          hx-post="/web/import"
+          hx-vals='{"url": "{{ r.import_url }}"}'
+          hx-include="#collect-playlist-id"
+          hx-target="#task-list" hx-swap="innerHTML">♥</button>
+</div>
+{% endfor %}
 {% endif %}
