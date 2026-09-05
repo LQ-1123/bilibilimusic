@@ -280,25 +280,22 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .p-meta .mtx{min-width:0;flex:1}
 #player-title{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #player-artist{font-size:11.5px;color:var(--txt2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 进度条（胶囊 #seek + 歌词页 #ly-seek）：已播粉色填充（--p 由 JS 同步），hover/拖动变粗 */
+/* 进度条（胶囊 #seek + 歌词页 #ly-seek）：已播粉色填充（--p 由 JS 同步），hover/拖动变粗；无拖动圆球 */
 #seek,#ly-seek{--p:0%;width:100%;height:14px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
 #seek::-webkit-slider-runnable-track,#ly-seek::-webkit-slider-runnable-track{
   height:3.5px;border-radius:3px;
   background:linear-gradient(to right,var(--pink) var(--p),var(--stroke2) var(--p));
 }
 #seek::-webkit-slider-thumb,#ly-seek::-webkit-slider-thumb{
-  -webkit-appearance:none;width:11px;height:11px;border-radius:50%;background:var(--pink);
-  margin-top:-3.75px;box-shadow:0 1px 6px rgba(0,0,0,.4);
+  -webkit-appearance:none;width:0;height:0;border:none;box-shadow:none;
 }
 #seek:hover::-webkit-slider-runnable-track,#seek:active::-webkit-slider-runnable-track,
 #ly-seek:hover::-webkit-slider-runnable-track,#ly-seek:active::-webkit-slider-runnable-track{height:7px}
-#seek:hover::-webkit-slider-thumb,#seek:active::-webkit-slider-thumb,
-#ly-seek:hover::-webkit-slider-thumb,#ly-seek:active::-webkit-slider-thumb{margin-top:-5.25px}
 #seek::-moz-range-track,#ly-seek::-moz-range-track{height:3.5px;border-radius:3px;background:var(--stroke2)}
 #seek::-moz-range-progress,#ly-seek::-moz-range-progress{height:3.5px;border-radius:3px;background:var(--pink)}
 #seek:hover::-moz-range-track,#seek:active::-moz-range-track,
 #ly-seek:hover::-moz-range-track,#ly-seek:active::-moz-range-track{height:7px}
-#seek::-moz-range-thumb,#ly-seek::-moz-range-thumb{width:11px;height:11px;border:none;border-radius:50%;background:var(--pink)}
+#seek::-moz-range-thumb,#ly-seek::-moz-range-thumb{width:0;height:0;border:none}
 .p-acts{display:flex;align-items:center}
 .p-acts button{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--txt2);transition:.18s;font-size:15px}
 .p-acts button:hover{color:var(--txt);background:var(--card2)}
