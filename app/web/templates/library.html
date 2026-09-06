@@ -6,15 +6,10 @@
   <!-- 空 hero：纯氛围渐变载体（无文字内容） -->
   <div class="hero sec-hero" aria-hidden="true"></div>
 
-  <div class="sec">
+  <div class="sec sec-recpl">
     <div class="sec-head"><h2>推荐歌单</h2></div>
     <div class="rack" id="recpl-rack"
          hx-get="/partials/rec-playlists" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
-  </div>
-
-  <div class="sec sec-discover" id="sec-discover">
-    <div class="sec-head"><h2>发现</h2></div>
-    <div id="rec-list" hx-get="/partials/recs?mode=today" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
   </div>
 
   <div class="sec sec-recent">
@@ -23,14 +18,14 @@
          hx-get="/partials/recent" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
 
-  <div class="sec sec-songs">
-    <div class="sec-head"><h2>全部歌曲</h2></div>
-    <div class="list-head">
-      <span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span>
-    </div>
-    <div id="songs" hx-get="/partials/songs" hx-trigger="load, refreshSongs from:body"
-         hx-include="#collect-playlist-id" hx-swap="innerHTML"></div>
+  <!-- 最近播放：本机播放记录（localStorage），无记录时整栏隐藏 -->
+  <div class="sec sec-history" id="sec-history" hidden>
+    <div class="sec-head"><h2>最近播放</h2><span class="hint">本机记录</span></div>
+    <div class="rack" id="history-rack"></div>
   </div>
+
+  <!-- 流派货架：每个风格一栏，池子优先+搜索补位到 15 首；采集/收藏后 recsChanged 刷新 -->
+  <div id="genre-shelves" hx-get="/partials/genre-shelves" hx-trigger="load, recsChanged from:body" hx-swap="innerHTML"></div>
 
   <div style="height:26px"></div>
 </section>
@@ -74,7 +69,7 @@
   <div class="acct-rows">
     <button class="acct-row" type="button" onclick="syncNow()"><span>⇅</span>同步 B 站收藏夹<span class="sub">曲库事实源在 B 站</span></button>
     <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接<span class="sub">bilimusic 夹</span></button>
-    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗<span class="sub">跟随本机</span></button>
+    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗<span class="sub" id="theme-mode-sub">跟随本机</span></button>
   </div>
   <div style="text-align:center;font-size:10.5px;color:var(--txt3);margin-top:26px">BiliMusic · 曲库事实源在 B 站侧</div>
 </section>

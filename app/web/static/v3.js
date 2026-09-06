@@ -3,12 +3,27 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
 
-  // ---------- 主题 ----------
-  window.toggleTheme = function () {
-    var t = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  // ---------- 主题（深/浅切换：顶栏圆钮 / 侧栏设置弹层 / 手机账号 Tab 三处入口共享） ----------
+  var setTheme = function (t) {
     document.documentElement.dataset.theme = t;
     try { localStorage.setItem("bmTheme", t); } catch (e) {}
+    var lt = $("light-toggle");
+    if (lt) lt.checked = t === "light";
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", t === "light" ? "#f0f1f5" : "#0b0b10");
+    var sub = $("theme-mode-sub");
+    if (sub) sub.textContent = t === "light" ? "当前 · 浅色" : "当前 · 深色";
   };
+  window.toggleTheme = function () {
+    setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+  };
+  var lightToggle = $("light-toggle");
+  if (lightToggle) {
+    lightToggle.addEventListener("change", function () {
+      setTheme(lightToggle.checked ? "light" : "dark");
+    });
+  }
+  setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
   var mainEl = $("mainEl");
 
@@ -539,6 +554,20 @@
     lib.addEventListener("click", function (e) {
       var row = e.target.closest("[data-song]");
       if (row && window.BiliPlayer) { BiliPlayer.playById(Number(row.dataset.song)); close(); }
+    });
+    // B 站结果：点行在线试听（♥ 按钮仍走收藏）
+    web.addEventListener("click", function (e) {
+      if (e.target.closest(".sd-heart")) return;
+      var row = e.target.closest(".sd-row");
+      if (!row || !row.dataset.bvid || !window.playStream) return;
+      var img = row.querySelector("img");
+      var sub = (row.querySelector(".sd-s") || {}).textContent || "";
+      playStream(row.dataset.bvid, {
+        title: (row.querySelector(".sd-t") || {}).textContent || "",
+        artist: sub.split(" · ")[0] || "",
+        cover: img ? img.src : "",
+      }, null);
+      close();
     });
     document.addEventListener("click", function (e) {
       if (!e.target.closest("#search-drop") && !e.target.closest("#tbSearch")) close();

@@ -185,7 +185,7 @@
   }
 
   function markPlayingCard(songId) {
-    var cards = document.querySelectorAll("#songs .card, #dt-songs .card");
+    var cards = document.querySelectorAll("#songs .card, #dt-songs .card, #history-rack .card");
     for (var i = 0; i < cards.length; i++) {
       cards[i].classList.toggle("playing", cards[i].dataset.play === String(songId));
     }
@@ -230,6 +230,7 @@
     audio.src = song.audioUrl;
     audio.play().catch(function () {});
     updateNowPlaying(song);
+    pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
     if (smartEnabled()) prefetchAnalyses();
     planChain(); // 以新歌为起点重排自动决策链
   }
@@ -845,10 +846,13 @@
     localStorage.setItem("bm_pl", String(id));
     localStorage.setItem("bm_pl_name", (el && el.dataset.name) || "全部歌曲");
     markActivePlaylist();
-    htmx.ajax("GET", "/partials/songs?playlist_id=" + id, {
-      target: "#songs",
-      swap: "innerHTML",
-    });
+    // 主页「全部歌曲」已由推荐歌曲取代：仅详情页等仍挂 #songs 的场景需要刷新
+    if (document.getElementById("songs")) {
+      htmx.ajax("GET", "/partials/songs?playlist_id=" + id, {
+        target: "#songs",
+        swap: "innerHTML",
+      });
+    }
   };
 
   window.createPlaylist = async function () {
@@ -973,6 +977,7 @@
     recAudio.dataset.title = meta.title || "实时流试听";
     recAudio.dataset.artist = meta.artist || "";
     recAudio.dataset.cover = meta.cover || "";
+    pushHistory({ k: "v" + bvid, kind: "stream", bvid: bvid, title: meta.title || "实时流试听", artist: meta.artist || "", cover: meta.cover || "" });
     recActive = true;
     document.body.classList.add("trial");
     syncTrialUI();
@@ -994,7 +999,7 @@
       $("btn-toggle").textContent = "⏸";
       document.body.classList.add("playing");
       syncTrialUI();
-      document.querySelectorAll(".trk-rec").forEach(function (row) {
+      document.querySelectorAll(".trk-rec, .rec-card").forEach(function (row) {
         row.classList.toggle("playing", row.dataset.bvid === bvid);
       });
       if (!$("lyrics-panel").classList.contains("hidden")) loadLyrics(trialLyricsMeta()); // 歌词页开着：切试听歌即刷新
@@ -1052,6 +1057,45 @@
       if (window.__toast) window.__toast("收藏失败，请稍后重试");
     }
   });
+
+  // ---------- 最近播放（本机 localStorage 记录；曲库歌与实时流统一进货架） ----------
+  function bmHistory() {
+    try { return JSON.parse(localStorage.getItem("bmHistory") || "[]"); } catch (e) { return []; }
+  }
+  function escHtml(s) {
+    return String(s || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function historyCardHtml(x) {
+    var inner =
+      '<span class="im">' +
+      '<img src="' + escHtml(x.cover) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' +
+      '<span class="fab" aria-hidden="true"></span></span>' +
+      '<span class="t1">' + escHtml(x.title) + "</span>" +
+      '<span class="t2">' + escHtml(x.artist) + "</span>";
+    // 曲库歌走 data-play 委托（点选即播）；实时流走 playRecRow（bvid 试听）
+    return x.kind === "song"
+      ? '<div class="rec-card card" data-play="' + escHtml(x.id) + '" title="' + escHtml(x.title) + '">' + inner + "</div>"
+      : '<div class="rec-card" data-bvid="' + escHtml(x.bvid) + '" onclick="playRecRow(this)" title="' + escHtml(x.title) + '">' + inner + "</div>";
+  }
+  function renderHistory() {
+    var sec = document.getElementById("sec-history");
+    var rack = document.getElementById("history-rack");
+    if (!sec || !rack) return;
+    var h = bmHistory();
+    sec.hidden = h.length === 0;
+    rack.innerHTML = h.map(historyCardHtml).join("");
+  }
+  window.pushHistory = function (entry) {
+    if (!entry || !entry.k) return;
+    var h = bmHistory().filter(function (x) { return x.k !== entry.k; });
+    entry.ts = Date.now();
+    h.unshift(entry);
+    try { localStorage.setItem("bmHistory", JSON.stringify(h.slice(0, 20))); } catch (e) {}
+    renderHistory();
+  };
+  renderHistory();
 
   // 播放起播 → 以当前歌为种子搭车采集推荐（服务端频控，失败静默）
   var mainAudio = document.getElementById("audio");

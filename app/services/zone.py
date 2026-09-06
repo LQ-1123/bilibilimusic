@@ -10,7 +10,7 @@
 import time
 
 from app.bili.client import BiliClient, SearchHit, strip_highlight
-from app.services.recs import is_song_like
+from app.services.recs import MAX_DURATION, MIN_DURATION, is_song_like
 
 CACHE_TTL_OK = 600
 CACHE_TTL_FAIL = 60
@@ -103,3 +103,48 @@ async def items_for(bili: BiliClient, key: str) -> list[dict]:
         return _store(key, [n for h in hits if (n := _norm_hit(h, name))], CACHE_TTL_OK)
     except Exception:
         return _store(key, [], CACHE_TTL_FAIL)  # 失败短缓存：页面空态，下轮重试
+
+
+# 首页流派货架的补位搜索词：池子里该风格不够 15 首时，按此关键词搜一批补齐
+GENRE_SEARCH_KEYWORDS: dict[str, str] = {
+    "古典": "古典音乐 钢琴 交响",
+    "摇滚金属": "摇滚 乐队 现场",
+    "R&B": "R&B 灵魂乐",
+    "蓝调": "蓝调 布鲁斯",
+    "华语流行": "华语流行 金曲",
+    "hiphop": "说唱 hiphop",
+    "力量": "高燃 力量 燃曲",
+    "古风": "古风 音乐",
+    "静心": "轻音乐 放松 助眠",
+    "网络音乐": "网络歌曲 热歌",
+}
+
+
+async def genre_items(bili: BiliClient, genre: str) -> list[dict]:
+    """按风格关键词实时搜一批歌（10 分钟 TTL 缓存），供流派货架把每栏补到 15 首。
+
+    单曲（90s–8min）优先，超长合辑（>8min，B站常见的"N首经典"视频）垫底兜底——
+    严格按时长过滤会把搜索结果筛得太稀，货架补不满。
+    """
+    keyword = GENRE_SEARCH_KEYWORDS.get(genre)
+    if not keyword:
+        return []
+    key = "genre:" + genre
+    hit = _cached(key)
+    if hit is not None:
+        return hit
+    try:
+        hits = await bili.search_videos(keyword)
+        normed = []
+        for h in hits:
+            if not h.bvid or h.duration < MIN_DURATION:
+                continue
+            normed.append({
+                "bvid": h.bvid, "title": h.title, "artist": h.artist,
+                "duration": h.duration, "cover_url": h.cover_url, "genre": genre,
+                "mix": h.duration > MAX_DURATION,
+            })
+        normed.sort(key=lambda x: x["mix"])  # 单曲在前，合辑垫底
+        return _store(key, normed, CACHE_TTL_OK)
+    except Exception:
+        return _store(key, [], CACHE_TTL_FAIL)  # 失败短缓存：下轮重试

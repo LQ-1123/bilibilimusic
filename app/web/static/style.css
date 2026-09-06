@@ -77,6 +77,12 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
   background:var(--card);border:1px solid var(--stroke);color:var(--txt2);transition:.2s;white-space:nowrap}
 .tb-chip:hover{color:var(--txt)}
 .tb-chip .dot{width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d39988}
+/* 主题切换圆钮：悬浮于顶栏右缘（不挤占居中搜索框）；图标显示点击后的目标模式（GitHub 惯例）：深色显太阳、浅色显月亮 */
+#theme-toggle{position:absolute;right:2px;top:37px;transform:translateY(-50%)}
+#theme-toggle svg{width:16px;height:16px}
+#theme-toggle .t-moon{display:none}
+html[data-theme="light"] #theme-toggle .t-sun{display:none}
+html[data-theme="light"] #theme-toggle .t-moon{display:block}
 
 /* ---------- 氛围 hero ---------- */
 .hero{position:relative;padding:14px 0 6px;margin:0 -28px 2px calc(-1 * (var(--side) + 28px));
@@ -139,6 +145,23 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
 .songcard .ar{display:block;font-size:11.5px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .songcard .foot{display:flex;align-items:center;justify-content:flex-end;margin-top:6px}
+
+/* ---------- 推荐歌曲卡（Apple Music 式大封面横滑架） ---------- */
+.rec-card{width:200px;flex:none;cursor:pointer;position:relative}
+.rec-card .im{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:12px;corner-shape:superellipse(5);
+  overflow:hidden;background:var(--raise);box-shadow:var(--shadow-sm);
+  transition:transform .28s cubic-bezier(.2,.7,.3,1)}
+.rec-card:hover .im{transform:translateY(-5px)}
+.rec-card .im img{width:100%;height:100%;object-fit:cover;display:block}
+.rec-card .t1{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px;
+  font-size:13.5px;font-weight:700;margin-top:11px;line-height:1.35}
+.rec-card .t2{display:block;font-size:11.5px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-card .fab{position:absolute;right:10px;bottom:10px;pointer-events:none}
+.rec-card:hover .fab{opacity:1;transform:translateY(0)}
+.rec-card .love{position:absolute;top:10px;right:10px;opacity:0;transform:translateY(6px);transition:.25s}
+.rec-card:hover .love{opacity:1;transform:translateY(0)}
+.rec-card.playing .im{box-shadow:0 0 0 2.5px var(--pink),var(--shadow-sm)}
+.rec-card.playing .t1{color:var(--pink-txt)}
 
 /* ---------- 推荐卡（发现池）：无框，封面下直接放字 ---------- */
 .reccard{width:170px;flex:none;position:relative}
@@ -276,8 +299,8 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .up-row .switch{margin-left:auto;flex:none;width:38px;height:23px;border-radius:999px;background:var(--raise);position:relative;transition:.2s}
 .up-row .switch i{position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:50%;background:#fff;
   box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .2s}
-.up-row input:checked+.switch{background:var(--pink)}
-.up-row input:checked+.switch i{left:17px}
+.up-row input:checked~.switch{background:var(--pink)}
+.up-row input:checked~.switch i{left:17px}
 .up-row.danger{color:#f87171}
 .up-row.danger:hover{background:rgba(248,113,113,.12)}
 .up-sep{height:1px;background:var(--stroke);margin:4px 10px}
@@ -391,7 +414,9 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .task.bye{opacity:0;transform:translateY(8px);transition:opacity .4s,transform .4s}
 
 /* ---------- 搜索下拉 ---------- */
-.search-drop{position:absolute;top:62px;left:calc(var(--side) + 28px);width:min(600px,calc(100% - var(--side) - 60px));
+.search-drop{position:absolute;top:62px;
+  left:max(calc(var(--side) + 28px), calc((100% + var(--side) - 480px) / 2)); /* 与内容区居中的搜索框左缘对齐 */
+  width:min(600px,calc(100% - var(--side) - 60px));
   max-height:min(560px,calc(100% - 130px));z-index:75;border-radius:16px;overflow-y:auto;padding:8px;
   background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow)}
@@ -586,7 +611,7 @@ body:not(.playing) .i-pause{display:none}
 body.playing #up-panel .i-play{display:none}
 body.playing #up-panel .i-pause{display:block}
 /* UP 名可点（曲目行/歌词页/播放条） */
-.trk .t2{cursor:pointer}
+.trk .t2{cursor:pointer;width:fit-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* 点击判定收缩到文字实际宽度 */
 .trk .t2:hover{color:var(--pink-txt)}
 #lyrics-artist,#player-artist{cursor:pointer}
 #lyrics-artist:hover,#player-artist:hover{color:var(--pink-txt)}
@@ -794,6 +819,7 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   .up-songs{grid-template-columns:1fr}
   .up-videos{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 14px}
   .us-love{opacity:1}
+  .rec-card .love{opacity:1;transform:none}  /* 触屏无 hover：收藏常显 */
   .dt-hero{padding:16px 16px 24px;gap:18px}
   .dt-hero .dt-cvr{width:130px;height:130px}
   .dt-title{font-size:24px}
@@ -811,8 +837,9 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   .m-orb svg{width:21px;height:21px}
   /* 搜索下拉跟随悬浮胶囊定位 */
   .search-drop{top:76px;left:12px;right:12px;width:auto;max-height:calc(100% - 200px)}
-  /* Tab 视图切换（仅手机）：曲库 Tab 隐藏首页发现区；账号 Tab 只看账号 */
-  body[data-mtab="library"] .sec-hero,body[data-mtab="library"] .sec-discover,body[data-mtab="library"] .sec-recent{display:none}
+  /* Tab 视图切换（仅手机）：主页 Tab=发现类（最近播放+流派货架）；曲库 Tab=我的内容（推荐歌单+最近收藏）；最近播放两栏都显示 */
+  body[data-mtab="home"] .sec-recpl,body[data-mtab="home"] .sec-recent{display:none}
+  body[data-mtab="library"] .sec-hero,body[data-mtab="library"] #genre-shelves{display:none}
   body[data-mtab="account"] #view-home{display:none !important}
   body[data-mtab="account"] #view-account{display:block}
 }

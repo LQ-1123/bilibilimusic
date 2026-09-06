@@ -7,13 +7,17 @@
   <meta name="theme-color" content="#0b0b10">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
-  <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=98">
+  <script>
+  (function(){var t=null;try{t=localStorage.getItem("bmTheme")}catch(e){}
+  if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
+  document.documentElement.dataset.theme=t||"dark";})();
+  </script>
+  <link rel="stylesheet" href="/static/style.css?v=104">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=30" defer></script>
+  <script src="/static/app.js?v=33" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=34" defer></script>
+  <script src="/static/v3.js?v=36" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -24,6 +28,7 @@
     <symbol id="i-note" viewBox="0 0 24 24"><path fill="currentColor" d="M9 3v11.1A3.8 3.8 0 1011 17.6V7.6l8-1.8v7.3A3.8 3.8 0 1021 15.6V2z"/></symbol>
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 20.5c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M21.3 13.2A9.2 9.2 0 1110.8 2.7a7.3 7.3 0 0010.5 10.5z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3" fill="currentColor"/><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></g></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
     <symbol id="a-prev" viewBox="0 0 24 24"><path fill="currentColor" d="M11.6 12 20 6.2v11.6zM2.8 12l8.4-5.8v11.6z"/></symbol>
     <symbol id="a-next" viewBox="0 0 24 24"><path fill="currentColor" d="M12.4 12 4 17.8V6.2zM21.2 12l-8.4 5.8V6.2z"/></symbol>
@@ -49,6 +54,10 @@
         <input id="search" type="search" name="q" placeholder="搜索曲库 / B 站" autocomplete="off">
         <button id="search-close" type="button" class="tb-cir" title="关闭搜索">✕</button>
       </div>
+      <button id="theme-toggle" class="tb-cir" type="button" onclick="toggleTheme()" title="切换深色 / 浅色">
+        <svg class="t-moon"><use href="#i-moon"/></svg>
+        <svg class="t-sun"><use href="#i-sun"/></svg>
+      </button>
     </div>
 
     <!-- 功能触发器（按用户要求不从 UI 显示）：手机端账号 Tab 的同步/导出行为依赖这些 ID -->
@@ -80,6 +89,10 @@
       <div class="user-pop" id="user-pop">
         <label class="up-row" title="切歌时自动寻找最佳衔接点">
           <input type="checkbox" id="smart-toggle-side"><span>智能切歌</span>
+          <span class="switch"><i></i></span>
+        </label>
+        <label class="up-row" title="切换深色 / 浅色外观">
+          <input type="checkbox" id="light-toggle"><span>浅色外观</span>
           <span class="switch"><i></i></span>
         </label>
         <button class="up-row" type="button" id="side-sync"><span>⇅</span><span>同步 B 站收藏夹</span></button>

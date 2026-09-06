@@ -1,7 +1,7 @@
 {% if error %}
 <div class="sd-empty">B 站搜索失败：{{ error }}</div>
 {% elif results %}
-<div class="sd-sec">B 站</div>
+<div class="sd-sec">B 站 · 点击试听</div>
 {% for r in results %}
 <div class="sd-row" data-bvid="{{ r.bvid }}">
   <img class="sd-cov" src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">

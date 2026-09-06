@@ -21,5 +21,9 @@
   {% endfor %}
 </div>
 {% else %}
+{% if genre == "daily" %}
+<div class="empty">今日推荐还没生成——去听几首歌，推荐会慢慢懂你。</div>
+{% else %}
 <div class="empty">这个风格暂时没有推荐——去听几首歌，推荐会慢慢懂你。</div>
+{% endif %}
 {% endif %}

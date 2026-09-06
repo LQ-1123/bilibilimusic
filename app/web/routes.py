@@ -12,7 +12,7 @@ from sqlmodel import func, select
 from app.bili.client import BiliApiError
 from app.core.link_parser import BV_RE, parse_video_url
 from app.core.url_guard import validate_bilibili_url
-from app.db.models import ImportTask
+from app.db.models import ImportTask, Song
 from app.db.session import new_session
 from app.services import library, playlists, recs, zone
 from app.services.importer import ImportService
@@ -323,8 +323,8 @@ async def rec_playlists_partial(request: Request):
 
 
 @router.get("/partials/rec-genre-tracks", response_class=HTMLResponse)
-async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
-    """推荐歌单详情曲目表：daily=每日精选；rank/z*=B站音乐区电台；其余=风格推荐池。"""
+async def rec_genre_tracks_partial(request: Request, genre: str = "daily", layout: str = "rows"):
+    """推荐歌单详情曲目表：daily=每日精选；rank/z*=B站音乐区电台；其余=风格推荐池。layout=cards 时渲染大封面横滑卡。"""
     gate = _login_redirect(request)
     if gate:
         return gate
@@ -358,9 +358,49 @@ async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
             }
             for i in rows
         ]
+    template = "partials/rec_cards.html" if layout == "cards" else "partials/rec_genre_tracks.html"
     return templates.TemplateResponse(
-        request, "partials/rec_genre_tracks.html", {"items": ctx_items, "genre": genre}
+        request, template, {"items": ctx_items, "genre": genre}
     )
+
+
+@router.get("/partials/genre-shelves", response_class=HTMLResponse)
+async def genre_shelves_partial(request: Request):
+    """首页流派货架：池子优先、按风格搜索补位，每栏 15 首；空栏跳过；按池内歌曲数从多到少排序。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    bili = request.app.state.bili
+    with new_session() as session:  # 补位搜索结果排除已在曲库的（避免「已收藏的歌」混进推荐）
+        known = set(session.exec(select(Song.bvid)).all())
+
+    def _card(bvid, title, artist, duration, cover, genre):
+        return {
+            "bvid": bvid, "title": title, "artist": artist,
+            "duration_text": _fmt_duration(duration),
+            "cover_url": cover, "genre": genre,
+        }
+
+    shelves = []
+    seen_global = set()  # 跨货架去重：同一搜索结果只进第一个取到它的货架
+    for genre in recs.GENRE_KEYWORDS:
+        pool = recs.list_items(genre=genre)[:15]
+        seen = known | {i.bvid for i in pool} | seen_global
+        cards = [_card(i.bvid, i.title, i.artist, i.duration, i.cover_url, i.genre) for i in pool]
+        if len(cards) < 15:  # 池子不够：按风格搜一批补位（zone 侧 10 分钟缓存，排除已在曲库的）
+            for e in await zone.genre_items(bili, genre):
+                if len(cards) >= 15:
+                    break
+                if e["bvid"] in seen:
+                    continue
+                seen.add(e["bvid"])
+                seen_global.add(e["bvid"])
+                cards.append(_card(e["bvid"], e["title"], e["artist"], e["duration"], e["cover_url"], e["genre"]))
+        if not cards:
+            continue
+        shelves.append({"genre": genre, "count": len(pool), "cards": cards})
+    shelves.sort(key=lambda s: s["count"], reverse=True)
+    return templates.TemplateResponse(request, "partials/genre_shelves.html", {"shelves": shelves})
 
 
 _UP_HUE_CACHE: dict[str, int | None] = {}  # face url → 主色调 h（0-359），None=提取失败
