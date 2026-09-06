@@ -27,12 +27,6 @@ html[data-theme="light"]{
 *{margin:0;padding:0;box-sizing:border-box}
 /* iOS 连续曲率圆角（squircle，参考 Kyant0/Shapes）：仅用于矩形圆角元素；
    胶囊(999px)与正圆(50%)元素保持原状。不支持的浏览器自动回退普通圆角。 */
-.poster .pc,.songcard .sc,.songcard .im,.reccard .rc,.reccard .im,.trk .im,
-.sd-cov,.dt-cvr,#lyrics-cover,#player-cover,.side-pl .sp-cov,
-.acct-card,.acct-rows,.modal-box,#queue-panel,.search-drop,
-#pl-menu,#song-menu,.task,.mosaic{
-  corner-shape: superellipse(5);
-}
 html,body{height:100%}
 body{
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",sans-serif;
