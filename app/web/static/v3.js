@@ -32,7 +32,8 @@
     handle.addEventListener("pointermove", function (e) {
       if (!dragging) return;
       var w = Math.min(420, Math.max(200, e.clientX));
-      app.style.setProperty("--side", w + "px");
+      // 设在 html 上：内容区、侧栏与全屏覆盖层（歌词/艺术家页）都能继承
+      document.documentElement.style.setProperty("--side", w + "px");
     });
     var up = function () { dragging = false; document.body.style.cursor = ""; };
     handle.addEventListener("pointerup", up);
@@ -78,8 +79,15 @@
   })();
 
   // ---------- 导航 ----------
+  function collapseOverlays() {
+    var up = $("up-panel"), ly = $("lyrics-panel");
+    if (up) window.__hidePanel(up);
+    if (ly) { window.__hidePanel(ly); ly.classList.remove("showlyrics"); var bl = $("btn-lyrics"); if (bl) bl.classList.remove("on"); }
+  }
   window.goHome = function () {
+    collapseOverlays();
     $("app").dataset.view = "home";
+    document.body.classList.remove("in-detail");
     if (window.switchView) switchView("home");
     var nav = $("navHome");
     if (nav) nav.classList.add("on");
@@ -106,6 +114,7 @@
     var d = el.dataset;
     dtState = { kind: "user", id: d.pl, name: d.name, hue: d.hue || 340 };
     $("app").dataset.view = "detail";
+    document.body.classList.add("in-detail");
     var hero = document.getElementById("dt-hero");
     if (hero) hero.style.setProperty("--dh", dtState.hue);
     document.getElementById("dt-eyebrow").textContent =
@@ -158,6 +167,7 @@
     var d = el.dataset;
     dtState = { kind: "rec", id: "rec:" + d.rgenre, name: d.name, hue: d.hue || 340 };
     $("app").dataset.view = "detail";
+    document.body.classList.add("in-detail");
     var hero = document.getElementById("dt-hero");
     if (hero) hero.style.setProperty("--dh", dtState.hue);
     var cvr = document.querySelector("#dt-hero .dt-cvr");
@@ -183,6 +193,7 @@
   }
 
   window.openDetailFrom = function (el, autoplay) {
+    collapseOverlays(); // 侧栏常驻后：进详情前收起全屏覆盖层（艺术家页/歌词页）
     // 先选中歌单（决定收藏目标 + 主页列表联动），再进详情
     if (el.dataset.rgenre === undefined && window.selectPlaylist) selectPlaylist(el.dataset.pl, el);
     if (el.dataset.rgenre !== undefined) fillRecDetail(el, autoplay);
@@ -261,6 +272,21 @@
     toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
   };
 
+  // ---------- 界面切换过渡：覆盖层开（淡入上浮）/ 关（淡出后隐藏） ----------
+  window.__showPanel = function (el) {
+    if (!el) return;
+    el.classList.remove("hidden", "closing");
+    el.classList.add("opening");
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { el.classList.remove("opening"); });
+    });
+  };
+  window.__hidePanel = function (el) {
+    if (!el || el.classList.contains("hidden")) return;
+    el.classList.add("closing");
+    setTimeout(function () { el.classList.add("hidden"); el.classList.remove("closing"); }, 300);
+  };
+
   // ---------- UP 主作品页（Apple Music 沉浸式艺术家页） ----------
   window.openUp = async function (bvid) {
     if (!bvid) return;
@@ -270,7 +296,7 @@
       var r = await fetch("/web/up/resolve?bvid=" + encodeURIComponent(bvid));
       var owner = await r.json();
       if (!r.ok || !owner.mid) { window.__toast(owner.error || "未找到 UP 主"); return; }
-      p.classList.remove("hidden");
+      window.__showPanel(p);
       p.dataset.name = owner.name || "";
       p.dataset.mid = owner.mid;
       p.style.setProperty("--uph", owner.hue != null ? owner.hue : 340);
@@ -302,7 +328,7 @@
     var p = $("up-panel");
     if (!p) return;
     var close = $("up-close");
-    if (close) close.addEventListener("click", function () { p.classList.add("hidden"); });
+    if (close) close.addEventListener("click", function () { window.__hidePanel(p); });
     var list = $("up-list");
     if (list) {
       // 滚动：hero 随页离开视口，头像背景渐虚化融入环境背景
@@ -328,7 +354,7 @@
     }
     document.addEventListener("keydown", function (e) {
       if (e.key !== "Escape") return;
-      if (!p.classList.contains("hidden")) p.classList.add("hidden");
+      if (!p.classList.contains("hidden")) window.__hidePanel(p);
     });
     // Hero 操作行：播放热门 / 分享主页 / 随机播放
     var playBtn = $("up-play");
@@ -378,7 +404,7 @@
     if (umNext && window.BiliPlayer) umNext.addEventListener("click", function () { BiliPlayer.next(); });
     if (umToggle && window.BiliPlayer) umToggle.addEventListener("click", function () { BiliPlayer.toggle(); });
     if (umLyrics) umLyrics.addEventListener("click", function () {
-      p.classList.add("hidden");
+      window.__hidePanel(p);
       if (window.toggleLyrics) toggleLyrics();
     });
     function syncMini() {

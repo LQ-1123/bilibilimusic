@@ -693,7 +693,9 @@
   window.toggleLyrics = function () {
     var panel = $("lyrics-panel");
     var opening = panel.classList.contains("hidden");
-    panel.classList.toggle("hidden");
+    if (window.__showPanel && opening) __showPanel(panel);
+    else if (window.__hidePanel && !opening) __hidePanel(panel);
+    else panel.classList.toggle("hidden");
     $("btn-lyrics").classList.toggle("on", opening);
     if (!opening) return;
     if (recActive && recAudio) { // 试听歌：bvid 直接取词
@@ -715,7 +717,8 @@
   };
   $("btn-lyrics").addEventListener("click", window.toggleLyrics);
   $("btn-lyrics-close").addEventListener("click", function () {
-    $("lyrics-panel").classList.add("hidden");
+    if (window.__hidePanel) __hidePanel($("lyrics-panel"));
+    else $("lyrics-panel").classList.add("hidden");
     $("btn-lyrics").classList.remove("on");
   });
 

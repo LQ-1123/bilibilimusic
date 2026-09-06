@@ -40,7 +40,8 @@ img{display:block}
 ::-webkit-scrollbar-track{background:transparent}
 
 /* ---------- 应用框架 ---------- */
-.app{position:fixed;inset:0;--side:264px;user-select:none}
+:root{--side:264px}
+.app{position:fixed;inset:0;user-select:none}
 .app .main{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;
   padding:0 28px 150px calc(var(--side) + 28px);scroll-behavior:smooth}
 
@@ -216,7 +217,7 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
 /* ---------- 侧栏（玻璃覆盖层） ---------- */
-.sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:35;display:flex;flex-direction:column;
+.sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:95;display:flex;flex-direction:column;
   background:var(--glass);backdrop-filter:blur(44px) saturate(1.5);-webkit-backdrop-filter:blur(44px) saturate(1.5);
   border-right:1px solid var(--stroke);padding:20px 6px 14px 18px}
 .side-nav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
@@ -447,13 +448,13 @@ body.trial #seek,body.trial .p-time{visibility:hidden}
 .q-empty{color:var(--txt3);font-size:12px;text-align:center;padding:20px}
 
 /* ---------- 歌词全屏 ---------- */
-#lyrics-panel{position:absolute;inset:0;z-index:80;background:var(--bg);display:grid;
+#lyrics-panel{position:absolute;inset:0;z-index:80;background:var(--bg);display:grid;padding-left:var(--side);
   grid-template-columns:42% 1fr;grid-template-rows:1fr auto;
   background-image:
     radial-gradient(60% 80% at 22% 10%, hsl(340 82% 44% / .4), transparent 66%),
     radial-gradient(55% 75% at 85% 92%, hsl(280 80% 46% / .32), transparent 66%)}
 .l-left{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:24px;padding:60px 20px 26px;position:relative;min-width:0}
-#btn-lyrics-close{position:absolute;top:24px;left:28px;width:36px;height:36px;border-radius:50%;
+#btn-lyrics-close{position:absolute;top:24px;left:calc(var(--side) + 28px);width:36px;height:36px;border-radius:50%;
   background:var(--card);border:1px solid var(--stroke);display:grid;place-items:center;color:var(--txt2);font-size:14px}
 #btn-lyrics-close:hover{color:var(--txt)}
 #lyrics-cover{width:min(300px,24vw);aspect-ratio:1;border-radius:18px;object-fit:cover;box-shadow:0 26px 70px rgba(0,0,0,.5);background:var(--raise);cursor:pointer}
@@ -492,7 +493,7 @@ body:not(.playing) .i-pause{display:none}
 .l-hero{display:none}
 
 /* ---------- UP 主作品页 · Apple Music 沉浸式艺术家页 ----------
-   强制深色环境；头像主色 --uph 驱动环境光；滚动时 hero 虚化融入（--upfog） */
+   深色环境背景铺满全屏（侧栏玻璃浮于其上）；头像主色 --uph 驱动环境光；滚动时 hero 虚化融入（--upfog） */
 #up-panel{position:absolute;inset:0;z-index:90;display:flex;flex-direction:column;background:#0a0a10;overflow:hidden;
   color:#f5f5f7;
   --txt:#f5f5f7;--txt2:rgba(245,245,247,.62);--txt3:rgba(245,245,247,.42);
@@ -508,8 +509,8 @@ body:not(.playing) .i-pause{display:none}
     radial-gradient(75% 55% at 28% 0%, hsl(var(--uph,340) 72% 44% / .5), transparent 72%),
     radial-gradient(60% 48% at 88% 26%, hsl(calc(var(--uph,340) + 42) 76% 40% / .34), transparent 72%),
     linear-gradient(180deg, #0c0c13 0%, transparent 32%, transparent 58%, #0a0a10 100%)}
-/* 整页滚动容器 */
-.up-scroll{position:relative;z-index:2;flex:1;overflow-y:auto;overscroll-behavior:contain}
+/* 整页滚动容器：内容避开侧栏（侧栏玻璃浮在背景上） */
+.up-scroll{position:relative;z-index:2;flex:1;overflow-y:auto;overscroll-behavior:contain;padding-left:var(--side)}
 /* Hero：大头像融入背景（无卡片边界）+ 大标题 + 播放操作行 */
 .up-hero{position:relative;min-height:min(78vh,620px);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;
   padding:0 24px 30px;overflow:hidden}
@@ -522,7 +523,7 @@ body:not(.playing) .i-pause{display:none}
   filter:drop-shadow(0 34px 80px rgba(0,0,0,.62)) blur(calc(var(--upfog,0)*22px));
   opacity:calc(1 - var(--upfog,0)*.88);
   transition:opacity .3s}
-#up-close{position:absolute;top:20px;left:20px;z-index:5;width:36px;height:36px;border-radius:50%;
+#up-close{position:absolute;top:20px;left:calc(var(--side) + 20px);z-index:5;width:36px;height:36px;border-radius:50%;
   background:rgba(255,255,255,.09);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
   border:1px solid rgba(255,255,255,.13);display:grid;place-items:center;color:rgba(255,255,255,.75);font-size:13px;transition:.15s}
 #up-close:hover{color:#fff;background:rgba(255,255,255,.16)}
@@ -543,11 +544,11 @@ body:not(.playing) .i-pause{display:none}
 #up-play{width:64px;height:64px;background:#fff;color:#0d0d14;border:none;box-shadow:0 12px 38px rgba(0,0,0,.5)}
 #up-play:hover{transform:scale(1.05)}
 #up-play svg{width:30px;height:30px}
-/* 内容区：桌面双栏大留白（左=热门歌曲列表，右=音乐视频） */
-.up-lay{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:24px 60px;padding:40px 52px 150px}
+/* 内容区：上下两大区（热门歌曲 / 全部音乐），每区内部多列排布，宽屏无空白 */
+.up-lay{display:grid;grid-template-columns:1fr;gap:38px;padding:40px 52px 150px}
 .up-sec h3{font-size:16px;font-weight:700;color:rgba(255,255,255,.94);margin:0 0 16px;letter-spacing:.2px}
-/* 热门歌曲：编号行，无卡片底，hover 轻浮 */
-.up-songs{list-style:none;margin:0;padding:0}
+/* 热门歌曲：编号行无卡片底，宽屏自动分多列 */
+.up-songs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:2px 44px}
 .up-song{display:flex;align-items:center;gap:13px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
 .up-song:hover{background:rgba(255,255,255,.06)}
 .up-song .no{width:18px;text-align:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.38);flex:none}
@@ -580,7 +581,7 @@ body:not(.playing) .i-pause{display:none}
 .up-more:hover{color:#fff;background:rgba(255,255,255,.14)}
 #up-panel .empty{color:rgba(255,255,255,.42)}
 /* Mini Player：底部悬浮毛玻璃胶囊 */
-#up-mini{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:8;
+#up-mini{position:absolute;left:calc(var(--side) + (100% - var(--side)) / 2);bottom:24px;transform:translateX(-50%);z-index:8;
   display:flex;align-items:center;gap:12px;height:58px;padding:0 12px 0 10px;width:min(660px,calc(100% - 48px));
   background:rgba(20,20,28,.55);backdrop-filter:blur(26px) saturate(1.5);-webkit-backdrop-filter:blur(26px) saturate(1.5);
   border:1px solid rgba(255,255,255,.12);border-radius:999px;box-shadow:0 18px 48px rgba(0,0,0,.5)}
@@ -606,6 +607,17 @@ body.playing #up-panel .i-pause{display:block}
 #lyrics-artist,#player-artist{cursor:pointer}
 #lyrics-artist:hover,#player-artist:hover{color:var(--pink-txt)}
 
+/* ---------- 界面切换过渡 ----------
+   覆盖层（艺术家页/歌词页）：开=淡入上浮微放大，关=淡出；视图（主页/详情/账号）：淡入上浮 */
+#up-panel,#lyrics-panel{transition:opacity .3s ease,transform .3s cubic-bezier(.3,.85,.3,1)}
+#up-panel.opening,#lyrics-panel.opening{opacity:0;transform:translateY(14px) scale(1.012)}
+#up-panel.closing,#lyrics-panel.closing{opacity:0;transform:translateY(10px) scale(1.012);pointer-events:none}
+#view-home,#view-detail,#view-account{animation:viewIn .34s cubic-bezier(.3,.85,.3,1)}
+@keyframes viewIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){
+  #up-panel,#lyrics-panel,#view-home,#view-detail,#view-account{transition:none !important;animation:none !important}
+}
+
 /* ---------- 歌单详情 ---------- */
 #view-home,#view-detail,#view-account{display:none}
 .app[data-view="home"] #view-home{display:block}
@@ -616,8 +628,7 @@ body.playing #up-panel .i-pause{display:block}
 #mainEl.scrolled .dt-top #dt-crumb{opacity:0}
 .dt-hero{position:relative;margin:4px -28px 26px calc(-1 * (var(--side) + 28px));padding:22px 28px 30px calc(var(--side) + 28px);
   display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap}
-.dt-hero::before{content:"";position:absolute;inset:-80px -28px 0 calc(-1 * (var(--side) + 28px));opacity:.5;pointer-events:none;
-  background:radial-gradient(90% 130% at 18% 0%, hsl(var(--dh,340) 82% 42% / .5), transparent 70%)}
+.dt-hero::before{content:none} /* 歌单渐变已按需求移除：直接留白 */
 .dt-hero .dt-cvr{width:200px;height:200px;border-radius:14px;flex:none;box-shadow:0 24px 60px rgba(0,0,0,.5);position:relative;
   background:
     radial-gradient(135% 135% at 16% 10%, hsl(var(--dh,340) 92% 64% / .95), transparent 62%),
@@ -703,7 +714,7 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
 /* ---------- 手机端（≤ 900px）：双胶囊 + Tab ---------- */
 #m-dock{display:none}
 @media (max-width: 900px){
-  .app{--side:0px}
+  :root{--side:0px}
   .sidebar,.side-handle{display:none}
   .app .main{padding:0 16px 170px}
   .hero,.rack,.rec-genres,.dt-hero{margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px}
@@ -794,6 +805,7 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   #up-share,#up-shuffle{width:42px;height:42px}
   .up-acts{gap:20px;margin-top:14px}
   .up-lay{grid-template-columns:1fr;gap:44px;padding:30px 20px 150px}
+  .up-songs{grid-template-columns:1fr}
   .up-videos{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 14px}
   .us-love{opacity:1}
   #up-mini{left:14px;right:14px;transform:none;width:auto;bottom:calc(16px + env(safe-area-inset-bottom, 0px));gap:9px}
@@ -821,4 +833,9 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
 }
 @media (min-width: 901px){
   #view-account{display:none !important}
+  /* 歌曲播放大页面（歌词全屏）：无侧栏，全宽沉浸 */
+  body:has(#lyrics-panel:not(.hidden)) .sidebar,
+  body:has(#lyrics-panel:not(.hidden)) .side-handle{display:none}
+  body:has(#lyrics-panel:not(.hidden)) #lyrics-panel{padding-left:0}
+  body:has(#lyrics-panel:not(.hidden)) #btn-lyrics-close{left:28px}
 }
