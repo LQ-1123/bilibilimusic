@@ -1,48 +1,52 @@
-{% if items or top10 %}
-{% if total and pn == 1 %}<div class="up-count">作品 · 共 {{ total_text }} 个</div>{% endif %}
-{% if pn == 1 and top10 %}
-<div class="up-feature">
-  <div class="up-top10">
-    <div class="ut-head">播放 TOP 10</div>
-    <div class="ut-grid">
+{% if top10 or items %}
+<div class="up-lay">
+  {% if top10 %}
+  <section class="up-sec">
+    <h3>热门歌曲</h3>
+    <ol class="up-songs">
       {% for v in top10 %}
-      <div class="ut-card" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
+      <li class="up-song" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
+        <span class="no">{{ loop.index }}</span>
         <span class="im"><img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
         <div class="tt">
           <div class="t1">{{ v.title }}</div>
           <div class="t2">{{ v.play_text }} 播放</div>
         </div>
-        <button class="ut-love love" type="button" data-bvid="{{ v.bvid }}" title="收藏入库"
+        <span class="du">{{ v.length }}</span>
+        <button class="us-love love" type="button" data-bvid="{{ v.bvid }}" title="收藏入库"
                 onclick="event.stopPropagation()"
                 hx-post="/web/import"
                 hx-vals='{"url": "https://www.bilibili.com/video/{{ v.bvid }}"}'
                 hx-include="#collect-playlist-id"
                 hx-target="#task-list" hx-swap="innerHTML">♥</button>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+  {% if items %}
+  <section class="up-sec">
+    <h3>音乐视频</h3>
+    <div class="up-videos">
+      {% for v in items %}
+      <div class="up-video" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
+        <span class="im">
+          <img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          <span class="pv">▶</span>
+        </span>
+        <div class="tt">
+          <div class="t1">{{ v.title }}</div>
+          <div class="t2">{{ name }} · {{ v.play_text }} 播放</div>
+        </div>
       </div>
       {% endfor %}
     </div>
-  </div>
+    {% if has_more %}
+    <button class="up-more" type="button" data-mid="{{ mid }}" data-pn="{{ pn + 1 }}">加载更多</button>
+    {% endif %}
+  </section>
+  {% endif %}
 </div>
-<div class="up-count">更多作品</div>
-{% endif %}
-{% for v in items %}
-<div class="up-item" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
-  <span class="im"><img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
-  <div class="tt">
-    <div class="t1">{{ v.title }}</div>
-    <div class="t2">{{ v.play_text }} 播放 · {{ v.length }}</div>
-  </div>
-  <button class="up-love love" type="button" data-bvid="{{ v.bvid }}" title="收藏入库（自动同步 B 站夹）"
-          onclick="event.stopPropagation()"
-          hx-post="/web/import"
-          hx-vals='{"url": "https://www.bilibili.com/video/{{ v.bvid }}"}'
-          hx-include="#collect-playlist-id"
-          hx-target="#task-list" hx-swap="innerHTML">♥</button>
-</div>
-{% endfor %}
-{% if has_more %}
-<button class="up-more" type="button" data-mid="{{ mid }}" data-pn="{{ pn + 1 }}">加载更多</button>
-{% endif %}
 {% elif pn == 1 %}
 <div class="empty">这个 UP 主还没有公开投稿。</div>
 {% endif %}

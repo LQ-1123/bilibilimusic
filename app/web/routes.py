@@ -1,5 +1,6 @@
 """Web 页面路由：服务端渲染 + htmx 局部刷新。强制登录，未登录一律跳登录页。"""
 
+import math
 import time
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from sqlmodel import func, select
 
 from app.bili.client import BiliApiError
 from app.core.link_parser import BV_RE, parse_video_url
+from app.core.url_guard import validate_bilibili_url
 from app.db.models import ImportTask
 from app.db.session import new_session
 from app.services import library, playlists, recs, zone
@@ -361,9 +363,56 @@ async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
     )
 
 
+_UP_HUE_CACHE: dict[str, int | None] = {}  # face url → 主色调 h（0-359），None=提取失败
+
+
+def _dominant_hue(data: bytes) -> int | None:
+    """头像主色调：缩到 8×8 后按 饱和度×明度 加权平均（比纯平均更贴近人眼感知的主题色）。"""
+    import colorsys
+    import io
+
+    from PIL import Image
+
+    try:
+        img = Image.open(io.BytesIO(data)).convert("RGB").resize((8, 8))
+    except Exception:
+        return None
+    sx = sy = sw = 0.0
+    for r, g, b in img.getdata():
+        h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        if s < 0.12:  # 跳过近灰像素，避免把主色洗灰
+            continue
+        x, y = ((h % 1) * 360 - 180), s * v  # 角度加权，避免 359° 与 1° 相消
+        sx += math.cos(math.radians(x)) * y
+        sy += math.sin(math.radians(x)) * y
+        sw += y
+    if sw <= 0:
+        return None
+    hue = (math.degrees(math.atan2(sy, sx)) + 180 + 360) % 360
+    return round(hue)
+
+
+async def _face_hue(bili, face: str) -> int | None:
+    """下载头像提主色调；结果按 url 缓存，失败返回 None（前端回退默认粉紫）。"""
+    if not face:
+        return None
+    if face in _UP_HUE_CACHE:
+        return _UP_HUE_CACHE[face]
+    hue: int | None = None
+    try:
+        validate_bilibili_url(face)
+        resp = await bili.http.get(face)
+        resp.raise_for_status()
+        hue = _dominant_hue(resp.content)
+    except Exception:
+        hue = None
+    _UP_HUE_CACHE[face] = hue
+    return hue
+
+
 @router.get("/web/up/resolve")
 async def up_resolve(request: Request, bvid: str = ""):
-    """bvid → UP 主 {mid, name, face}；前端点 UP 名进作品页第一步。"""
+    """bvid → UP 主 {mid, name, face, hue}；hue=头像主色调（作品页背景配色用）。"""
     if not request.app.state.cookies.logged_in:
         return JSONResponse({"error": "需要先登录"}, status_code=401)
     bvid = (bvid or "").strip()
@@ -375,6 +424,7 @@ async def up_resolve(request: Request, bvid: str = ""):
         return JSONResponse({"error": exc.message}, status_code=502)
     if not owner.get("mid"):
         return JSONResponse({"error": "未找到 UP 主"}, status_code=404)
+    owner["hue"] = await _face_hue(request.app.state.bili, owner.get("face", ""))
     return JSONResponse(owner)
 
 
@@ -598,5 +648,10 @@ async def web_import(
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse(
-        request, "login.html", {"logged_in": request.app.state.cookies.logged_in}
+        request,
+        "login.html",
+        {
+            "logged_in": request.app.state.cookies.logged_in,
+            "user": {"uname": "", "face": ""},  # base.html 侧栏占位（登录页隐藏侧栏，仅需可取值）
+        },
     )
