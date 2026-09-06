@@ -6,11 +6,12 @@
   没有任何定时任务或后台爬取
 - 池子只是链接组：bvid + 元数据，播放走 /api/stream/{bvid} 实时流代理
 - 过期即删：每条默认 7 天，读取时懒清理，无清理任务
-- 风格分类：种子视频标签 + 候选标题关键词 → 摇滚/R&B/流行/民谣/说唱/电子/古风/爵士
+- 风格分类：种子视频标签 + 候选标题关键词 → 古典/摇滚金属/R&B/蓝调/华语流行/hiphop/力量/古风/静心/网络音乐
 - 今日推荐：按「日期 + bvid」确定性挑选，同一天刷新不变，隔天自动换
 """
 
 import hashlib
+import random
 import time
 from datetime import datetime, timedelta
 
@@ -27,15 +28,38 @@ MIN_DURATION = 90  # “像一首歌”的时长过滤（秒）
 MAX_DURATION = 480
 
 GENRE_KEYWORDS = {
-    "摇滚": ("摇滚", "rock", "metal", "金属", "朋克", "punk"),
-    "R&B": ("r&b", "rnb", "节奏布鲁斯", "soul", "灵魂", "福音", "gospel", "blues", "布鲁斯"),
-    "流行": ("流行", "pop", "金曲", "华语流行", "hot"),
-    "民谣": ("民谣", "folk", "乡村", "弹唱"),
-    "说唱": ("说唱", "rap", "hip hop", "hip-hop", "嘻哈", "freestyle"),
-    "电子": ("电子", "edm", "house", "techno", "电音", "remix"),
+    "古典": ("古典", "classical", "交响", "协奏", "奏鸣", "钢琴曲", "贝多芬", "莫扎特", "肖邦", "巴赫", "orchestra"),
+    "摇滚金属": ("摇滚", "rock", "metal", "金属", "朋克", "punk", "乐队"),
+    "R&B": ("r&b", "rnb", "节奏布鲁斯", "soul", "灵魂", "福音", "gospel"),
+    "蓝调": ("蓝调", "blues", "布鲁斯", "爵士", "jazz", "bossa"),
+    "华语流行": ("华语流行", "流行", "pop", "金曲", "华语", "国语", "中文歌", "c-pop"),
+    "hiphop": ("hiphop", "hip hop", "hip-hop", "说唱", "rap", "嘻哈", "freestyle"),
+    "力量": ("力量", "power", "高燃", "燃向", "燃曲", "史诗", "epic"),
     "古风": ("古风", "国风", "民乐", "戏腔", "古筝", "琵琶"),
-    "爵士": ("爵士", "jazz", "bossa", "蓝调"),
+    "静心": ("静心", "助眠", "冥想", "放松", "轻音乐", "纯音乐", "治愈", "白噪音", "relax", "睡眠"),
+    "网络音乐": ("网络音乐", "网络歌曲", "神曲", "抖音", "网红", "热歌"),
 }
+
+# 旧分类 → 新分类的一次性重标在 ensure_genre_migration()（进程内只跑一次）
+_reclassified = False
+
+
+def ensure_genre_migration() -> None:
+    """分类体系更换后，把池中旧行按标题关键词重标一遍（标题无关键词的保留原值，过期自然淘汰）。"""
+    global _reclassified
+    if _reclassified:
+        return
+    _reclassified = True
+    with new_session() as session:
+        rows = list(session.exec(select(RecPool)).all())
+        changed = 0
+        for row in rows:
+            new = classify(row.title, [])
+            if new and new != row.genre:
+                row.genre = new
+                changed += 1
+        if changed:
+            session.commit()
 
 # 进程内频控状态（重启即重置，无伤大雅）
 _state = {"last": 0.0, "day": "", "count": 0}
@@ -86,6 +110,7 @@ def purge_expired() -> int:
 
 
 def list_items(genre: str = "", limit: int = 500) -> list[RecPool]:
+    ensure_genre_migration()
     purge_expired()
     with new_session() as session:
         stmt = select(RecPool).order_by(RecPool.added_at.desc()).limit(limit)
@@ -97,6 +122,13 @@ def list_items(genre: str = "", limit: int = 500) -> list[RecPool]:
 def daily_items(n: int = 12) -> list[RecPool]:
     purge_expired()
     return daily_pick(list_items(), n=n)
+
+
+def discover_items(n: int = 12) -> list[RecPool]:
+    """发现板块：每次请求随机抽一撮（刷新即换一批）；每日精选歌单仍走按日轮换的 daily_items。"""
+    purge_expired()
+    pool = list_items()
+    return random.sample(pool, min(n, len(pool)))
 
 
 def dismiss(bvid: str) -> bool:

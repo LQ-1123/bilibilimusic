@@ -9,21 +9,15 @@
 {% if items %}
 <div class="rec-grid">
   {% for r in items %}
-  <div class="reccard" title="{{ r.title }}">
+  <div class="reccard" title="{{ r.title }}" data-bvid="{{ r.bvid }}" onclick="playRecRow(this)">
     <div class="rc">
       <div class="im">
         <img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
         <span class="gtag">{{ r.genre }}</span>
       </div>
       <div class="nm">{{ r.title }}</div>
-      <div class="ar">{{ r.artist }} · {{ r.duration_text }}</div>
+      <div class="ar">{{ r.artist }}</div>
       <div class="acts">
-        <button type="button" class="mini-act rec-play" data-bvid="{{ r.bvid }}" title="实时流试听（不下载）"
-                onclick="playRec('{{ r.bvid }}', this)">▶</button>
-        <button type="button" class="mini-act love rec-collect" data-bvid="{{ r.bvid }}" title="收藏到我的曲库"
-                hx-post="/web/import"
-                hx-vals='{"url": "https://www.bilibili.com/video/{{ r.bvid }}", "playlist_id": "0"}'
-                hx-target="#task-list" hx-swap="innerHTML">♥</button>
         <button type="button" class="mini-act addto" data-rec="{{ r.bvid }}"
                 data-url="https://www.bilibili.com/video/{{ r.bvid }}"
                 title="加入指定歌单（B 站夹同步）">＋</button>

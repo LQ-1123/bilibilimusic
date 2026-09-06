@@ -50,6 +50,16 @@ def update_fav_folder(song_id: int, folder_id: int) -> None:
             session.commit()
 
 
+def clear_fav_folder(song_id: int) -> None:
+    """清零 fav_folder_id（收藏转移中标记）：对账据此区分「待推送」与「B 站已取消收藏」。"""
+    with new_session() as session:
+        song = session.get(Song, song_id)
+        if song is not None:
+            song.fav_folder_id = 0
+            session.add(song)
+            session.commit()
+
+
 def update_playlist(song_id: int, playlist_id: int) -> None:
     with new_session() as session:
         song = session.get(Song, song_id)
@@ -77,7 +87,7 @@ def get_by_bvid(bvid: str) -> Song | None:
         return session.exec(select(Song).where(Song.bvid == bvid)).first()
 
 
-def delete_song(song_id: int, files: FileStore) -> bool:
+def delete_song(song_id: int, files: FileStore | None) -> bool:
     with new_session() as session:
         song = session.get(Song, song_id)
         if song is None:
@@ -90,5 +100,6 @@ def delete_song(song_id: int, files: FileStore) -> bool:
         if row is not None:
             session.delete(row)
         session.commit()
-        files.delete_song_files(song.audio_path, song.cover_path)
+        if files is not None:
+            files.delete_song_files(song.audio_path, song.cover_path)
         return True

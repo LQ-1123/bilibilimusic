@@ -1,16 +1,18 @@
 """Web 页面路由：服务端渲染 + htmx 局部刷新。强制登录，未登录一律跳登录页。"""
 
+import math
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlmodel import func, select
 
 from app.bili.client import BiliApiError
 from app.core.link_parser import BV_RE, parse_video_url
-from app.db.models import ImportTask
+from app.core.url_guard import validate_bilibili_url
+from app.db.models import ImportTask, Song
 from app.db.session import new_session
 from app.services import library, playlists, recs, zone
 from app.services.importer import ImportService
@@ -25,10 +27,13 @@ _SEARCH_CACHE_TTL = 300  # B 站搜索风控较严：同词 5 分钟内直接复
 _search_cache: dict[str, tuple[float, list]] = {}
 
 
-def _login_redirect(request: Request) -> RedirectResponse | None:
-    if not request.app.state.cookies.logged_in:
-        return RedirectResponse("/login", status_code=307)
-    return None
+def _login_redirect(request: Request):
+    """未登录拦截：htmx/局部请求返回 401（前端全局监听后弹登录弹窗），整页导航跳 /?login=1。"""
+    if request.state.cookies.logged_in:
+        return None
+    if request.headers.get("hx-request") == "true":
+        return JSONResponse({"detail": "需要先扫码登录 B 站账号"}, status_code=401)
+    return RedirectResponse("/?login=1", status_code=307)
 
 
 def _fmt_duration(seconds: int) -> str:
@@ -53,6 +58,7 @@ def _song_ctx(s) -> dict:
     d = song_out(s)
     return {
         "id": d["id"],
+        "bvid": d["bvid"],
         "title": d["title"],
         "artist": d["artist"],
         "quality_label": d["qualityLabel"],
@@ -82,13 +88,27 @@ _HUES = [340, 14, 258, 44, 192, 130, 285, 210]
 
 
 def _playlist_cards() -> tuple[list[dict], int]:
-    """侧栏 + 海报架共用的歌单卡片数据（含每歌单曲目数）。返回 (cards, 总曲数)。"""
+    """侧栏 + 海报架共用的歌单卡片数据（含每歌单曲目数 + 最新封面）。返回 (cards, 总曲数)。"""
+    from app.api.routes import song_out
+
     pls = playlists.list_playlists()
     all_songs = library.list_songs(limit=10000)
     counts: dict[int, int] = {}
+    covers: dict[int, str] = {}  # 每歌单最新一首的封面（list_songs 新歌在前）
+    newest_cover = ""
     for s in all_songs:
-        counts[s.playlist_id or 0] = counts.get(s.playlist_id or 0, 0) + 1
-    cards = [{"id": 0, "name": "全部歌曲", "count": len(all_songs), "default": False, "hue": 340}]
+        pid = s.playlist_id or 0
+        counts[pid] = counts.get(pid, 0) + 1
+        if pid not in covers:
+            url = song_out(s)["coverUrl"]
+            if url:
+                covers[pid] = url
+                if not newest_cover:
+                    newest_cover = url
+    cards = [{
+        "id": 0, "name": "全部歌曲", "count": len(all_songs), "default": False, "hue": 340,
+        "cover": covers.get(0, newest_cover),
+    }]
     for i, p in enumerate(pls):
         cards.append({
             "id": p.id,
@@ -96,30 +116,41 @@ def _playlist_cards() -> tuple[list[dict], int]:
             "count": counts.get(p.id, 0),
             "default": p.name == playlists.DEFAULT_NAME,
             "hue": _HUES[i % len(_HUES)],
+            "cover": covers.get(p.id, ""),
         })
     return cards, len(all_songs)
 
 
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    """曲库主界面（含歌单、收藏、发现、播放）。未登录一律跳登录页。"""
-    gate = _login_redirect(request)
-    if gate:
-        return gate
+    """曲库主界面（含歌单、收藏、发现、播放）。未登录也渲染骨架，操作时前端弹登录弹窗。"""
+    if not request.state.cookies.logged_in:
+        return templates.TemplateResponse(
+            request,
+            "library.html",
+            {
+                "playlists": [],
+                "logged_in": False,
+                "recent": [],
+                "user": {"uname": "", "face": ""},
+                "stats": {"songs": 0, "playlists": 0, "recs": 0},
+            },
+        )
     _, total = _playlist_cards()
     recent = [_song_ctx(s) for s in library.list_songs()[:8]]
     try:
         rec_count = len(recs.list_items())
     except Exception:
         rec_count = 0
-    me = await request.app.state.bili.my_info()
-    user = {"uname": str(me.get("uname") or "未登录"), "face": str(me.get("face") or "")}
+    me = await request.state.bili.my_info()
+    user = {"uname": str(me.get("uname") or "已登录"), "face": str(me.get("face") or "")}
     return templates.TemplateResponse(
         request,
         "library.html",
         {
             "playlists": playlists.list_playlists(),
             "logged_in": True,
+            "mid": request.state.mid or "",
             "recent": recent,
             "user": user,
             "stats": {
@@ -157,7 +188,7 @@ async def web_playlist_create(request: Request, name: str = Form(default="")):
     if gate:
         return gate
     try:
-        await playlists.create(name, request.app.state.bili)
+        await playlists.create(name, request.state.bili)
     except (ValueError, BiliApiError) as exc:
         return PlainTextResponse(str(exc), status_code=400)
     return PlainTextResponse("ok")
@@ -171,7 +202,7 @@ async def web_playlist_rename(
     if gate:
         return gate
     try:
-        await playlists.rename(id, name, request.app.state.bili)
+        await playlists.rename(id, name, request.state.bili)
     except (ValueError, BiliApiError) as exc:
         return PlainTextResponse(str(exc), status_code=400)
     return PlainTextResponse("ok")
@@ -184,7 +215,7 @@ async def web_playlist_delete(request: Request, id: int = Form(default=0)):
     if gate:
         return gate
     try:
-        result = await playlists.delete(id, request.app.state.bili)
+        result = await playlists.delete(id, request.state.bili)
     except (ValueError, BiliApiError) as exc:
         return PlainTextResponse(str(exc), status_code=400)
     return PlainTextResponse(f"ok {result['moved']}")
@@ -199,24 +230,43 @@ async def web_playlist_add_song(
     if gate:
         return gate
     try:
-        await playlists.add_song(playlist_id, song_id, request.app.state.bili)
+        await playlists.add_song(playlist_id, song_id, request.state.bili)
     except (ValueError, BiliApiError) as exc:
         return PlainTextResponse(str(exc), status_code=400)
     return PlainTextResponse("ok")
 
 
 @router.get("/partials/songs", response_class=HTMLResponse)
-def songs_partial(request: Request, q: str = "", playlist_id: int = 0):
+def songs_partial(request: Request, q: str = "", playlist_id: int = 0, artist: str = ""):
     gate = _login_redirect(request)
     if gate:
         return gate
     pl_names = {p.id: p.name for p in playlists.list_playlists()}
     songs = []
     for s in library.list_songs(q, playlist_id=playlist_id):
+        if artist and s.artist != artist:
+            continue
         d = _song_ctx(s)
         d["pl_name"] = pl_names.get(s.playlist_id or 0, "")
         songs.append(d)
     return templates.TemplateResponse(request, "partials/songs.html", {"songs": songs})
+
+
+@router.get("/partials/up-list", response_class=HTMLResponse)
+def up_list_partial(request: Request):
+    """UP 主视图左栏：曲库内所有 UP 主（客户端按拼音排序），首歌 bvid 供头像懒解析。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    stats: dict[str, dict] = {}
+    order: list[str] = []
+    for s in library.list_songs():
+        st = stats.get(s.artist)
+        if st is None:
+            st = stats[s.artist] = {"artist": s.artist, "count": 0, "bvid": s.bvid}
+            order.append(s.artist)
+        st["count"] += 1
+    return templates.TemplateResponse(request, "partials/up_list.html", {"ups": [stats[a] for a in order]})
 
 
 @router.get("/partials/tasks", response_class=HTMLResponse)
@@ -271,7 +321,7 @@ async def rec_playlists_partial(request: Request):
     gate = _login_redirect(request)
     if gate:
         return gate
-    bili = request.app.state.bili
+    bili = request.state.bili
 
     def _covers(items: list) -> list[str]:
         first = items[0] if items else None
@@ -304,9 +354,42 @@ async def rec_playlists_partial(request: Request):
     return templates.TemplateResponse(request, "partials/rec_playlists.html", {"cards": cards})
 
 
+@router.get("/partials/recommend-shelves", response_class=HTMLResponse)
+async def recommend_shelves_partial(request: Request):
+    """推荐页货架：除「每日精选」（已单独成列表）外的每个歌单一条横栏——B站音乐区电台 + 各风格精选。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    bili = request.state.bili
+
+    def _card(i):
+        if isinstance(i, dict):
+            return {
+                "bvid": i["bvid"], "title": i["title"], "artist": i["artist"],
+                "duration_text": _fmt_duration(i["duration"]),
+                "cover_url": i["cover_url"], "genre": i["genre"],
+            }
+        return {
+            "bvid": i.bvid, "title": i.title, "artist": i.artist,
+            "duration_text": _fmt_duration(i.duration),
+            "cover_url": i.cover_url, "genre": i.genre,
+        }
+
+    shelves = []
+    for key, _rid, name in zone.RADIOS:
+        items = await zone.items_for(bili, key)
+        if items:
+            shelves.append({"name": name, "cards": [_card(i) for i in items[:15]]})
+    for g in recs.GENRE_KEYWORDS:
+        items = recs.list_items(genre=g)
+        if items:
+            shelves.append({"name": f"{g}精选", "cards": [_card(i) for i in items[:15]]})
+    return templates.TemplateResponse(request, "partials/recommend_shelves.html", {"shelves": shelves})
+
+
 @router.get("/partials/rec-genre-tracks", response_class=HTMLResponse)
-async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
-    """推荐歌单详情曲目表：daily=每日精选；rank/z*=B站音乐区电台；其余=风格推荐池。"""
+async def rec_genre_tracks_partial(request: Request, genre: str = "daily", layout: str = "rows"):
+    """推荐歌单详情曲目表：daily=每日精选；rank/z*=B站音乐区电台；其余=风格推荐池。layout=cards 时渲染大封面横滑卡。"""
     gate = _login_redirect(request)
     if gate:
         return gate
@@ -321,7 +404,7 @@ async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
             for i in rows
         ]
     elif zone.is_zone_key(genre):
-        rows = (await zone.items_for(request.app.state.bili, genre))[:30]
+        rows = (await zone.items_for(request.state.bili, genre))[:30]
         ctx_items = [
             {
                 "bvid": i["bvid"], "title": i["title"], "artist": i["artist"],
@@ -340,8 +423,186 @@ async def rec_genre_tracks_partial(request: Request, genre: str = "daily"):
             }
             for i in rows
         ]
+    template = {
+        "cards": "partials/rec_cards.html",
+        "dcols": "partials/daily_columns.html",
+    }.get(layout, "partials/rec_genre_tracks.html")
     return templates.TemplateResponse(
-        request, "partials/rec_genre_tracks.html", {"items": ctx_items, "genre": genre}
+        request, template, {"items": ctx_items, "genre": genre}
+    )
+
+
+@router.get("/partials/genre-shelves", response_class=HTMLResponse)
+async def genre_shelves_partial(request: Request):
+    """首页流派货架：池子优先、按风格搜索补位，每栏 15 首；空栏跳过；按池内歌曲数从多到少排序。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    bili = request.state.bili
+    with new_session() as session:  # 补位搜索结果排除已在曲库的（避免「已收藏的歌」混进推荐）
+        known = set(session.exec(select(Song.bvid)).all())
+
+    def _card(bvid, title, artist, duration, cover, genre):
+        return {
+            "bvid": bvid, "title": title, "artist": artist,
+            "duration_text": _fmt_duration(duration),
+            "cover_url": cover, "genre": genre,
+        }
+
+    shelves = []
+    seen_global = set()  # 跨货架去重：同一搜索结果只进第一个取到它的货架
+    for genre in recs.GENRE_KEYWORDS:
+        pool = recs.list_items(genre=genre)[:15]
+        seen = known | {i.bvid for i in pool} | seen_global
+        cards = [_card(i.bvid, i.title, i.artist, i.duration, i.cover_url, i.genre) for i in pool]
+        if len(cards) < 15:  # 池子不够：按风格搜一批补位（zone 侧 10 分钟缓存，排除已在曲库的）
+            for e in await zone.genre_items(bili, genre):
+                if len(cards) >= 15:
+                    break
+                if e["bvid"] in seen:
+                    continue
+                seen.add(e["bvid"])
+                seen_global.add(e["bvid"])
+                cards.append(_card(e["bvid"], e["title"], e["artist"], e["duration"], e["cover_url"], e["genre"]))
+        if not cards:
+            continue
+        shelves.append({"genre": genre, "count": len(pool), "cards": cards})
+    shelves.sort(key=lambda s: s["count"], reverse=True)
+    return templates.TemplateResponse(request, "partials/genre_shelves.html", {"shelves": shelves})
+
+
+_UP_HUE_CACHE: dict[str, int | None] = {}  # face url → 主色调 h（0-359），None=提取失败
+
+
+def _dominant_hue(data: bytes) -> int | None:
+    """头像主色调：缩到 8×8 后按 饱和度×明度 加权平均（比纯平均更贴近人眼感知的主题色）。"""
+    import colorsys
+    import io
+
+    from PIL import Image
+
+    try:
+        img = Image.open(io.BytesIO(data)).convert("RGB").resize((8, 8))
+    except Exception:
+        return None
+    sx = sy = sw = 0.0
+    for r, g, b in img.getdata():
+        h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+        if s < 0.12:  # 跳过近灰像素，避免把主色洗灰
+            continue
+        x, y = ((h % 1) * 360 - 180), s * v  # 角度加权，避免 359° 与 1° 相消
+        sx += math.cos(math.radians(x)) * y
+        sy += math.sin(math.radians(x)) * y
+        sw += y
+    if sw <= 0:
+        return None
+    hue = (math.degrees(math.atan2(sy, sx)) + 180 + 360) % 360
+    return round(hue)
+
+
+async def _face_hue(bili, face: str) -> int | None:
+    """下载头像提主色调；结果按 url 缓存，失败返回 None（前端回退默认粉紫）。"""
+    if not face:
+        return None
+    if face in _UP_HUE_CACHE:
+        return _UP_HUE_CACHE[face]
+    hue: int | None = None
+    try:
+        validate_bilibili_url(face)
+        resp = await bili.http.get(face)
+        resp.raise_for_status()
+        hue = _dominant_hue(resp.content)
+    except Exception:
+        hue = None
+    _UP_HUE_CACHE[face] = hue
+    return hue
+
+
+@router.get("/web/up/resolve")
+async def up_resolve(request: Request, bvid: str = ""):
+    """bvid → UP 主 {mid, name, face, hue}；hue=头像主色调（作品页背景配色用）。"""
+    if not request.state.cookies.logged_in:
+        return JSONResponse({"error": "需要先登录"}, status_code=401)
+    bvid = (bvid or "").strip()
+    if not bvid:
+        return JSONResponse({"error": "缺少 bvid"}, status_code=400)
+    try:
+        owner = await request.state.bili.get_video_owner(bvid)
+    except BiliApiError as exc:
+        return JSONResponse({"error": exc.message}, status_code=502)
+    if not owner.get("mid"):
+        return JSONResponse({"error": "未找到 UP 主"}, status_code=404)
+    owner["hue"] = await _face_hue(request.state.bili, owner.get("face", ""))
+    return JSONResponse(owner)
+
+
+@router.get("/partials/up", response_class=HTMLResponse)
+async def up_videos_partial(request: Request, mid: int = 0, pn: int = 1, name: str = ""):
+    """UP 主投稿视频列表（试听 + ♥ 收藏入库），作品页覆盖层局部。
+
+    投稿接口被风控拦截时降级：站内搜索该 UP 名并过滤其作品（结果可能不全）。
+    """
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    if mid <= 0:
+        return HTMLResponse("<div class='empty'>缺少 UP 主 id</div>")
+    bili = request.state.bili
+    has_more = False
+    total = 0
+    top10: list[dict] = []
+    try:
+        items, total = await bili.space_arcs(mid, pn=pn, ps=30)
+        has_more = pn * 30 < total
+    except BiliApiError:
+        if not name.strip():
+            raise
+        hits = await bili.search_videos(name.strip())
+        items = [
+            {
+                "bvid": h.bvid,
+                "title": h.title,
+                "pic": h.cover_url,
+                "length": _fmt_duration(h.duration),
+                "play": h.play,
+            }
+            for h in hits
+            if h.artist == name.strip()
+        ][:30]
+    if pn == 1 and len(items) >= 5:
+        # 首屏 TOP10（click 排序，风控时页内降级），其余作品去重后排列
+        try:
+            tops, _ = await bili.space_arcs(mid, pn=1, ps=10, order="click")
+            top10 = tops[:10]
+        except BiliApiError:
+            top10 = sorted(items, key=lambda v: int(v.get("play") or 0), reverse=True)[:10]
+        shown = {v["bvid"] for v in top10}
+        items = [v for v in items if v["bvid"] not in shown]
+
+    def _vctx(v: dict) -> dict:
+        pic = str(v.get("pic") or "")
+        return {
+            "bvid": v["bvid"],
+            "title": str(v.get("title") or "").strip(),
+            "pic": ("https:" + pic) if pic.startswith("//") else pic,
+            "length": str(v.get("length") or ""),
+            "play_text": _fmt_play(int(v.get("play") or 0)),
+        }
+
+    ctx = [_vctx(v) for v in items]
+    return templates.TemplateResponse(
+        request,
+        "partials/up_videos.html",
+        {
+            "items": ctx,
+            "mid": mid,
+            "pn": pn,
+            "has_more": has_more,
+            "name": name.strip(),
+            "total": total,
+            "total_text": _fmt_play(total) if total else "",
+            "top10": [_vctx(v) for v in top10],
+        },
     )
 
 
@@ -380,7 +641,7 @@ async def web_search(request: Request, q: str = ""):
                         "cover_url": h.cover_url,
                         "import_url": f"https://www.bilibili.com/video/{h.bvid}",
                     }
-                    for h in await request.app.state.bili.search_videos(q)
+                    for h in await request.state.bili.search_videos(q)
                 ]
                 _search_cache[q] = (time.monotonic(), results)
                 if len(_search_cache) > 64:  # 只留最近 32 词
@@ -399,7 +660,7 @@ async def web_sync(request: Request):
     gate = _login_redirect(request)
     if gate:
         return gate
-    request.app.state.syncer.submit()
+    request.state.syncer.submit()
 
     rows = ImportService.recent_tasks(50)
     active = [t for t in rows if t.status in _ACTIVE]
@@ -426,7 +687,7 @@ def recs_partial(request: Request, genre: str = "", mode: str = ""):
     if gate:
         return gate
     if mode == "today":
-        items = recs.daily_items()
+        items = recs.discover_items()  # 发现板块：刷新即换一批（每日精选歌单仍按日轮换）
     else:
         items = recs.list_items(genre=genre)
     ctx_items = [
@@ -467,7 +728,7 @@ async def web_import(
     if url.strip():
         try:
             result = await submit_any(
-                request.app.state.importer, request.app.state.bili, url,
+                request.state.importer, request.state.bili, url,
                 playlist_id=playlist_id,
             )
             recs.dismiss_for_text(url)  # 从发现收藏的歌：转正出池
@@ -494,6 +755,5 @@ async def web_import(
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    return templates.TemplateResponse(
-        request, "login.html", {"logged_in": request.app.state.cookies.logged_in}
-    )
+    """登录已改为全局弹窗：本路由保留兼容旧链接，跳主页并自动弹窗。"""
+    return RedirectResponse("/?login=1", status_code=307)

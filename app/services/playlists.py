@@ -118,6 +118,15 @@ def set_folder_ids(pid: int, ids: list[int]) -> None:
             session.commit()
 
 
+def remove_row(pid: int) -> None:
+    """对账专用：B 站侧夹已消失，仅移除本地歌单行（歌曲已另行处理，不做 B 站操作）。"""
+    with new_session() as session:
+        row = session.get(Playlist, pid)
+        if row is not None:
+            session.delete(row)
+            session.commit()
+
+
 # ---- B 站联动操作 ----
 
 async def create(name: str, bili: BiliClient, folder_id: int = 0) -> Playlist:
@@ -158,6 +167,9 @@ async def add_song(pid: int, song_id: int, bili: BiliClient) -> dict:
         return {"moved": False, "name": target.name}
 
     old_folder = song.fav_folder_id or 0
+    # 先标记「转移中」（清零 fav_folder_id）：后台对账不会再把它当 B 站侧
+    # 取消收藏而误删，而是视为待推送；收藏成功后回填新夹 id。
+    library.clear_fav_folder(song.id)
     if old_folder:
         try:
             aid0 = song.aid or (await bili.bvid_to_aid(song.bvid) or 0)
@@ -226,12 +238,13 @@ async def delete(pid: int, bili: BiliClient) -> dict:
         ids = folder_ids(row)
         songs = library.list_songs(limit=5000, playlist_id=pid)
 
-        # 本地立即解放：歌曲归入默认歌单，歌单行删除
+        # 本地立即解放：歌曲归入默认歌单、清零收藏位置（转移中标记），歌单行删除
         with new_session() as session:
             for s in songs:
                 dbrow = session.get(Song, s.id)
                 if dbrow is not None:
                     dbrow.playlist_id = default.id or 0
+                    dbrow.fav_folder_id = 0
                     session.add(dbrow)
             folder_row = session.get(Playlist, pid)
             if folder_row is not None:

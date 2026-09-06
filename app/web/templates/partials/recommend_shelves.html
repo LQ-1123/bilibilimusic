@@ -1,0 +1,16 @@
+{% for sh in shelves %}
+<div class="sec sec-genre">
+  <div class="sec-head"><h2>{{ sh.name }}</h2></div>
+  <div class="rack">
+    {% for r in sh.cards %}
+    <div class="rec-card" data-bvid="{{ r.bvid }}" onclick="playRecRow(this)" title="{{ r.title }}">
+      <span class="im">
+        <img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+      </span>
+      <span class="t1">{{ r.title }}</span>
+      <span class="t2">{{ r.artist }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}

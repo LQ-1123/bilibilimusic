@@ -1,7 +1,7 @@
-"""导入流水线：解析 → 取信息 → 下载封面/音频 → 入库。
+"""导入流水线（纯在线版）：解析 → 取信息 → 入库（不下载音频/封面）。
 
-每个导入任务是一个 asyncio 任务，进度实时写 import_tasks 表，
-API/Web 通过轮询任务表展示。并发下载用信号量限流。
+每个导入任务是一个 asyncio 任务，进度实时写 import_tasks 表。
+播放走 /api/stream/{bvid} 实时流代理；封面直接用 B 站 CDN 地址。
 """
 
 import asyncio
@@ -11,11 +11,11 @@ import uuid
 
 from sqlmodel import select
 
+from app import events
 from app.bili.client import BiliApiError, BiliClient
-from app.bili.quality import pick_best_audio
 from app.core.link_parser import resolve_share_text
 from app.db.models import ImportTask, Song
-from app.db.session import new_session
+from app.db.session import context_mid, new_session
 from app.services import library, playlists
 from app.storage.files import FileStore
 
@@ -27,11 +27,10 @@ log = logging.getLogger(__name__)
 class ImportService:
     def __init__(
         self, bili: BiliClient, files: FileStore, concurrency: int = 4,
-        analysis=None, lyrics=None,
+        lyrics=None,
     ) -> None:
         self.bili = bili
-        self.files = files
-        self.analysis = analysis  # AnalysisService，可空（导入完成后触发后台分析）
+        self.files = files  # 仅存量清理用（迁移删本地文件）
         self.lyrics = lyrics  # LyricsService，可空（导入完成后尽力抓歌词）
         self._sem = asyncio.Semaphore(concurrency)
         self._tasks: dict[str, asyncio.Task] = {}
@@ -133,47 +132,12 @@ class ImportService:
                          error=None)
             return
 
-        self._update(task_id, status="downloading", progress=15)
-
-        # 封面
-        if info.cover_url:
-            await self.files.download(
-                self.bili.http,
-                [info.cover_url],
-                self.files.cover_path(info.bvid),
-            )
-
-        # 音频（选最高音质，CDN 备选地址容错）
-        streams = await self.bili.get_audio_streams(info.bvid, info.cid)
-        best = pick_best_audio(streams)
-
-        last_pct = -1
-
-        def on_progress(done: int, total: int) -> None:
-            nonlocal last_pct
-            if total <= 0:
-                return
-            pct = 20 + int(75 * min(done / total, 1.0))
-            if pct >= last_pct + 5:  # 降低 DB 写频率
-                last_pct = pct
-                self._update(task_id, progress=min(pct, 95))
-
-        await self.files.download(
-            self.bili.http,
-            self.bili.candidate_urls(best),
-            self.files.audio_path(info.bvid),
-            on_progress=on_progress,
-        )
+        self._update(task_id, status="resolving", progress=40)
 
         title = info.title
         if info.page > 1 or (info.part_title and info.part_title not in ("", info.title)):
             suffix = info.part_title or f"P{info.page}"
             title = f"{info.title} · {suffix}"
-
-        cover_color = ""
-        cover_file = self.files.cover_path(info.bvid)
-        if cover_file.exists():
-            cover_color = self.files.dominant_color(cover_file)
 
         playlist_id = self._task_playlist.pop(task_id, 0)
         if not playlist_id:
@@ -186,10 +150,10 @@ class ImportService:
             title=title,
             artist=info.artist,
             duration=info.duration,
-            quality_id=best.quality_id,
-            audio_path=str(self.files.audio_path(info.bvid)),
-            cover_path=str(self.files.cover_path(info.bvid)),
-            cover_color=cover_color,
+            quality_id=0,  # 在线流：播放时现选最高音质，标签统一显示"在线"
+            audio_path="",  # 纯在线：无本地文件
+            cover_path=info.cover_url or "",  # 直接存 B 站 CDN 封面地址
+            cover_color="",
             source_url=raw_text,
             playlist_id=playlist_id,
         )
@@ -211,6 +175,7 @@ class ImportService:
         if song_id != song.id:  # 复用了并发导入已入库的记录，重载权威数据
             song = library.get_song(song_id) or song
         self._update(task_id, status="ready", progress=100, song_id=song_id)
+        events.publish(context_mid(), "libraryChanged")  # SSE：前端免刷新即见
 
         # 入库即收藏进歌单对应的收藏夹（bilimusic- <歌单名>）：尽力而为，失败不影响曲库状态。
         # 同步拉取的歌已在夹内（_prefav），只记录夹 id 不重复收藏。
@@ -223,13 +188,6 @@ class ImportService:
                 await self._favorite(song)
         except Exception as exc:  # noqa: BLE001
             log.warning("自动收藏失败 %s: %s", info.bvid, exc)
-
-        # 后台预分析（Smart Transition），不阻塞任务完成
-        if self.analysis is not None:
-            try:
-                self.analysis.schedule_for_song(song)
-            except Exception as exc:  # noqa: BLE001
-                log.warning("后台分析调度失败 %s: %s", info.bvid, exc)
 
         # 歌词抓取（B站字幕 + LRCLIB），尽力而为不阻塞任务完成
         if self.lyrics is not None:

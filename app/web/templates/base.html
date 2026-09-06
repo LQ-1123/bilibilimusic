@@ -7,15 +7,18 @@
   <meta name="theme-color" content="#0b0b10">
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
-  <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=46">
+  <script>
+  (function(){var t=null;try{t=localStorage.getItem("bmTheme")}catch(e){}
+  if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
+  document.documentElement.dataset.theme=t||"dark";})();
+  </script>
+  <link rel="stylesheet" href="/static/style.css?v=120">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=22" defer></script>
+  <script src="/static/app.js?v=45" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=17" defer></script>
+  <script src="/static/v3.js?v=46" defer></script>
 </head>
-<body {% block bodyclass %}{% endblock %}>
+<body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <symbol id="i-home" viewBox="0 0 24 24"><path fill="currentColor" d="M10 20v-6h4v6h5v-8.5h3.2L12 2.7 1.8 11.5H5V20z"/></symbol>
@@ -24,9 +27,15 @@
     <symbol id="i-note" viewBox="0 0 24 24"><path fill="currentColor" d="M9 3v11.1A3.8 3.8 0 1011 17.6V7.6l8-1.8v7.3A3.8 3.8 0 1021 15.6V2z"/></symbol>
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 20.5c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M21.3 13.2A9.2 9.2 0 1110.8 2.7a7.3 7.3 0 0010.5 10.5z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3" fill="currentColor"/><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></g></symbol>
+    <symbol id="i-vol" viewBox="0 0 24 24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
     <symbol id="a-prev" viewBox="0 0 24 24"><path fill="currentColor" d="M11.6 12 20 6.2v11.6zM2.8 12l8.4-5.8v11.6z"/></symbol>
     <symbol id="a-next" viewBox="0 0 24 24"><path fill="currentColor" d="M12.4 12 4 17.8V6.2zM21.2 12l-8.4 5.8V6.2z"/></symbol>
     <symbol id="a-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7.5 4.8c0-1 1.1-1.6 2-1.1l11 6.4c.9.5.9 1.8 0 2.3l-11 6.4c-.9.5-2-.1-2-1.1z"/></symbol>
+    <symbol id="a-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6.5 4h3.6c.6 0 1 .4 1 1v14c0 .6-.4 1-1 1H6.5c-.6 0-1-.4-1-1V5c0-.6.4-1 1-1zm7.4 0h3.6c.6 0 1 .4 1 1v14c0 .6-.4 1-1 1h-3.6c-.6 0-1-.4-1-1V5c0-.6.4-1 1-1z"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h10M4 18h7"/></g><path fill="currentColor" d="M17 11.5l5 3.2c.6.4.6 1.4 0 1.8l-5 3.2c-.7.4-1.5-.1-1.5-.9v-6.4c0-.8.8-1.3 1.5-.9z"/></symbol>
+    <symbol id="i-rep" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 12V9.5A3.5 3.5 0 016.5 6H21"/><path d="M7 22l-4-4 4-4"/><path d="M21 12v2.5a3.5 3.5 0 01-3.5 3.5H3"/></g></symbol>
+    <symbol id="i-shuf" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></g></symbol>
     <symbol id="a-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6.5 4h3.6c.6 0 1 .4 1 1v14c0 .6-.4 1-1 1H6.5c-.6 0-1-.4-1-1V5c0-.6.4-1 1-1zm7.4 0h3.6c.6 0 1 .4 1 1v14c0 .6-.4 1-1 1h-3.6c-.6 0-1-.4-1-1V5c0-.6.4-1 1-1z"/></symbol>
     <symbol id="i-queue" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h10M4 18h7"/></g><path fill="currentColor" d="M17 11.5l5 3.2c.6.4.6 1.4 0 1.8l-5 3.2c-.7.4-1.5-.1-1.5-.9v-6.4c0-.8.8-1.3 1.5-.9z"/></symbol>
     <symbol id="i-rep" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 12V9.5A3.5 3.5 0 016.5 6H21"/><path d="M7 22l-4-4 4-4"/><path d="M21 12v2.5a3.5 3.5 0 01-3.5 3.5H3"/></g></symbol>
@@ -44,6 +53,10 @@
         <input id="search" type="search" name="q" placeholder="搜索曲库 / B 站" autocomplete="off">
         <button id="search-close" type="button" class="tb-cir" title="关闭搜索">✕</button>
       </div>
+      <button id="theme-toggle" class="tb-cir" type="button" onclick="toggleTheme()" title="切换深色 / 浅色">
+        <svg class="t-moon"><use href="#i-moon"/></svg>
+        <svg class="t-sun"><use href="#i-sun"/></svg>
+      </button>
     </div>
 
     <!-- 功能触发器（按用户要求不从 UI 显示）：手机端账号 Tab 的同步/导出行为依赖这些 ID -->
@@ -56,19 +69,38 @@
   </main>
 
   <aside class="sidebar">
+    <!-- 主导航：跳转目标待定（用户将逐个指定），暂不接任何点击行为 -->
+    <nav class="side-nav" aria-label="主导航">
+      <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
+      <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg><use href="#i-compass"/></svg>推荐</button>
+      <button class="side-item" type="button" data-nav="playlists"><svg><use href="#i-note"/></svg>播放列表</button>
+      <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg><use href="#i-user"/></svg>UP 主</button>
+    </nav>
     <div class="side-sec" style="margin-top:2px">
       <span class="lb">我的歌单</span>
-      <button class="add" type="button" onclick="createPlaylist()" title="新建歌单（同步创建 B 站收藏夹）">＋</button>
+      <button class="add" type="button" onclick="createPlaylist()" title="新建歌单">＋</button>
     </div>
     <nav class="side-pls" id="playlists-bar"
          hx-get="/partials/playlists" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML"></nav>
     <div class="side-user">
-      {% if user.face %}
-      <img class="ava" src="{{ user.face }}" alt="" referrerpolicy="no-referrer">
-      {% else %}
-      <div class="ava">♪</div>
-      {% endif %}
-      <div class="un">{{ user.uname }}</div>
+      <button class="su-row" type="button" id="side-user-btn" title="账号设置">
+        {% if user is defined and user.face %}
+        <img class="ava" src="{{ user.face }}" alt="" referrerpolicy="no-referrer">
+        {% else %}
+        <div class="ava">♪</div>
+        {% endif %}
+        <div class="un">{{ user.uname or "未登录 · 点击登录" }}</div>
+        <span class="su-more">›</span>
+      </button>
+      <div class="user-pop" id="user-pop">
+        <label class="up-row" title="切换深色 / 浅色外观">
+          <input type="checkbox" id="light-toggle"><span>浅色外观</span>
+          <span class="switch"><i></i></span>
+        </label>
+        <button class="up-row" type="button" id="side-sync"><span>⇅</span><span>同步 B 站收藏夹</span></button>
+        <div class="up-sep"></div>
+        <button class="up-row danger" type="button" id="side-logout"><span>⏻</span><span>退出登录</span></button>
+      </div>
     </div>
     <div class="side-handle" id="side-handle" title="拖动调整侧栏宽度"></div>
   </aside>
@@ -83,7 +115,10 @@
     <div class="p-meta">
       <img id="player-cover" alt="" referrerpolicy="no-referrer" title="点封面打开歌词">
       <div class="mtx">
-        <div id="player-title">—</div>
+        <div class="trow">
+          <div id="player-title">—</div>
+          <button id="btn-star" type="button" title="收藏到我的曲库（同步 B 站收藏夹）">★</button>
+        </div>
         <div id="player-artist"></div>
         <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="进度">
       </div>
@@ -92,7 +127,7 @@
       <button id="btn-lyrics" type="button" title="歌词" style="font-size:13px;font-weight:800">词</button>
       <button id="btn-queue" type="button" title="播放队列">☰</button>
       <span class="volhost">
-        <button type="button" title="音量">🔈</button>
+        <button type="button" title="音量"><svg><use href="#i-vol"/></svg></button>
         <span class="vol"><input id="vol" type="range" min="0" max="100" value="100" aria-label="音量"></span>
       </span>
     </div>
@@ -104,15 +139,13 @@
     <div id="sd-web"></div>
   </div>
 
-  <div id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></div>
+  <!-- 任务轮询仅登录后开启（未登录时每 2s 的 401 会反复弹登录窗） -->
+  <div id="task-list" {% if logged_in %}hx-get="/partials/tasks" hx-trigger="load, every 2s"{% endif %}></div>
 
   <div id="queue-panel" class="hidden">
     <div class="q-head">
       <div class="t">播放队列 <span id="queue-count"></span></div>
       <div class="q-toggles">
-        <label class="smart-toggle" title="切歌时自动寻找最佳衔接点">
-          <input type="checkbox" id="smart-toggle"> 智能过渡
-        </label>
         <label class="smart-toggle" title="当前歌曲循环播放">
           <input type="checkbox" id="repeat-one-toggle"> 单曲循环
         </label>
@@ -132,6 +165,19 @@
       <div class="ly-morerow">
         <button id="ly-more" type="button" title="更多操作">···</button>
       </div>
+    </div>
+    <div class="l-hero">
+      <img id="lyrics-cover-big" alt="" referrerpolicy="no-referrer" title="展开歌词">
+      <div class="l-herosong">
+        <div class="hs-txt">
+          <b id="ly-title-big">—</b>
+          <span id="ly-artist-big"></span>
+        </div>
+        <button id="ly-bubble" type="button" title="歌词">词</button>
+      </div>
+    </div>
+    <div id="lyrics-scroll"></div>
+    <div class="l-bottom">
       <div class="ly-prog">
         <input id="ly-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="歌词页进度">
         <div class="ly-times"><span id="ly-cur">0:00</span><span id="ly-rem">0:00</span></div>
@@ -146,9 +192,35 @@
         <button id="ly-add" type="button" title="添加至歌单">＋</button>
       </div>
     </div>
-    <div id="lyrics-scroll"></div>
   </div>
 
+  <div id="up-panel" class="hidden">
+    <img id="up-ambient" alt="" referrerpolicy="no-referrer">
+    <div class="up-scroll" id="up-list">
+      <div class="up-hero">
+        <img id="up-bg-blur" alt="" referrerpolicy="no-referrer">
+        <img id="up-bg" alt="" referrerpolicy="no-referrer">
+        <button id="up-close" type="button" title="关闭">✕</button>
+        <div class="up-meta">
+          <b id="up-name">—</b>
+          <a id="up-space" href="#" target="_blank" rel="noopener">B 站主页 ↗</a>
+        </div>
+        <div class="up-acts">
+          <button id="up-share" type="button" title="分享主页">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v13M12 3l-4.5 4.5M12 3l4.5 4.5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>
+          </button>
+          <button id="up-play" type="button" class="big" title="播放热门歌曲">
+            <svg class="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
+            <svg class="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h3.4v14H7zM13.6 5H17v14h-3.6z"/></svg>
+          </button>
+          <button id="up-shuffle" type="button" title="随机播放">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h3.5c5.5 0 8.5 12 14 12H21M3 18h3.5c2.2 0 3.9-1.9 5.2-4M21 6h-.5c-2.6 0-4.5 1.7-6 3.8M18 3.5l3 2.5-3 2.5M18 15l3 2.5-3 2.5"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="up-body" id="up-body"></div>
+    </div>
+  </div>
   <div id="export-modal" class="modal hidden">
     <div class="modal-box">
       <h3>导出为 B 站收藏夹</h3>
@@ -190,6 +262,43 @@
   <div id="pl-menu" hidden></div>
   <div id="song-menu" hidden></div>
   <div id="mini-modal" class="modal hidden"><div class="modal-box" id="mini-modal-box"></div></div>
+
+  <!-- 登录弹窗（B 站官方弹窗式双栏：左扫码 / 右短信）；未登录时任意操作触发 -->
+  <div id="login-modal" class="modal hidden">
+    <div class="modal-box bl-box">
+      <button id="login-close" type="button" title="关闭">✕</button>
+      <div class="bl-left">
+        <div class="bl-qr-title">扫描二维码登录</div>
+        <div class="lg-qr-tile">
+          <img id="qr-img" alt="登录二维码" hidden>
+          <div id="qr-status">正在生成二维码…</div>
+        </div>
+        <button id="qr-refresh" class="hidden" type="button">二维码已失效，点击刷新</button>
+        <p class="bl-qr-sub">请使用<b>哔哩哔哩客户端</b><br>扫码登录或扫码下载APP</p>
+      </div>
+      <div class="bl-div"></div>
+      <div class="bl-right">
+        <div class="bl-rtitle">短信登录</div>
+        <div class="bl-form">
+          <label class="bl-field"><span class="bl-cc">+86</span>
+            <input id="sms-tel" type="tel" inputmode="numeric" maxlength="11" placeholder="请输入手机号" autocomplete="tel">
+            <span class="bl-vsep"></span>
+            <button id="sms-send" type="button">获取验证码</button></label>
+          <label class="bl-field">
+            <input id="sms-code" type="text" inputmode="numeric" maxlength="6" placeholder="请输入验证码"></label>
+          <button id="sms-go" type="button" class="bl-go">登录 / 注册</button>
+          <div id="sms-msg"></div>
+        </div>
+        <div class="bl-foot">
+          <p>未注册过哔哩哔哩的手机号，我们将自动帮你注册账号</p>
+          <p>登录或完成注册即代表你同意
+            <a href="https://www.bilibili.com/blackboard/account-useragreement.html" target="_blank" rel="noopener">用户协议</a> 和
+            <a href="https://www.bilibili.com/blackboard/privacy-pc.html" target="_blank" rel="noopener">隐私政策</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 </body>
 </html>

@@ -1,0 +1,15 @@
+{% if items %}
+<div class="rack">
+  {% for r in items %}
+  <div class="rec-card" data-bvid="{{ r.bvid }}" onclick="playRecRow(this)" title="{{ r.title }}">
+    <span class="im">
+      <img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+    </span>
+    <span class="t1">{{ r.title }}</span>
+    <span class="t2">{{ r.artist }}</span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">今日推荐还没生成——去听几首歌，推荐会慢慢懂你。</div>
+{% endif %}

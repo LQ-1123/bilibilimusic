@@ -3,26 +3,13 @@
 
 <section class="view" id="view-home">
 
-  <div class="hero sec-hero">
-    <div class="hero-eyebrow">BILI MUSIC</div>
-    <div class="hero-title" id="hero-hi">晚上好</div>
-    <div class="hero-sub">
-      <span>曲库 {{ stats.songs }} 首</span><span class="sep">·</span>
-      <span>歌单 {{ stats.playlists }} 个</span><span class="sep">·</span>
-      <span>推荐池 {{ stats.recs }} 首</span><span class="sep">·</span>
-      <span>已同步 B 站收藏夹</span>
-    </div>
-  </div>
+  <!-- 空 hero：纯氛围渐变载体（无文字内容） -->
+  <div class="hero sec-hero" aria-hidden="true"></div>
 
-  <div class="sec">
-    <div class="sec-head"><h2>推荐歌单</h2><span class="hint">线上内容 · 实时流试听，满意点 ♥ 收藏</span></div>
+  <div class="sec sec-recpl">
+    <div class="sec-head"><h2>推荐歌单</h2></div>
     <div class="rack" id="recpl-rack"
          hx-get="/partials/rec-playlists" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
-  </div>
-
-  <div class="sec sec-discover" id="sec-discover">
-    <div class="sec-head"><h2>发现</h2><span class="hint">试听走实时流，满意就收藏</span></div>
-    <div id="rec-list" hx-get="/partials/recs?mode=today" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
   </div>
 
   <div class="sec sec-recent">
@@ -31,17 +18,31 @@
          hx-get="/partials/recent" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
 
-  <div class="sec sec-songs">
-    <div class="sec-head">
-      <h2>全部歌曲</h2>
-      <span class="hint" id="songs-filter-hint">全部歌单 · 按收藏时间</span>
-    </div>
-    <div class="list-head">
-      <span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span>
-    </div>
-    <div id="songs" hx-get="/partials/songs" hx-trigger="load, refreshSongs from:body"
-         hx-include="#collect-playlist-id" hx-swap="innerHTML"></div>
+  <!-- 最近播放：本机播放记录（localStorage），无记录时整栏隐藏 -->
+  <div class="sec sec-history" id="sec-history" hidden>
+    <div class="sec-head"><h2>最近播放</h2><span class="hint">本机记录</span></div>
+    <div class="rack" id="history-rack"></div>
   </div>
+
+  <!-- 流派货架：每个风格一栏，池子优先+搜索补位到 15 首；采集/收藏后 recsChanged 刷新 -->
+  <div id="genre-shelves" hx-get="/partials/genre-shelves" hx-trigger="load, recsChanged from:body" hx-swap="innerHTML"></div>
+
+  <div style="height:26px"></div>
+</section>
+
+<!-- 推荐视图：顶部歌单横幅架 → 每日精选全量曲目 → 其余歌单各一条横栏 -->
+<section class="view" id="view-recommend">
+  <div class="sec">
+    <div class="sec-head"><h2>推荐歌单</h2><span class="hint">点封面进歌单详情</span></div>
+    <div class="rack" hx-get="/partials/rec-playlists" hx-trigger="revealed" hx-swap="innerHTML"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head"><h2>每日精选</h2><span class="hint">每日轮换 · 实时流试听</span></div>
+    <div hx-get="/partials/rec-genre-tracks?genre=daily&layout=dcols" hx-trigger="revealed" hx-swap="innerHTML"></div>
+  </div>
+
+  <div hx-get="/partials/recommend-shelves" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
 
   <div style="height:26px"></div>
 </section>
@@ -59,9 +60,7 @@
       <div class="dt-meta" id="dt-meta"></div>
       <div class="dt-acts">
         <button class="btn-play" type="button" onclick="playDetailFirst()">播放</button>
-        <button class="dt-ghost" type="button" onclick="shuffleDetail()" title="随机播放">⇄</button>
-        <button class="dt-ghost" type="button" onclick="focusSearchBar()" title="粘贴链接 / 搜索添加歌曲">＋</button>
-        <button class="dt-ghost" type="button" onclick="detailMenu()" title="重命名 / 删除歌单">⋯</button>
+        <button class="btn-share" type="button" onclick="shareDetail()" title="分享该歌单（B 站收藏夹链接）">↗ 分享</button>
       </div>
     </div>
   </div>
@@ -69,6 +68,20 @@
     <span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span>
   </div>
   <div id="dt-songs"></div>
+  <div style="height:26px"></div>
+</section>
+
+<!-- UP 主视图：左栏曲库内所有 UP 主（拼音排序），右侧选中 UP 主的收藏歌曲 + 头像 -->
+<section class="view" id="view-up">
+  <div class="upv-lay">
+    <aside class="upv-side">
+      <div class="sec-head"><h2>UP 主</h2><span class="hint">点击查看收藏的歌</span></div>
+      <div class="upv-rows" id="upv-rows" hx-get="/partials/up-list" hx-trigger="revealed, refreshSongs from:body" hx-swap="innerHTML"></div>
+    </aside>
+    <div class="upv-main" id="upv-main">
+      <div class="empty" style="padding-top:90px">在左侧选择一位 UP 主，查看收藏的歌曲</div>
+    </div>
+  </div>
   <div style="height:26px"></div>
 </section>
 
@@ -85,9 +98,13 @@
     </div>
   </div>
   <div class="acct-rows">
+    {% if not logged_in %}
+    <button class="acct-row" type="button" onclick="openLogin()"><span>◐</span>登录 B 站账号<span class="sub">扫码 · 凭据存本机</span></button>
+    {% else %}
     <button class="acct-row" type="button" onclick="syncNow()"><span>⇅</span>同步 B 站收藏夹<span class="sub">曲库事实源在 B 站</span></button>
     <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接<span class="sub">bilimusic 夹</span></button>
-    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗<span class="sub">跟随本机</span></button>
+    {% endif %}
+    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗<span class="sub" id="theme-mode-sub">跟随本机</span></button>
   </div>
   <div style="text-align:center;font-size:10.5px;color:var(--txt3);margin-top:26px">BiliMusic · 曲库事实源在 B 站侧</div>
 </section>

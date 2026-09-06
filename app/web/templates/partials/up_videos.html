@@ -1,0 +1,45 @@
+{% if top10 or items %}
+<div class="up-lay">
+  {% if top10 %}
+  <section class="up-sec">
+    <h3>热门歌曲</h3>
+    <ol class="up-songs">
+      {% for v in top10 %}
+      <li class="up-song" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
+        <span class="no">{{ loop.index }}</span>
+        <span class="im"><img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+        <div class="tt">
+          <div class="t1">{{ v.title }}</div>
+          <div class="t2">{{ v.play_text }} 播放</div>
+        </div>
+        <span class="du">{{ v.length }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+  {% if items %}
+  <section class="up-sec">
+    <h3>全部音乐</h3>
+    <div class="up-videos">
+      {% for v in items %}
+      <div class="up-video" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
+        <span class="im">
+          <img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        </span>
+        <div class="tt">
+          <div class="t1">{{ v.title }}</div>
+          <div class="t2">{{ name }} · {{ v.play_text }} 播放</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if has_more %}
+    <button class="up-more" type="button" data-mid="{{ mid }}" data-pn="{{ pn + 1 }}">加载更多</button>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% elif pn == 1 %}
+<div class="empty">这个 UP 主还没有公开投稿。</div>
+{% endif %}
