@@ -693,6 +693,11 @@
   window.toggleLyrics = function () {
     var panel = $("lyrics-panel");
     var opening = panel.classList.contains("hidden");
+    if (opening && window.__hidePanel) {
+      // 艺术家页还开着时点播放条进歌词页：先收起艺术家页（歌词页层级在其下，否则被盖住）
+      var upp = document.getElementById("up-panel");
+      if (upp && !upp.classList.contains("hidden")) __hidePanel(upp);
+    }
     if (window.__showPanel && opening) __showPanel(panel);
     else if (window.__hidePanel && !opening) __hidePanel(panel);
     else panel.classList.toggle("hidden");

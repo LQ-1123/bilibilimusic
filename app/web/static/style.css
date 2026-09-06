@@ -523,7 +523,7 @@ body:not(.playing) .i-pause{display:none}
   filter:drop-shadow(0 34px 80px rgba(0,0,0,.62)) blur(calc(var(--upfog,0)*22px));
   opacity:calc(1 - var(--upfog,0)*.88);
   transition:opacity .3s}
-#up-close{position:absolute;top:20px;left:calc(var(--side) + 20px);z-index:5;width:36px;height:36px;border-radius:50%;
+#up-close{position:absolute;top:20px;left:20px;z-index:5;width:36px;height:36px;border-radius:50%;
   background:rgba(255,255,255,.09);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
   border:1px solid rgba(255,255,255,.13);display:grid;place-items:center;color:rgba(255,255,255,.75);font-size:13px;transition:.15s}
 #up-close:hover{color:#fff;background:rgba(255,255,255,.16)}
