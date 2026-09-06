@@ -25,6 +25,134 @@
   }
   setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
 
+  // ---------- 侧栏主导航：首页=返回主页；推荐=推荐视图；其余跳转待用户指定 ----------
+  window.navGo = function (btn) {
+    var nav = btn.dataset.nav;
+    if (nav === "home") {
+      if (window.goHome) goHome();
+    } else if (nav === "recommend") {
+      collapseOverlays();
+      $("app").dataset.view = "recommend";
+      document.body.classList.remove("in-detail");
+      if (window.switchView) switchView("recommend");
+      if (mainEl) mainEl.scrollTop = 0;
+    } else if (nav === "up") {
+      collapseOverlays();
+      $("app").dataset.view = "up";
+      document.body.classList.remove("in-detail");
+      if (window.switchView) switchView("up");
+      if (mainEl) mainEl.scrollTop = 0;
+    } else {
+      return; // playlists / up：跳转待用户指定
+    }
+    document.querySelectorAll(".side-nav .side-item").forEach(function (b) {
+      b.classList.toggle("on", b === btn);
+    });
+  };
+
+  // ---------- UP 主视图：左列表（拼音排序/头像懒解析）+ 右详情 ----------
+  function escUp(s) {
+    return String(s || "").replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function sortUpRows() {
+    var box = $("upv-rows");
+    if (!box) return;
+    var rows = Array.prototype.slice.call(box.querySelectorAll(".upv-row"));
+    rows.sort(function (a, b) {
+      try { return a.dataset.artist.localeCompare(b.dataset.artist, "zh-Hans-CN"); }
+      catch (e) { return a.dataset.artist.localeCompare(b.dataset.artist); }
+    });
+    rows.forEach(function (r) { box.appendChild(r); });
+  }
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (e.target.id === "upv-rows") { sortUpRows(); renderUpAvatars(); }
+  });
+
+  function upFaceCache() {
+    try { return JSON.parse(sessionStorage.getItem("bmUpFaces") || "{}"); } catch (e) { return {}; }
+  }
+  // 列表头像立即全量渲染：逐行解析（bvid → face），命中期内缓存跳过请求；失败保留渐变字头占位
+  async function renderUpAvatars() {
+    var rows = document.querySelectorAll("#upv-rows .upv-row");
+    var cache = upFaceCache();
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var name = row.dataset.artist, bvid = row.dataset.bvid;
+      var ava = row.querySelector(".upv-ava");
+      if (!ava || ava.dataset.done) continue;
+      var info = cache[name];
+      if (!info && bvid) {
+        try {
+          var r = await fetch("/web/up/resolve?bvid=" + encodeURIComponent(bvid));
+          if (r.ok) {
+            info = await r.json();
+            cache = upFaceCache();
+            cache[name] = info;
+            try { sessionStorage.setItem("bmUpFaces", JSON.stringify(cache)); } catch (e) {}
+          }
+        } catch (e) {}
+      }
+      ava.dataset.done = "1";
+      if (info && info.face) {
+        ava.innerHTML = '<img src="' + escUp(info.face) + '" alt="" referrerpolicy="no-referrer">';
+      }
+    }
+  }
+  document.addEventListener("click", function (e) {
+    var row = e.target.closest("#upv-rows .upv-row");
+    if (row) window.selectUpArtist(row);
+  });
+
+  window.selectUpArtist = async function (row) {
+    document.querySelectorAll("#upv-rows .upv-row").forEach(function (b) {
+      b.classList.toggle("on", b === row);
+    });
+    var name = row.dataset.artist, bvid = row.dataset.bvid, count = row.dataset.count;
+    var main = $("upv-main");
+    if (!main) return;
+    main.innerHTML = '<div class="empty">加载中…</div>';
+    // 头像懒解析（bvid → face），sessionStorage 按 UP 名缓存；列表头像已由 renderUpAvatars 预热
+    var info = upFaceCache()[name];
+    if (!info && bvid) {
+      try {
+        var r = await fetch("/web/up/resolve?bvid=" + encodeURIComponent(bvid));
+        if (r.ok) {
+          info = await r.json();
+          var cache = upFaceCache();
+          cache[name] = info;
+          try { sessionStorage.setItem("bmUpFaces", JSON.stringify(cache)); } catch (e) {}
+        }
+      } catch (e) {}
+    }
+    var face = info ? info.face || "" : "";
+    var hue = info ? info.hue : null;
+    var avaHtml = face
+      ? '<img class="upv-face" src="' + escUp(face) + '" alt="" referrerpolicy="no-referrer">'
+      : '<div class="upv-face"></div>';
+    main.innerHTML =
+      '<div class="upv-head"' + (hue ? ' style="--uph:' + hue + '"' : "") + ">" + avaHtml +
+      '<div><div class="upv-title" id="upv-title" title="查看 UP 主作品页">' + escUp(name) + "</div>" +
+      '<div class="upv-meta">' + escUp(count) + " 首 · 收藏的歌曲</div></div></div>" +
+      '<div class="list-head"><span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span></div>' +
+      '<div id="upv-songs"></div>';
+    var titleEl = $("upv-title"); // 点姓名 → 打开该 UP 主的沉浸式作品页（复用 openUp）
+    if (titleEl && bvid && window.openUp) {
+      titleEl.addEventListener("click", function () { openUp(bvid); });
+    }
+    // 行头像回填（列表里的占位字头换成真头像）
+    var ava = row.querySelector(".upv-ava");
+    if (face && ava && !ava.querySelector("img")) {
+      ava.innerHTML = '<img src="' + escUp(face) + '" alt="" referrerpolicy="no-referrer">';
+    }
+    if (window.htmx) {
+      htmx.ajax("GET", "/partials/songs?artist=" + encodeURIComponent(name), {
+        target: "#upv-songs", swap: "innerHTML",
+      });
+    }
+  };
+
   var mainEl = $("mainEl");
 
   // 详情页滚动时淡出面包屑（dt-top 已透明，避免文字与曲目行重叠）
@@ -55,26 +183,18 @@
     handle.addEventListener("pointercancel", up);
   })();
 
-  // ---------- 用户设置弹层（侧栏点头像：智能切歌 / 同步 / 退出登录） ----------
+  // ---------- 用户设置弹层（侧栏点头像：外观/同步/退出登录）；未登录则弹登录窗 ----------
   (function () {
     var btn = $("side-user-btn"), pop = $("user-pop");
     var host = btn && btn.closest(".side-user");
     if (!btn || !pop || !host) return;
-    var smart = $("smart-toggle-side"), queueSmart = $("smart-toggle");
-    var smartOn = function () { return localStorage.getItem("bmSmartTransition") !== "0"; };
-    if (smart) {
-      smart.checked = smartOn();
-      smart.addEventListener("change", function () {
-        localStorage.setItem("bmSmartTransition", smart.checked ? "1" : "0");
-        if (queueSmart && queueSmart.checked !== smart.checked) {
-          queueSmart.checked = smart.checked;
-          queueSmart.dispatchEvent(new Event("change", { bubbles: true })); // 同步队列面板的智能过渡开关
-        }
-      });
-    }
-    if (queueSmart) queueSmart.addEventListener("change", function () {
-      if (smart) smart.checked = queueSmart.checked;
-    });
+    btn.addEventListener("click", function (e) {
+      if (document.body.dataset.auth === "0") {
+        e.stopImmediatePropagation();
+        if (window.openLogin) openLogin();
+        return;
+      }
+    }, true);
     var setOpen = function (v) { host.classList.toggle("pop-open", v); };
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
@@ -415,31 +535,61 @@
     if (pa) pa.addEventListener("click", upFromPlayer);
   })();
 
-  // ---------- 已收藏状态：爱心灰→点亮 ----------
+  // ---------- 已收藏状态：播放条星星（灰=未收藏，粉=已在曲库） ----------
   var collected = {};
-  function markHearts() {
-    document.querySelectorAll("[data-bvid]").forEach(function (n) {
-      var h = (n.classList.contains("sd-heart") || n.classList.contains("love")) ? n : n.querySelector(".sd-heart, .love");
-      if (h) h.classList.toggle("on", !!collected[n.dataset.bvid]);
-    });
+  function currentBvid() {
+    var t = window.BiliPlayer && BiliPlayer.trialInfo ? BiliPlayer.trialInfo() : null;
+    var s = window.BiliPlayer && BiliPlayer.currentSong ? BiliPlayer.currentSong() : null;
+    return t ? t.bvid : (s ? s.bvid : null);
+  }
+  function markStar() {
+    var star = $("btn-star");
+    if (!star) return;
+    var cur = currentBvid();
+    star.classList.toggle("on", !!cur && !!collected[cur]);
   }
   function loadCollected() {
     if (!window.BiliPlayer || !BiliPlayer.songs) return;
     BiliPlayer.songs("").then(function (songs) {
       collected = {};
       (songs || []).forEach(function (s) { collected[s.bvid] = 1; });
-      markHearts();
+      markStar();
     }).catch(function () {});
   }
   window.__markCollected = function (bvid) {
     collected[bvid] = 1;
-    markHearts();
+    markStar();
   };
   document.body.addEventListener("refreshSongs", loadCollected);
-  document.body.addEventListener("htmx:afterSwap", function (e) {
-    if (e.target && (e.target.id === "sd-web" || e.target.id === "rec-list" || e.target.id === "up-body")) markHearts();
-  });
   loadCollected();
+
+  // 星星点击：收藏当前播放的歌（曲库歌已收藏则提示；试听流收藏进「我的曲库」并同步 B 站夹）
+  (function () {
+    var star = $("btn-star");
+    if (!star) return;
+    star.addEventListener("click", function () {
+      var cur = currentBvid();
+      if (!cur) { window.__toast("当前没有播放的歌"); return; }
+      if (collected[cur]) { window.__toast("这首已在曲库中"); return; }
+      fetch("/web/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ url: "https://www.bilibili.com/video/" + cur, playlist_id: "0" }),
+      })
+        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+        .then(function (res) {
+          if (!res.ok) { window.__toast("收藏失败，请稍后重试"); return; }
+          window.__markCollected(cur);
+          window.__toast("已收藏 · 已同步 B 站收藏夹");
+        })
+        .catch(function () { window.__toast("网络错误，请重试"); });
+    });
+    // 切歌（曲库歌 ⇄ 试听流）时歌名变化 → 星星跟随当前歌刷新
+    var titleEl = $("player-title");
+    if (titleEl && window.MutationObserver) {
+      new MutationObserver(markStar).observe(titleEl, { childList: true, characterData: true, subtree: true });
+    }
+  })();
 
   // ---------- 搜索下拉：曲库命中（点击即播）+ B 站结果（♥ 收藏） ----------
   (function () {
@@ -555,9 +705,8 @@
       var row = e.target.closest("[data-song]");
       if (row && window.BiliPlayer) { BiliPlayer.playById(Number(row.dataset.song)); close(); }
     });
-    // B 站结果：点行在线试听（♥ 按钮仍走收藏）
+    // B 站结果：点行在线试听（收藏走播放条星星）
     web.addEventListener("click", function (e) {
-      if (e.target.closest(".sd-heart")) return;
       var row = e.target.closest(".sd-row");
       if (!row || !row.dataset.bvid || !window.playStream) return;
       var img = row.querySelector("img");
@@ -1081,4 +1230,29 @@
     box.addEventListener("change", sync);
     sync();
   });
+
+  // ---------- SSE：曲库变更实时推送（收藏入库完成 / B 站同步删除）----------
+  // 后端 /api/events 推 libraryChanged / playlistsChanged → 防抖后自动刷新
+  // 各视图（最近收藏架、推荐架、侧栏计数、详情页曲目表），免手动刷新页面。
+  if (window.EventSource) {
+    var libEs = new EventSource("/api/events");
+    var libEsTimer = null;
+    var libRefresh = function () {
+      clearTimeout(libEsTimer);
+      libEsTimer = setTimeout(function () {
+        if (!window.htmx) return;
+        htmx.trigger(document.body, "refreshSongs"); // 最近收藏/推荐架/播放队列/已收藏心
+        htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
+        if ($("app").dataset.view === "detail" && dtState.kind === "user" && dtState.id !== "0") {
+          htmx.ajax("GET", "/partials/songs?playlist_id=" + encodeURIComponent(dtState.id), {
+            target: "#dt-songs", swap: "innerHTML",
+          });
+        }
+      }, 600);
+    };
+    libEs.addEventListener("libraryChanged", libRefresh);
+    libEs.addEventListener("playlistsChanged", libRefresh);
+    // （重）连上即全量刷新：断线/服务重启期间错过的推送事件用一次拉取补齐
+    libEs.onopen = libRefresh;
+  }
 })();

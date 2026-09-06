@@ -1,0 +1,23 @@
+{% if items %}
+<div class="dc-track">
+  {% for col in items|batch(4) %}
+  {% set base = loop.index0 * 4 %}
+  <div class="dcol">
+    {% for r in col %}
+    <div class="drow trk-rec" data-bvid="{{ r.bvid }}" onclick="playRecRow(this)" title="{{ r.title }}">
+      <span class="no">{{ base + loop.index }}</span>
+      <span class="eqbox"><span class="eq"><i></i><i></i><i></i></span></span>
+      <span class="im"><img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+      <span class="tt">
+        <span class="t1">{{ r.title }}</span>
+        <span class="t2">{{ r.artist }}</span>
+      </span>
+      <span class="du">{{ r.duration_text }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">今日推荐还没生成——去听几首歌，推荐会慢慢懂你。</div>
+{% endif %}

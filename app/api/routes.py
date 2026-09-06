@@ -5,14 +5,17 @@
 
 import asyncio
 import hashlib
+import logging
 import re
 import urllib.parse
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app import events
 from app.bili.client import (
     BILIBILI_REFERER,
     BiliClient,
@@ -28,6 +31,8 @@ from app.services import library, playlists, recs
 from app.services.importer import ImportService
 from app.storage.files import FileStore
 
+log = logging.getLogger(__name__)
+
 def _require_token(request: Request) -> None:
     token = settings.api_token
     if not token:
@@ -42,7 +47,7 @@ def _require_token(request: Request) -> None:
 
 def _require_login(request: Request) -> None:
     """强制登录：除登录流程外的所有 API 都要求已扫码登录。"""
-    store: CookieStore = request.app.state.cookies
+    store: CookieStore = request.state.cookies
     if not store.logged_in:
         raise HTTPException(status_code=401, detail="需要先扫码登录 B 站账号")
 
@@ -65,11 +70,21 @@ STATUS_LABELS = {
 # ---- 依赖 ----
 
 def _bili(request: Request) -> BiliClient:
-    return request.app.state.bili
+    return request.state.bili
+
+
+async def _login_bili(request: Request):
+    accounts = request.app.state.accounts
+    candidate = accounts.login_client()
+    try:
+        yield candidate
+    finally:
+        if accounts.current.bili is not candidate:
+            await candidate.aclose()
 
 
 def _files(request: Request) -> FileStore:
-    return request.app.state.files
+    return request.state.files
 
 
 def _media_token_suffix() -> str:
@@ -88,6 +103,7 @@ def _fallback_color(bvid: str) -> str:
 
 
 def song_out(s: Song) -> dict:
+    cover = s.cover_path or ""
     return {
         "id": s.id,
         "bvid": s.bvid,
@@ -95,9 +111,9 @@ def song_out(s: Song) -> dict:
         "artist": s.artist,
         "duration": s.duration,
         "qualityId": s.quality_id,
-        "qualityLabel": quality_label(s.quality_id),
-        "audioUrl": f"/api/songs/{s.id}/audio" + _media_token_suffix(),
-        "coverUrl": f"/api/songs/{s.id}/cover" + _media_token_suffix(),
+        "qualityLabel": "在线" if not s.quality_id else quality_label(s.quality_id),
+        "audioUrl": f"/api/stream/{s.bvid}",  # 纯在线：实时流代理（支持 Range）
+        "coverUrl": cover if cover.startswith("http") else f"/api/songs/{s.id}/cover" + _media_token_suffix(),
         "coverColor": s.cover_color or _fallback_color(s.bvid),
         "aid": s.aid,
         "playlistId": s.playlist_id,
@@ -130,7 +146,7 @@ class ImportCreate(BaseModel):
 
 @router.post("/imports", status_code=202)
 async def create_import(body: ImportCreate, request: Request) -> dict:
-    task = request.app.state.importer.submit(body.url, playlist_id=body.playlistId)
+    task = request.state.importer.submit(body.url, playlist_id=body.playlistId)
     recs.dismiss_for_text(body.url)  # 发现页收藏转正：出池
     return {"importId": task.id}
 
@@ -141,7 +157,7 @@ async def create_batch_import(body: ImportCreate, request: Request) -> dict:
     from app.services.batch import submit_any
 
     return await submit_any(
-        request.app.state.importer, request.app.state.bili, body.url,
+        request.state.importer, request.state.bili, body.url,
         playlist_id=body.playlistId,
     )
 
@@ -184,7 +200,7 @@ def list_playlists_api() -> dict:
 
 @router.post("/playlists", status_code=201)
 async def create_playlist_api(body: PlaylistBody, request: Request) -> dict:
-    p = await playlists.create(body.name, request.app.state.bili)
+    p = await playlists.create(body.name, request.state.bili)
     return playlist_out(p)
 
 
@@ -195,7 +211,7 @@ async def rename_playlist_api(
     """改歌单名；B 站收藏夹名同步更新（bilimusic- <新名字>）。"""
     if playlists.get_playlist(playlist_id) is None:
         raise HTTPException(status_code=404, detail="歌单不存在")
-    await playlists.rename(playlist_id, body.name, request.app.state.bili)
+    await playlists.rename(playlist_id, body.name, request.state.bili)
     return playlist_out(playlists.get_playlist(playlist_id))
 
 
@@ -203,7 +219,7 @@ async def rename_playlist_api(
 async def delete_playlist_api(playlist_id: int, request: Request) -> dict:
     """删除歌单：歌曲移入默认歌单（解放），B 站收藏夹一并删除；收藏转移后台执行。"""
     try:
-        return await playlists.delete(playlist_id, request.app.state.bili)
+        return await playlists.delete(playlist_id, request.state.bili)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -216,23 +232,13 @@ def get_song_api(song_id: int) -> dict:
     return song_out(song)
 
 
-@router.get("/songs/{song_id}/audio")
-def song_audio(
-    song_id: int,
-    files: FileStore = Depends(_files),
-    range_header: str | None = Header(default=None, alias="Range"),
-):
-    song = library.get_song(song_id)
-    if song is None:
-        raise HTTPException(status_code=404, detail="歌曲不存在")
-    return files.audio_response(Path(song.audio_path), range_header)
-
-
 @router.get("/songs/{song_id}/cover")
 def song_cover(song_id: int, files: FileStore = Depends(_files)):
     song = library.get_song(song_id)
     if song is None:
         raise HTTPException(status_code=404, detail="歌曲不存在")
+    if (song.cover_path or "").startswith("http"):  # 在线封面：直接重定向 CDN
+        return RedirectResponse(song.cover_path)
     return files.cover_response(Path(song.cover_path))
 
 
@@ -247,7 +253,7 @@ async def song_lyrics(song_id: int, request: Request) -> dict:
     if song is None:
         raise HTTPException(status_code=404, detail="歌曲不存在")
     if not song.lyrics_checked:
-        await request.app.state.lyrics.ensure_for_song(song_id)
+        await request.state.lyrics.ensure_for_song(song_id)
         song = library.get_song(song_id) or song
     return {"lyrics": song.lyrics or None, "source": song.lyrics_source or None}
 
@@ -258,7 +264,7 @@ async def lyrics_preview(request: Request, payload: dict) -> dict:
     bvid = str(payload.get("bvid") or "")
     if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
         raise HTTPException(status_code=400, detail="bvid 格式错误")
-    result = await request.app.state.lyrics.fetch_preview(
+    result = await request.state.lyrics.fetch_preview(
         bvid,
         title=str(payload.get("title") or ""),
         artist=str(payload.get("artist") or ""),
@@ -275,7 +281,7 @@ async def delete_song_api(
     if song is None or not library.delete_song(song_id, files):
         raise HTTPException(status_code=404, detail="歌曲不存在")
     # 删歌即取消收藏（夹池强关联曲库）；失败不影响本地删除
-    bili: BiliClient = request.app.state.bili
+    bili: BiliClient = request.state.bili
     if song.aid:
         try:
             if song.fav_folder_id:
@@ -292,16 +298,46 @@ async def delete_song_api(
 @router.post("/sync", status_code=202)
 async def create_sync(request: Request) -> dict:
     """双向对账：拉取（夹→本地导入）+ 推送（本地→补收藏）。已有进行中的同步则幂等返回。"""
-    state = request.app.state.syncer.submit()
+    state = request.state.syncer.submit()
     return state.out()
 
 
 @router.get("/sync/{sync_id}")
 def get_sync(sync_id: str, request: Request) -> dict:
-    state = request.app.state.syncer.get(sync_id)
+    state = request.state.syncer.get(sync_id)
     if state is None:
         raise HTTPException(status_code=404, detail="同步任务不存在")
     return state.out()
+
+
+@router.get("/events")
+async def library_events(request: Request) -> StreamingResponse:
+    """SSE：曲库/歌单变更实时推给浏览器（EventSource），前端免手动刷新。
+
+    事件按账号 mid 过滤（导入入库、对账删除发布时携带）；15 秒无事件发
+    心跳注释行保活，断开由连接取消触发 finally 退订。
+    """
+    mid = request.state.mid
+    queue = events.subscribe(mid)
+
+    async def stream():
+        try:
+            yield "retry: 3000\n\n"
+            while True:
+                try:
+                    name = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+                yield f"event: {name}\ndata: {name}\n\n"
+        finally:
+            events.unsubscribe(queue)
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---- B 站搜索 ----
@@ -351,7 +387,7 @@ def playlist_covers(pid: int) -> dict:
 @router.get("/playlists/{pid}/share-link")
 async def playlist_share_link(pid: int, request: Request) -> dict:
     """歌单详情页「分享」：返回该歌单对应 B 站收藏夹的首夹链接。"""
-    bili = request.app.state.bili
+    bili = request.state.bili
     mid = int(bili.store.get("mid") or await bili.get_my_mid())
     if pid == 0:  # 全部歌曲 = 主夹（bilimusic）
         main_id = await bili.ensure_fav_folder()
@@ -370,13 +406,13 @@ async def playlist_share_link(pid: int, request: Request) -> dict:
 
 @router.post("/exports", status_code=202)
 async def create_export(request: Request) -> dict:
-    state = request.app.state.exporter.submit()
+    state = request.state.exporter.submit()
     return {"exportId": state.id, "total": state.total, "status": state.status}
 
 
 @router.get("/exports/{export_id}")
 def get_export(export_id: str, request: Request) -> dict:
-    state = request.app.state.exporter.get(export_id)
+    state = request.state.exporter.get(export_id)
     if state is None:
         raise HTTPException(status_code=404, detail="导出任务不存在")
     return state.out()
@@ -389,28 +425,10 @@ class ExportPoll(BaseModel):
 @router.post("/exports/status")
 def poll_export(body: ExportPoll, request: Request) -> dict:
     """Web 端轮询用（静态路径 + 请求体传 id）。"""
-    state = request.app.state.exporter.get(body.exportId)
+    state = request.state.exporter.get(body.exportId)
     if state is None:
         raise HTTPException(status_code=404, detail="导出任务不存在")
     return state.out()
-
-
-# ---- 智能过渡分析 ----
-
-class AnalysisRequest(BaseModel):
-    songId: int = Field(gt=0)
-
-
-@router.post("/songs/analysis")
-def song_analysis(body: AnalysisRequest, request: Request) -> dict:
-    """获取歌曲的 TrackAnalysis；未就绪则投递后台分析并返回 202（前端降级/稍后再取）。"""
-    song = library.get_song(body.songId)
-    if song is None:
-        raise HTTPException(status_code=404, detail="歌曲不存在")
-    result = request.app.state.analysis.get_or_schedule(song)
-    if result is None:
-        return JSONResponse(status_code=202, content={"status": "analyzing"})
-    return result
 
 
 # ---- 推荐池（滚动链接组，不落音频） ----
@@ -439,7 +457,7 @@ async def recs_seed(body: RecSeed, request: Request) -> dict:
     song = library.get_song(body.songId)
     if song is None:
         raise HTTPException(status_code=404, detail="歌曲不存在")
-    bili: BiliClient = request.app.state.bili
+    bili: BiliClient = request.state.bili
     asyncio.create_task(recs.collect_for_song(bili, song))
     return {"queued": True}
 
@@ -472,7 +490,7 @@ async def stream_bvid(
     """
     if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
         raise HTTPException(status_code=400, detail="bvid 格式错误")
-    bili: BiliClient = request.app.state.bili
+    bili: BiliClient = request.state.bili
     try:
         info = await bili.get_video_info(VideoRef(bvid=bvid))
         streams = await bili.get_audio_streams(info.bvid, info.cid)
@@ -515,7 +533,7 @@ async def stream_bvid(
 # ---- 登录（免登录门禁） ----
 
 @auth_router.post("/qrcode")
-async def create_qrcode(bili: BiliClient = Depends(_bili)) -> dict:
+async def create_qrcode(bili: BiliClient = Depends(_login_bili)) -> dict:
     qr = await bili.qrcode_generate()
     return {
         "qrContent": qr.url,
@@ -526,14 +544,68 @@ async def create_qrcode(bili: BiliClient = Depends(_bili)) -> dict:
     }
 
 
+@auth_router.get("/captcha")
+async def get_captcha(bili: BiliClient = Depends(_login_bili)) -> dict:
+    """短信登录用的极验参数（gt/challenge/token），前端 initGeetest 弹滑块。"""
+    return await bili.captcha_get()
+
+
+@auth_router.post("/sms/send")
+async def sms_send(payload: dict, bili: BiliClient = Depends(_login_bili)) -> dict:
+    tel = str(payload.get("tel") or "").strip()
+    if not (tel.isdigit() and len(tel) == 11):
+        raise HTTPException(status_code=400, detail="手机号格式不对")
+    try:
+        data = await bili.sms_send(
+            tel, str(payload.get("cid") or "86"),
+            token=str(payload.get("token") or ""),
+            challenge=str(payload.get("challenge") or ""),
+            validate=str(payload.get("validate") or ""),
+            seccode=str(payload.get("seccode") or ""),
+        )
+    except BiliApiError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+    return {"ok": True, "captchaKey": data.get("captcha_key") or ""}
+
+
+@auth_router.post("/sms/login")
+async def sms_login(payload: dict, request: Request, bili: BiliClient = Depends(_login_bili)) -> dict:
+    tel = str(payload.get("tel") or "").strip()
+    code = str(payload.get("code") or "").strip()
+    if not (tel.isdigit() and len(tel) == 11) or not (code.isdigit() and len(code) == 6):
+        raise HTTPException(status_code=400, detail="手机号或验证码格式不对")
+    try:
+        await bili.sms_login(tel, code, str(payload.get("captchaKey") or ""), str(payload.get("cid") or "86"))
+    except BiliApiError as exc:
+        raise HTTPException(status_code=400, detail=exc.message)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="连接 B 站登录服务失败，请稍后重试") from exc
+    await _activate_account_for(request, bili)
+    return {"ok": True}
+
+
+async def _activate_account_for(request: Request, bili: BiliClient) -> None:
+    try:
+        await request.app.state.accounts.activate(bili, generation=request.state.account_generation)
+    except BiliApiError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="无法确认 B 站登录态，请稍后重试") from exc
+    except Exception as exc:
+        log.error("账号激活失败（%s）", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="账号数据保存失败，登录未完成，请稍后重试") from exc
+
+
 @auth_router.get("/qrcode/{qrcode_key}")
-async def poll_qrcode(qrcode_key: str, request: Request, bili: BiliClient = Depends(_bili)) -> dict:
-    poll = await bili.qrcode_poll(qrcode_key)
+async def poll_qrcode(qrcode_key: str, request: Request, bili: BiliClient = Depends(_login_bili)) -> dict:
+    try:
+        poll = await bili.qrcode_poll(qrcode_key)
+    except BiliApiError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="连接 B 站登录服务失败，请稍后重试") from exc
     if poll.status == "confirmed":
-        # 登录成功即后台对账：拉回夹池曲库（换设备/换服务器时这步就是「恢复」）
-        syncer = getattr(request.app.state, "syncer", None)
-        if syncer is not None:
-            asyncio.create_task(syncer.reconcile_quietly())
+        await _activate_account_for(request, bili)
     return {"status": poll.status}
 
 
@@ -548,13 +620,13 @@ async def auth_status(bili: BiliClient = Depends(_bili)) -> dict:
 
 
 @auth_router.delete("")
-def logout(bili: BiliClient = Depends(_bili)) -> dict:
-    bili.logout()
+async def logout(request: Request) -> dict:
+    await request.app.state.accounts.logout()
     return {"ok": True}
 
 
 @auth_router.post("/logout")
-def logout_post(bili: BiliClient = Depends(_bili)) -> dict:
+async def logout_post(request: Request) -> dict:
     """Web 页用（静态路径 + POST）。"""
-    bili.logout()
+    await request.app.state.accounts.logout()
     return {"ok": True}

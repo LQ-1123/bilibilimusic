@@ -13,12 +13,6 @@
           <div class="t2">{{ v.play_text }} 播放</div>
         </div>
         <span class="du">{{ v.length }}</span>
-        <button class="us-love love" type="button" data-bvid="{{ v.bvid }}" title="收藏入库"
-                onclick="event.stopPropagation()"
-                hx-post="/web/import"
-                hx-vals='{"url": "https://www.bilibili.com/video/{{ v.bvid }}"}'
-                hx-include="#collect-playlist-id"
-                hx-target="#task-list" hx-swap="innerHTML">♥</button>
       </li>
       {% endfor %}
     </ol>
@@ -32,7 +26,6 @@
       <div class="up-video" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
         <span class="im">
           <img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer">
-          <span class="pv">▶</span>
         </span>
         <div class="tt">
           <div class="t1">{{ v.title }}</div>

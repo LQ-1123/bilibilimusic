@@ -1,6 +1,6 @@
 {% for sh in shelves %}
 <div class="sec sec-genre">
-  <div class="sec-head"><h2>{{ sh.genre }}</h2></div>
+  <div class="sec-head"><h2>{{ sh.name }}</h2></div>
   <div class="rack">
     {% for r in sh.cards %}
     <div class="rec-card" data-bvid="{{ r.bvid }}" onclick="playRecRow(this)" title="{{ r.title }}">

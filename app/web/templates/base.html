@@ -12,14 +12,13 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=104">
+  <link rel="stylesheet" href="/static/style.css?v=120">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/transition.js?v=7" defer></script>
-  <script src="/static/app.js?v=33" defer></script>
+  <script src="/static/app.js?v=45" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=36" defer></script>
+  <script src="/static/v3.js?v=46" defer></script>
 </head>
-<body {% block bodyclass %}{% endblock %}>
+<body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <symbol id="i-home" viewBox="0 0 24 24"><path fill="currentColor" d="M10 20v-6h4v6h5v-8.5h3.2L12 2.7 1.8 11.5H5V20z"/></symbol>
@@ -70,6 +69,13 @@
   </main>
 
   <aside class="sidebar">
+    <!-- 主导航：跳转目标待定（用户将逐个指定），暂不接任何点击行为 -->
+    <nav class="side-nav" aria-label="主导航">
+      <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
+      <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg><use href="#i-compass"/></svg>推荐</button>
+      <button class="side-item" type="button" data-nav="playlists"><svg><use href="#i-note"/></svg>播放列表</button>
+      <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg><use href="#i-user"/></svg>UP 主</button>
+    </nav>
     <div class="side-sec" style="margin-top:2px">
       <span class="lb">我的歌单</span>
       <button class="add" type="button" onclick="createPlaylist()" title="新建歌单">＋</button>
@@ -83,14 +89,10 @@
         {% else %}
         <div class="ava">♪</div>
         {% endif %}
-        <div class="un">{{ user.uname }}</div>
+        <div class="un">{{ user.uname or "未登录 · 点击登录" }}</div>
         <span class="su-more">›</span>
       </button>
       <div class="user-pop" id="user-pop">
-        <label class="up-row" title="切歌时自动寻找最佳衔接点">
-          <input type="checkbox" id="smart-toggle-side"><span>智能切歌</span>
-          <span class="switch"><i></i></span>
-        </label>
         <label class="up-row" title="切换深色 / 浅色外观">
           <input type="checkbox" id="light-toggle"><span>浅色外观</span>
           <span class="switch"><i></i></span>
@@ -113,7 +115,10 @@
     <div class="p-meta">
       <img id="player-cover" alt="" referrerpolicy="no-referrer" title="点封面打开歌词">
       <div class="mtx">
-        <div id="player-title">—</div>
+        <div class="trow">
+          <div id="player-title">—</div>
+          <button id="btn-star" type="button" title="收藏到我的曲库（同步 B 站收藏夹）">★</button>
+        </div>
         <div id="player-artist"></div>
         <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="进度">
       </div>
@@ -134,15 +139,13 @@
     <div id="sd-web"></div>
   </div>
 
-  <div id="task-list" hx-get="/partials/tasks" hx-trigger="load, every 2s"></div>
+  <!-- 任务轮询仅登录后开启（未登录时每 2s 的 401 会反复弹登录窗） -->
+  <div id="task-list" {% if logged_in %}hx-get="/partials/tasks" hx-trigger="load, every 2s"{% endif %}></div>
 
   <div id="queue-panel" class="hidden">
     <div class="q-head">
       <div class="t">播放队列 <span id="queue-count"></span></div>
       <div class="q-toggles">
-        <label class="smart-toggle" title="切歌时自动寻找最佳衔接点">
-          <input type="checkbox" id="smart-toggle"> 智能过渡
-        </label>
         <label class="smart-toggle" title="当前歌曲循环播放">
           <input type="checkbox" id="repeat-one-toggle"> 单曲循环
         </label>
@@ -259,6 +262,43 @@
   <div id="pl-menu" hidden></div>
   <div id="song-menu" hidden></div>
   <div id="mini-modal" class="modal hidden"><div class="modal-box" id="mini-modal-box"></div></div>
+
+  <!-- 登录弹窗（B 站官方弹窗式双栏：左扫码 / 右短信）；未登录时任意操作触发 -->
+  <div id="login-modal" class="modal hidden">
+    <div class="modal-box bl-box">
+      <button id="login-close" type="button" title="关闭">✕</button>
+      <div class="bl-left">
+        <div class="bl-qr-title">扫描二维码登录</div>
+        <div class="lg-qr-tile">
+          <img id="qr-img" alt="登录二维码" hidden>
+          <div id="qr-status">正在生成二维码…</div>
+        </div>
+        <button id="qr-refresh" class="hidden" type="button">二维码已失效，点击刷新</button>
+        <p class="bl-qr-sub">请使用<b>哔哩哔哩客户端</b><br>扫码登录或扫码下载APP</p>
+      </div>
+      <div class="bl-div"></div>
+      <div class="bl-right">
+        <div class="bl-rtitle">短信登录</div>
+        <div class="bl-form">
+          <label class="bl-field"><span class="bl-cc">+86</span>
+            <input id="sms-tel" type="tel" inputmode="numeric" maxlength="11" placeholder="请输入手机号" autocomplete="tel">
+            <span class="bl-vsep"></span>
+            <button id="sms-send" type="button">获取验证码</button></label>
+          <label class="bl-field">
+            <input id="sms-code" type="text" inputmode="numeric" maxlength="6" placeholder="请输入验证码"></label>
+          <button id="sms-go" type="button" class="bl-go">登录 / 注册</button>
+          <div id="sms-msg"></div>
+        </div>
+        <div class="bl-foot">
+          <p>未注册过哔哩哔哩的手机号，我们将自动帮你注册账号</p>
+          <p>登录或完成注册即代表你同意
+            <a href="https://www.bilibili.com/blackboard/account-useragreement.html" target="_blank" rel="noopener">用户协议</a> 和
+            <a href="https://www.bilibili.com/blackboard/privacy-pc.html" target="_blank" rel="noopener">隐私政策</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 </body>
 </html>

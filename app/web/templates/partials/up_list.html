@@ -1,0 +1,10 @@
+{% for u in ups %}
+<button class="upv-row" type="button" data-artist="{{ u.artist }}" data-bvid="{{ u.bvid }}" data-count="{{ u.count }}" title="{{ u.artist }}">
+  <span class="upv-ava">{{ u.artist[0] }}</span>
+  <span class="upv-name">{{ u.artist }}</span>
+  <span class="cnt">{{ u.count }}</span>
+</button>
+{% endfor %}
+{% if not ups %}
+<div class="empty">曲库里还没有歌</div>
+{% endif %}

@@ -30,6 +30,23 @@
   <div style="height:26px"></div>
 </section>
 
+<!-- 推荐视图：顶部歌单横幅架 → 每日精选全量曲目 → 其余歌单各一条横栏 -->
+<section class="view" id="view-recommend">
+  <div class="sec">
+    <div class="sec-head"><h2>推荐歌单</h2><span class="hint">点封面进歌单详情</span></div>
+    <div class="rack" hx-get="/partials/rec-playlists" hx-trigger="revealed" hx-swap="innerHTML"></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-head"><h2>每日精选</h2><span class="hint">每日轮换 · 实时流试听</span></div>
+    <div hx-get="/partials/rec-genre-tracks?genre=daily&layout=dcols" hx-trigger="revealed" hx-swap="innerHTML"></div>
+  </div>
+
+  <div hx-get="/partials/recommend-shelves" hx-trigger="revealed, recsChanged from:body" hx-swap="innerHTML"></div>
+
+  <div style="height:26px"></div>
+</section>
+
 <section class="view" id="view-detail">
   <div class="dt-top">
     <button class="tb-cir" type="button" onclick="goHome()" title="返回主页">‹</button>
@@ -54,6 +71,20 @@
   <div style="height:26px"></div>
 </section>
 
+<!-- UP 主视图：左栏曲库内所有 UP 主（拼音排序），右侧选中 UP 主的收藏歌曲 + 头像 -->
+<section class="view" id="view-up">
+  <div class="upv-lay">
+    <aside class="upv-side">
+      <div class="sec-head"><h2>UP 主</h2><span class="hint">点击查看收藏的歌</span></div>
+      <div class="upv-rows" id="upv-rows" hx-get="/partials/up-list" hx-trigger="revealed, refreshSongs from:body" hx-swap="innerHTML"></div>
+    </aside>
+    <div class="upv-main" id="upv-main">
+      <div class="empty" style="padding-top:90px">在左侧选择一位 UP 主，查看收藏的歌曲</div>
+    </div>
+  </div>
+  <div style="height:26px"></div>
+</section>
+
 <section class="view" id="view-account">
   <div class="acct-card">
     {% if user.face %}
@@ -67,8 +98,12 @@
     </div>
   </div>
   <div class="acct-rows">
+    {% if not logged_in %}
+    <button class="acct-row" type="button" onclick="openLogin()"><span>◐</span>登录 B 站账号<span class="sub">扫码 · 凭据存本机</span></button>
+    {% else %}
     <button class="acct-row" type="button" onclick="syncNow()"><span>⇅</span>同步 B 站收藏夹<span class="sub">曲库事实源在 B 站</span></button>
     <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接<span class="sub">bilimusic 夹</span></button>
+    {% endif %}
     <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗<span class="sub" id="theme-mode-sub">跟随本机</span></button>
   </div>
   <div style="text-align:center;font-size:10.5px;color:var(--txt3);margin-top:26px">BiliMusic · 曲库事实源在 B 站侧</div>

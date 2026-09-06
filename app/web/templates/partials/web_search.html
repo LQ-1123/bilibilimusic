@@ -9,11 +9,6 @@
     <div class="sd-t" title="{{ r.title }}">{{ r.title }}</div>
     <div class="sd-s">{{ r.artist }} · {{ r.duration_text }} · {{ r.play_text }}播放</div>
   </div>
-  <button type="button" class="sd-heart rec-collect" data-bvid="{{ r.bvid }}" title="收藏入库（自动同步 B 站夹）"
-          hx-post="/web/import"
-          hx-vals='{"url": "{{ r.import_url }}"}'
-          hx-include="#collect-playlist-id"
-          hx-target="#task-list" hx-swap="innerHTML">♥</button>
 </div>
 {% endfor %}
 {% endif %}

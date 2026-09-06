@@ -94,6 +94,9 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
     radial-gradient(60% 70% at 30% -12%, hsl(200 90% 58% / .22), transparent 70%);
   filter:blur(4px)}
 
+/* ---------- 音乐封面圆角规范（统一 iOS 连续曲率 squircle）：大封面 16px，小缩略图(≤52px) 8px ----------
+   注意：CSS corner-shape 的 superellipse(N) 是 N 越大越接近直角（N=1 圆角、2=squircle、∞=直角），不要用 5 */
+
 /* ---------- 区块 ---------- */
 .sec{margin-top:32px}
 .sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:15px}
@@ -105,9 +108,11 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
   display:grid;place-items:center;font-size:14px;font-weight:700;cursor:pointer;align-self:center;transition:.2s}
 .sec-head .addpl:hover{background:var(--pink);color:#fff}
 
-/* 全幅出血横滑架：右侧出血到屏缘、左侧止于侧栏右缘（卡片永不钻进侧栏下方，留 28px 空隙） */
-.rack{display:flex;gap:18px;overflow-x:auto;margin:0 -28px 4px 0;
-  padding:4px 28px 14px 0;scroll-snap-type:x proximity}
+/* 全幅出血横滑架：左右两侧都出血——右侧到屏缘、左侧到侧栏之下
+   （Apple Music 式：卡片从玻璃侧栏下面滑过，磨砂才有内容可透；scroll-padding 让吸附对齐内容起点而非玻璃下） */
+.rack{display:flex;gap:18px;overflow-x:auto;margin:0 -28px 4px calc(-1 * (var(--side) + 28px));
+  padding:4px 28px 14px calc(var(--side) + 28px);scroll-snap-type:x proximity;
+  scroll-padding-left:calc(var(--side) + 28px)}
 /* 横滑架不显示滚动条（滚动功能保留；滚动条看着像进度条，按用户要求隐藏） */
 .rack,.rec-grid,.rec-genres,.chips{scrollbar-width:none}
 .rack::-webkit-scrollbar,.rec-grid::-webkit-scrollbar,
@@ -116,7 +121,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 
 /* ---------- 歌单海报卡（渐变封面） ---------- */
 .poster{width:236px;flex:none;cursor:pointer;background:none;border:none;padding:0;text-align:left}
-.poster .pc{aspect-ratio:16/10.4;border-radius:14px;box-shadow:var(--shadow-sm);overflow:hidden;position:relative;
+.poster .pc{aspect-ratio:16/10.4;border-radius:16px;corner-shape:superellipse(2);box-shadow:var(--shadow-sm);overflow:hidden;position:relative;
   display:flex;flex-direction:column;justify-content:space-between;padding:15px 16px 13px;
   transition:transform .28s cubic-bezier(.2,.7,.3,1),box-shadow .28s;
   background:
@@ -133,13 +138,13 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .fab::before{content:"▶";margin-left:3px}
 .poster:hover .pc,.songcard:hover .sc,.reccard:hover .rc{transform:translateY(-5px)}
 .reccard:hover .rc{box-shadow:none}
-.poster:hover .fab,.songcard:hover .fab{opacity:1;transform:translateY(0)}
+.poster:hover .fab{opacity:1;transform:translateY(0)}
 
 /* ---------- 最近收藏卡（无框，同发现卡） ---------- */
 .songcard{width:186px;flex:none;cursor:pointer;background:none;border:none;padding:0;text-align:left}
 .songcard .sc{display:block;background:none;border:none;padding:0;
   transition:transform .28s cubic-bezier(.2,.7,.3,1)}
-.songcard .im{display:block;width:100%;aspect-ratio:1;border-radius:9px;overflow:hidden;background:var(--raise)}
+.songcard .im{display:block;width:100%;aspect-ratio:1;border-radius:16px;corner-shape:superellipse(2);overflow:hidden;background:var(--raise)}
 .songcard .im img{width:100%;height:100%;object-fit:cover}
 .songcard .nm{display:block;font-size:13.5px;font-weight:700;margin-top:11px;line-height:1.35;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
@@ -148,7 +153,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 
 /* ---------- 推荐歌曲卡（Apple Music 式大封面横滑架） ---------- */
 .rec-card{width:200px;flex:none;cursor:pointer;position:relative}
-.rec-card .im{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:12px;corner-shape:superellipse(5);
+.rec-card .im{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:16px;corner-shape:superellipse(2);
   overflow:hidden;background:var(--raise);box-shadow:var(--shadow-sm);
   transition:transform .28s cubic-bezier(.2,.7,.3,1)}
 .rec-card:hover .im{transform:translateY(-5px)}
@@ -156,10 +161,6 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .rec-card .t1{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px;
   font-size:13.5px;font-weight:700;margin-top:11px;line-height:1.35}
 .rec-card .t2{display:block;font-size:11.5px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rec-card .fab{position:absolute;right:10px;bottom:10px;pointer-events:none}
-.rec-card:hover .fab{opacity:1;transform:translateY(0)}
-.rec-card .love{position:absolute;top:10px;right:10px;opacity:0;transform:translateY(6px);transition:.25s}
-.rec-card:hover .love{opacity:1;transform:translateY(0)}
 .rec-card.playing .im{box-shadow:0 0 0 2.5px var(--pink),var(--shadow-sm)}
 .rec-card.playing .t1{color:var(--pink-txt)}
 
@@ -167,7 +168,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .reccard{width:170px;flex:none;position:relative}
 .reccard .rc{background:none;border:none;padding:0 0 2px;
   transition:transform .28s cubic-bezier(.2,.7,.3,1);position:relative;height:100%}
-.reccard .im{width:100%;aspect-ratio:1;border-radius:9px;overflow:hidden;background:var(--raise);position:relative}
+.reccard .im{width:100%;aspect-ratio:1;border-radius:16px;corner-shape:superellipse(2);overflow:hidden;background:var(--raise);position:relative}
 .reccard .im img{width:100%;height:100%;object-fit:cover}
 .reccard .gtag{position:absolute;top:19px;left:19px;font-size:10px;font-weight:700;letter-spacing:1px;
   background:rgba(10,10,14,.55);color:#fff;backdrop-filter:blur(6px);padding:3px 8px;border-radius:999px}
@@ -177,8 +178,6 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .reccard:hover .acts{opacity:1;transform:translateY(0)}
 .mini-act{width:34px;height:34px;border-radius:50%;backdrop-filter:blur(8px);background:rgba(12,12,16,.6);color:#fff;
   display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.35);font-size:12px}
-.mini-act.love{color:rgba(255,255,255,.55)}
-.mini-act.love.on{background:var(--pink);color:#fff}
 .reccard.gone{opacity:0;transform:scale(.92);transition:opacity .4s,transform .4s}
 .rec-grid{display:flex;gap:18px;overflow-x:auto;margin:0 -28px 4px 0;
   padding:4px 28px 14px 0}
@@ -204,7 +203,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .trk .eqbox{display:none;justify-content:center}
 .trk.playing .no{display:none}
 .trk.playing .eqbox{display:flex}
-.trk .im{width:44px;height:44px;border-radius:8px;overflow:hidden;background:var(--raise)}
+.trk .im{width:44px;height:44px;border-radius:8px;corner-shape:superellipse(2);overflow:hidden;background:var(--raise)}
 .trk .im img{width:100%;height:100%;object-fit:cover}
 .trk .tt{min-width:0}
 .trk .tt .t1{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -234,19 +233,16 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .trk .del{opacity:0;color:var(--txt3);transition:.2s;display:grid;place-items:center;font-size:13px}
 .trk:hover .del{opacity:1}
 .trk .del:hover{color:#f87171}
-.trk .del.love{font-size:14px}
-.trk .del.love:hover{color:var(--pink-txt)}
-.trk .del.love.on{color:var(--pink);opacity:1}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
 /* ---------- 侧栏（玻璃覆盖层） ---------- */
 .sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:95;display:flex;flex-direction:column;
-  background:var(--glass);backdrop-filter:blur(44px) saturate(1.5);-webkit-backdrop-filter:blur(44px) saturate(1.5);
+  background:var(--glass);backdrop-filter:blur(44px) saturate(1.8);-webkit-backdrop-filter:blur(44px) saturate(1.8);
   border-right:1px solid var(--stroke);padding:20px 6px 14px 18px}
 .side-nav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
 .side-item{display:flex;align-items:center;gap:12px;height:40px;border-radius:10px;padding:0 12px;
   font-size:14px;font-weight:600;color:var(--txt2);transition:.18s;position:relative;width:100%;text-align:left}
-.side-item svg{width:19px;height:19px;flex:none}
+.side-item svg{width:19px;height:19px;flex:none;color:var(--pink)}  /* 图标常驻粉色（AM 侧栏样式），文字保持灰色 */
 .side-item:hover{color:var(--txt);background:var(--card)}
 .side-item.on{color:var(--txt)}
 .side-item.on::before{content:"";position:absolute;left:-18px;top:9px;bottom:9px;width:3.5px;border-radius:0 4px 4px 0;background:var(--pink)}
@@ -258,7 +254,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .side-pl{display:flex;align-items:center;gap:11px;height:40px;border-radius:10px;padding:0 9px;cursor:pointer;transition:.18s;width:100%;background:none;border:none}
 .side-pl:hover{background:var(--card)}
 .side-pl.on{background:var(--card2)}
-.side-pl .sp-cov{width:30px;height:30px;border-radius:7px;corner-shape:superellipse(5);overflow:hidden;flex:none;display:grid;place-items:center;color:#fff;font-size:12px;
+.side-pl .sp-cov{width:30px;height:30px;border-radius:8px;corner-shape:superellipse(2);overflow:hidden;flex:none;display:grid;place-items:center;color:#fff;font-size:12px;
   background:
     radial-gradient(135% 135% at 16% 10%, hsl(var(--h) 92% 64% / .95), transparent 62%),
     radial-gradient(120% 120% at 88% 24%, hsl(calc(var(--h) + 46) 88% 58% / .72), transparent 58%),
@@ -285,7 +281,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .side-user .u-more:hover{color:var(--pink-txt);background:var(--pink-tint)}
 /* ---------- 头像用户设置弹层（智能切歌 / 同步 / 退出） ---------- */
 .user-pop{position:absolute;bottom:calc(100% + 10px);left:8px;right:8px;z-index:80;border-radius:14px;
-  corner-shape:superellipse(5);
+  corner-shape:superellipse(2);
   background:var(--glass-strong);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow);padding:6px;
   opacity:0;visibility:hidden;pointer-events:none;
@@ -321,9 +317,13 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .p-ctl .big{width:42px;height:42px;border-radius:50%;background:#fff;color:#0d0d12;box-shadow:0 6px 18px rgba(0,0,0,.35);font-size:15px}
 .p-ctl .big:hover{background:var(--pink);color:#fff;transform:scale(1.05)}
 .p-meta{display:flex;align-items:center;gap:12px;min-width:0}
-#player-cover{width:42px;height:42px;border-radius:8px;flex:none;cursor:pointer;object-fit:cover;background:var(--raise)}
+#player-cover{width:42px;height:42px;border-radius:8px;corner-shape:superellipse(2);flex:none;cursor:pointer;object-fit:cover;background:var(--raise)}
 .p-meta .mtx{min-width:0;flex:1}
-#player-title{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.p-meta .trow{display:flex;align-items:center;gap:6px;min-width:0}
+#player-title{flex:1;min-width:0;font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#btn-star{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:13px;color:var(--txt3);transition:.15s}
+#btn-star:hover{color:var(--pink-txt);background:var(--pink-tint)}
+#btn-star.on{color:var(--pink)}
 #player-artist{font-size:11.5px;color:var(--txt2);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 进度条（胶囊 #seek + 歌词页 #ly-seek）：已播粉色填充（--p 由 JS 同步），hover/拖动变粗；无拖动圆球 */
 #seek,#ly-seek{--p:0%;width:100%;height:14px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
@@ -349,7 +349,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .volhost button svg{width:17px;height:17px;display:block}
 /* 音量竖直滑条：悬浮于播放岛上方（绝对定位不占岛内空间），滑条旋转 90° 换向 */
 .vol{position:absolute;bottom:calc(100% + 10px);left:50%;width:36px;height:148px;border-radius:16px;
-  corner-shape:superellipse(5);
+  corner-shape:superellipse(2);
   background:var(--glass-strong);backdrop-filter:blur(24px) saturate(1.5);-webkit-backdrop-filter:blur(24px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow-sm);
   display:flex;align-items:center;justify-content:center;
@@ -369,6 +369,27 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 #vol::-moz-range-progress{height:3.5px;border-radius:3px;background:var(--pink)}
 #vol:hover::-moz-range-track,#vol:active::-moz-range-track{height:7px}
 #vol::-moz-range-thumb{width:0;height:0;border:none}
+
+/* ---------- 每日精选分栏列表（AM 新歌精选式）：4 行一列、多列横滑 ---------- */
+.dc-track{display:flex;gap:34px;overflow-x:auto;margin:0 -28px 4px calc(-1 * (var(--side) + 28px));
+  padding:4px 28px 14px calc(var(--side) + 28px);scroll-padding-left:calc(var(--side) + 28px);
+  scrollbar-width:none}
+.dc-track::-webkit-scrollbar{display:none}
+.dcol{width:min(560px,44vw);flex:none;display:flex;flex-direction:column}
+.drow{display:flex;align-items:center;gap:12px;padding:7px 10px;border-radius:10px;cursor:pointer;transition:background .15s;min-width:0}
+.drow:hover{background:var(--card)}
+.drow .no{width:18px;text-align:center;font-size:12.5px;color:var(--txt3);font-variant-numeric:tabular-nums;flex:none}
+.drow .eqbox{display:none;justify-content:center;flex:none;width:18px}
+.drow.playing .no{display:none}
+.drow.playing .eqbox{display:flex}
+.drow .im{width:44px;height:44px;border-radius:8px;corner-shape:superellipse(2);overflow:hidden;flex:none;background:var(--raise)}
+.drow .im img{width:100%;height:100%;object-fit:cover;display:block}
+.drow .tt{flex:1;min-width:0}
+.drow .t1{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drow .t2{display:block;font-size:11px;color:var(--txt2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drow .du{font-size:11px;color:var(--txt3);font-variant-numeric:tabular-nums;flex:none}
+.drow.playing{background:var(--card)}
+.drow.playing .t1{color:var(--pink-txt)}
 
 /* ---------- 真实封面拼贴（推荐歌单卡 / 详情大封面）· 艺术化处理 ---------- */
 /* 虚化拉伸成抽象色场 → 柔光色罩统一色调 → 暗部渐变保文字可读 */
@@ -423,16 +444,12 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .sd-sec{font-size:11px;font-weight:700;letter-spacing:1.4px;color:var(--txt3);padding:12px 14px 6px}
 .sd-row{display:flex;align-items:center;gap:12px;padding:7px 10px;border-radius:12px;cursor:pointer;min-width:0}
 .sd-row:hover{background:var(--card)}
-.sd-cov{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none;background:var(--raise)}
+.sd-cov{width:44px;height:44px;border-radius:8px;corner-shape:superellipse(2);object-fit:cover;flex:none;background:var(--raise)}
 .sd-meta{min-width:0;flex:1}
 .sd-t{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sd-s{font-size:11.5px;color:var(--txt2);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sd-play{flex:none;width:32px;height:32px;border-radius:50%;background:var(--pink-tint);color:var(--pink-txt);
   display:grid;place-items:center;font-size:12px}
-.sd-heart{flex:none;width:34px;height:34px;border-radius:50%;background:var(--raise);color:var(--txt3);
-  display:grid;place-items:center;font-size:15px;transition:.2s}
-.sd-heart:hover{color:var(--pink-txt);background:var(--pink-tint)}
-.sd-heart.on{background:var(--pink);color:#fff}
 .sd-empty{padding:22px 14px;text-align:center;font-size:12.5px;color:var(--txt3)}
 .sd-collect{margin:8px;padding:14px;border-radius:14px;background:var(--card);border:1px solid var(--stroke);
   display:flex;gap:13px;align-items:center;min-width:0}
@@ -482,7 +499,7 @@ body.trial #seek,body.trial .p-time{visibility:hidden}
 #btn-lyrics-close{position:absolute;top:24px;left:calc(var(--side) + 28px);width:36px;height:36px;border-radius:50%;
   background:var(--card);border:1px solid var(--stroke);display:grid;place-items:center;color:var(--txt2);font-size:14px}
 #btn-lyrics-close:hover{color:var(--txt)}
-#lyrics-cover{width:min(300px,24vw);aspect-ratio:1;border-radius:18px;object-fit:cover;box-shadow:0 26px 70px rgba(0,0,0,.5);background:var(--raise);cursor:pointer}
+#lyrics-cover{width:min(300px,24vw);aspect-ratio:1;border-radius:16px;corner-shape:superellipse(2);object-fit:cover;box-shadow:0 26px 70px rgba(0,0,0,.5);background:var(--raise);cursor:pointer}
 .l-song{text-align:center;padding:0 16px;max-width:100%}
 .l-song b{display:block;font-size:20px;font-weight:800;line-height:1.35}
 .l-song span{display:block;font-size:13px;color:var(--txt2);margin-top:6px}
@@ -577,26 +594,19 @@ body:not(.playing) .i-pause{display:none}
 .up-song{display:flex;align-items:center;gap:13px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
 .up-song:hover{background:rgba(255,255,255,.06)}
 .up-song .no{width:18px;text-align:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.38);flex:none}
-.up-song .im{width:44px;height:44px;border-radius:8px;corner-shape:superellipse(5);overflow:hidden;flex:none;background:var(--raise)}
+.up-song .im{width:44px;height:44px;border-radius:8px;corner-shape:superellipse(2);overflow:hidden;flex:none;background:var(--raise)}
 .up-song .im img{width:100%;height:100%;object-fit:cover;display:block}
 .up-song .tt{flex:1;min-width:0}
 .up-song .t1{font-size:13.5px;font-weight:600;color:rgba(255,255,255,.94);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .up-song .t2{font-size:11px;color:rgba(255,255,255,.42);margin-top:3px;font-variant-numeric:tabular-nums}
 .up-song .du{font-size:11px;color:rgba(255,255,255,.38);font-variant-numeric:tabular-nums;flex:none}
-.us-love{width:30px;height:30px;border-radius:50%;color:rgba(255,255,255,.4);font-size:13px;opacity:0;transition:.15s;flex:none}
-.up-song:hover .us-love{opacity:1}
-.us-love:hover{color:#ff8aa6;background:rgba(255,255,255,.09)}
-.us-love.on{color:#fa4b74;opacity:1}
 /* 音乐视频：16:9 大卡无边框，hover 播放钮浮现 */
 .up-videos{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:30px 24px}
 .up-video{cursor:pointer;min-width:0}
-.up-video .im{position:relative;display:block;width:100%;aspect-ratio:16/9;border-radius:12px;corner-shape:superellipse(5);
+.up-video .im{position:relative;display:block;width:100%;aspect-ratio:16/9;border-radius:16px;corner-shape:superellipse(2);
   overflow:hidden;background:var(--raise)}
 .up-video .im img{width:100%;height:100%;object-fit:cover;display:block}
 .up-video .im::after{content:"";position:absolute;inset:0;border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
-.up-video .pv{position:absolute;inset:0;display:grid;place-items:center;font-size:20px;color:#fff;
-  background:rgba(0,0,0,.38);backdrop-filter:blur(3px);opacity:0;transition:.2s}
-.up-video:hover .pv{opacity:1}
 .up-video .tt{padding:10px 2px 0}
 .up-video .t1{font-size:12.5px;font-weight:600;line-height:1.4;color:rgba(255,255,255,.92);
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -623,16 +633,18 @@ body.playing #up-panel .i-pause{display:block}
 #up-panel.closing,#lyrics-panel.closing{opacity:0;transform:translateY(10px) scale(1.012);pointer-events:none}
 /* 歌曲播放大页面（歌词全屏）自带控制条：打开时全局播放条不叠显 */
 body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
-#view-home,#view-detail,#view-account{animation:viewIn .34s cubic-bezier(.3,.85,.3,1)}
+#view-home,#view-detail,#view-account,#view-recommend,#view-up{animation:viewIn .34s cubic-bezier(.3,.85,.3,1)}
 @keyframes viewIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){
-  #up-panel,#lyrics-panel,#view-home,#view-detail,#view-account{transition:none !important;animation:none !important}
+  #up-panel,#lyrics-panel,#view-home,#view-detail,#view-account,#view-recommend,#view-up{transition:none !important;animation:none !important}
 }
 
 /* ---------- 歌单详情 ---------- */
-#view-home,#view-detail,#view-account{display:none}
+#view-home,#view-detail,#view-account,#view-recommend,#view-up{display:none}
 .app[data-view="home"] #view-home{display:block}
 .app[data-view="detail"] #view-detail{display:block}
+.app[data-view="recommend"] #view-recommend{display:block}
+.app[data-view="up"] #view-up{display:block}
 .app[data-view="detail"] .topbar{display:none}
 .dt-top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:16px 2px 12px}
 .dt-top #dt-crumb{transition:opacity .28s}
@@ -640,7 +652,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .dt-hero{position:relative;margin:4px -28px 26px calc(-1 * (var(--side) + 28px));padding:22px 28px 30px calc(var(--side) + 28px);
   display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap}
 .dt-hero::before{content:none} /* 歌单渐变已按需求移除：直接留白 */
-.dt-hero .dt-cvr{width:200px;height:200px;border-radius:14px;flex:none;box-shadow:0 24px 60px rgba(0,0,0,.5);position:relative;
+.dt-hero .dt-cvr{width:200px;height:200px;border-radius:16px;corner-shape:superellipse(2);flex:none;box-shadow:0 24px 60px rgba(0,0,0,.5);position:relative;
   background:
     radial-gradient(135% 135% at 16% 10%, hsl(var(--dh,340) 92% 64% / .95), transparent 62%),
     radial-gradient(120% 120% at 88% 24%, hsl(calc(var(--dh,340) + 46) 88% 58% / .72), transparent 58%),
@@ -658,6 +670,24 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .btn-share{height:44px;padding:0 22px;border-radius:999px;background:var(--card);border:1px solid var(--stroke);
   color:var(--txt);font-size:13px;font-weight:700;display:flex;gap:7px;align-items:center;transition:.2s}
 .btn-share:hover{background:var(--card2);color:var(--pink-txt);border-color:var(--stroke2)}
+
+/* ---------- UP 主视图（AM 艺人页式）：左列表 + 右详情 ---------- */
+.upv-lay{display:grid;grid-template-columns:300px minmax(0,1fr);gap:38px;align-items:start;margin-top:14px}
+.upv-rows{display:flex;flex-direction:column;gap:2px;padding-right:6px}  /* 不限高：随整页滚动 */
+.upv-row{display:flex;align-items:center;gap:12px;padding:7px 10px;border-radius:10px;cursor:pointer;transition:.15s;background:none;border:none;width:100%;text-align:left}
+.upv-row:hover{background:var(--card)}
+.upv-row.on{background:var(--card2)}
+.upv-row.on .upv-name{color:var(--pink-txt)}
+.upv-ava{width:40px;height:40px;border-radius:50%;overflow:hidden;flex:none;display:grid;place-items:center;color:#fff;font-size:15px;font-weight:800;
+  background:radial-gradient(120% 120% at 20% 15%, #ff9db9, #fb7299 55%, #b23a67)}
+.upv-ava img{width:100%;height:100%;object-fit:cover;display:block}
+.upv-name{flex:1;min-width:0;font-size:13.5px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.upv-row .cnt{font-size:10.5px;color:var(--txt3);flex:none}
+.upv-head{display:flex;align-items:center;gap:22px;padding:10px 0 22px}
+.upv-face{width:110px;height:110px;border-radius:50%;object-fit:cover;flex:none;background:var(--raise);box-shadow:var(--shadow-sm)}
+.upv-title{font-size:30px;font-weight:800;letter-spacing:.3px;cursor:pointer;transition:color .15s;width:fit-content}
+.upv-title:hover{color:var(--pink-txt)}
+.upv-meta{font-size:12px;color:var(--txt3);margin-top:6px}
 
 /* ---------- 账号（移动端 Tab 用） ---------- */
 #view-account{padding-top:8px}
@@ -690,37 +720,56 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 #btn-export-start:disabled{opacity:.5;cursor:default}
 #btn-copy-link{height:32px;padding:0 14px;border-radius:999px;background:var(--pink-tint);color:var(--pink-txt);font-size:12px;font-weight:700}
 
-/* ---------- 登录页：Apple Music 式深色沉浸环境 ---------- */
-body.login-mode{background:#0a0a10;color:#f5f5f7;
-  --txt:#f5f5f7;--txt2:rgba(245,245,247,.62);--txt3:rgba(245,245,247,.42);
-  --card:rgba(255,255,255,.07);--card2:rgba(255,255,255,.13);
-  --stroke:rgba(255,255,255,.11);--glass-strong:rgba(22,22,32,.6);
-  --pink-txt:#ff8aa6;--pink-tint:rgba(250,75,116,.18);
-  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
-body.login-mode .app{background:
-  radial-gradient(70% 60% at 74% 6%, hsl(340 88% 52% / .42), transparent 72%),
-  radial-gradient(55% 50% at 10% 90%, hsl(268 82% 56% / .34), transparent 72%),
-  radial-gradient(45% 40% at 28% 34%, hsl(205 72% 44% / .13), transparent 72%)}
-.login-box{width:min(430px,calc(100vw - 40px));border-radius:28px;corner-shape:superellipse(5);
-  background:rgba(24,24,34,.5);backdrop-filter:blur(32px) saturate(1.5);-webkit-backdrop-filter:blur(32px) saturate(1.5);
-  border:1px solid rgba(255,255,255,.12);box-shadow:0 32px 90px rgba(0,0,0,.5);
-  padding:36px 32px 32px;text-align:center}
-.lb-brand{font-size:12px;font-weight:800;color:var(--pink-txt);letter-spacing:3.5px;margin-bottom:14px}
-.login-box h2{font-size:26px;font-weight:800;color:#fff;letter-spacing:.2px}
-.login-box .hint{font-size:12.5px;color:rgba(245,245,247,.55);line-height:1.8;margin:12px auto 22px;text-align:center;max-width:300px}
-#qr-box{display:flex;flex-direction:column;align-items:center;gap:14px}
-#qr-status{font-size:13px;color:rgba(245,245,247,.6)}
-#qr-img{width:214px;height:214px;border-radius:18px;corner-shape:superellipse(5);background:#fff;padding:9px;
-  box-shadow:0 14px 40px rgba(0,0,0,.4)}
-#qr-refresh{height:36px;padding:0 20px;border-radius:999px;background:var(--pink-tint);color:var(--pink-txt);font-size:13px;font-weight:700}
-.current-login{margin-top:18px;font-size:12.5px;color:rgba(245,245,247,.6)}
-#btn-logout{margin-left:10px;height:32px;padding:0 16px;border-radius:999px;background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.14);color:#ff7a8a;font-size:12px;font-weight:600}
-
-/* ---------- 登录态（隐藏应用骨架，居中卡片） ---------- */
-body.login-mode .sidebar,body.login-mode #player-bar,body.login-mode .topbar,
-body.login-mode #m-dock,body.login-mode #task-list,body.login-mode .side-handle{display:none !important}
-body.login-mode .app .main{display:grid;place-items:center;padding:20px}
+/* ---------- 登录弹窗（B 站官方弹窗式）：未登录时任意操作触发（401 全局监听）；白卡 + B站蓝双栏 ---------- */
+#login-modal .bl-box{display:flex;gap:34px;width:min(740px,calc(100vw - 32px));background:#fff;
+  border:none;border-radius:12px;box-shadow:0 20px 70px rgba(0,0,0,.35);
+  padding:36px 38px 28px;position:relative;color:#18191c;max-height:88vh}
+#login-close{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;
+  color:#61666d;display:grid;place-items:center;font-size:12px;transition:.15s}
+#login-close:hover{color:#18191c;background:#f1f2f3}
+/* 左栏：二维码 */
+#login-modal .bl-left{flex:0 0 250px;display:flex;flex-direction:column;align-items:center;text-align:center}
+#login-modal .bl-qr-title{font-size:19px;font-weight:600;color:#18191c;letter-spacing:.5px;margin-bottom:16px}
+#login-modal .lg-qr-tile{width:184px;min-height:184px;border:1px solid #e3e5e7;border-radius:10px;
+  background:#fff;display:grid;place-items:center;padding:12px}
+#login-modal #qr-img{width:100%;height:auto;aspect-ratio:1;object-fit:contain;display:block}
+#login-modal #qr-status{font-size:13px;color:#fb7299;font-weight:600;padding:8px 4px}
+#login-modal #qr-refresh{height:34px;padding:0 18px;border-radius:8px;background:#f1f2f3;color:#18191c;
+  font-size:12.5px;font-weight:600;margin-top:10px;transition:.15s}
+#login-modal #qr-refresh:hover{background:#e3e5e7}
+#login-modal .bl-qr-sub{font-size:12.5px;color:#9499a0;line-height:1.9;margin-top:12px}
+#login-modal .bl-qr-sub b{color:#fb7299;font-weight:600}
+#login-modal .bl-div{width:1px;background:#e3e5e7;align-self:stretch;flex:none}
+/* 右栏：短信登录表单 */
+#login-modal .bl-right{flex:1;min-width:0;display:flex;flex-direction:column}
+#login-modal .bl-rtitle{font-size:19px;font-weight:600;color:#fb7299;letter-spacing:.5px;margin-bottom:20px}
+#login-modal .bl-form{display:flex;flex-direction:column;gap:12px}
+#login-modal .bl-field{display:flex;align-items:center;gap:10px;height:46px;border:1px solid #e3e5e7;
+  border-radius:8px;padding:0 8px 0 14px;transition:border-color .15s;background:#fff}
+#login-modal .bl-field:focus-within{border-color:#fb7299}
+#login-modal .bl-cc{font-size:13.5px;color:#18191c;font-weight:600;flex:none}
+#login-modal .bl-vsep{width:1px;height:20px;background:#e3e5e7;flex:none}
+#login-modal .bl-field input{flex:1;min-width:0;font-size:14px;color:#18191c;height:100%}
+#login-modal .bl-field input::placeholder{color:#c9ccd0}
+#login-modal #sms-send{flex:none;height:34px;padding:0 6px;font-size:13px;font-weight:600;color:#fb7299;transition:.15s}
+#login-modal #sms-send:hover{color:#ff8fad}
+#login-modal #sms-send:disabled{color:#c9ccd0;cursor:default}
+#login-modal .bl-go{height:46px;border-radius:8px;background:#fb7299;color:#fff;font-size:15px;font-weight:700;
+  transition:.15s;box-shadow:none}
+#login-modal .bl-go:hover{background:#ff8fad}
+#login-modal #sms-msg{min-height:18px;font-size:12.5px;color:#9499a0;text-align:center}
+#login-modal #sms-msg.err{color:#f25d8e}
+#login-modal .bl-foot{margin-top:auto;padding-top:26px;text-align:center}
+#login-modal .bl-foot p{font-size:11.5px;color:#9499a0;line-height:2}
+#login-modal .bl-foot a{color:#fb7299;text-decoration:none}
+#login-modal .bl-foot a:hover{text-decoration:underline}
+/* 窄屏：双栏改上下堆叠 */
+@media (max-width:700px){
+  #login-modal .bl-box{flex-direction:column;gap:22px;padding:28px 22px 22px;width:calc(100vw - 24px)}
+  #login-modal .bl-left{flex:none}
+  #login-modal .bl-div{width:auto;height:1px;align-self:stretch}
+  #login-modal .bl-foot{padding-top:18px}
+}
 
 /* ---------- 手机端（≤ 900px）：双胶囊 + Tab ---------- */
 #m-dock{display:none}
@@ -772,7 +821,7 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   #lyrics-panel{display:flex;flex-direction:column}
   .l-left{flex:none;display:grid;grid-template-columns:36px 52px minmax(0,1fr) auto;align-items:center;column-gap:11px;padding:12px 12px 4px}
   #btn-lyrics-close{position:static}
-  #lyrics-cover{width:52px;height:52px;border-radius:12px;corner-shape:superellipse(5);box-shadow:0 10px 26px rgba(0,0,0,.35)}
+  #lyrics-cover{width:52px;height:52px;border-radius:8px;corner-shape:superellipse(2);box-shadow:0 10px 26px rgba(0,0,0,.35)}
   .l-song{text-align:left;padding:0}
   .l-song b{font-size:15px}
   .l-song b,.l-song span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -792,13 +841,13 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   .ly-ctl #ly-mode,.ly-ctl #ly-add{display:none}
   /* 手机端播放页封面视图（Apple Music 式）：顶栏下大封面 + 大标题 + 词气泡 */
   .l-hero{display:flex;flex-direction:column;flex:none;padding:6px 24px 0}
-  #lyrics-cover-big{width:100%;aspect-ratio:1;object-fit:cover;border-radius:16px;corner-shape:superellipse(5);
+  #lyrics-cover-big{width:100%;aspect-ratio:1;object-fit:cover;border-radius:16px;corner-shape:superellipse(2);
     box-shadow:0 24px 55px rgba(0,0,0,.42);background:var(--raise);cursor:pointer}
   .l-herosong{display:flex;align-items:flex-end;gap:12px;padding:16px 2px 10px}
   .hs-txt{flex:1;min-width:0}
   .hs-txt b{display:block;font-size:21px;font-weight:800;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .hs-txt span{display:block;font-size:14px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #ly-bubble{flex:none;width:36px;height:36px;border-radius:12px;corner-shape:superellipse(5);background:var(--card);
+  #ly-bubble{flex:none;width:36px;height:36px;border-radius:12px;corner-shape:superellipse(2);background:var(--card);
     border:1px solid var(--stroke);color:var(--txt2);font-size:13px;font-weight:800;transition:.15s}
   #ly-bubble:hover{color:var(--txt)}
   #lyrics-panel.showlyrics #ly-bubble{color:var(--pink);background:var(--pink-tint);border-color:transparent}
@@ -818,8 +867,8 @@ body.login-mode .app .main{display:grid;place-items:center;padding:20px}
   .up-lay{grid-template-columns:1fr;gap:44px;padding:30px 20px 150px}
   .up-songs{grid-template-columns:1fr}
   .up-videos{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 14px}
-  .us-love{opacity:1}
-  .rec-card .love{opacity:1;transform:none}  /* 触屏无 hover：收藏常显 */
+  .dcol{width:calc(100vw - 32px)}  /* 手机：单列占满，左右滑动 */
+  .upv-lay{grid-template-columns:1fr;gap:22px}
   .dt-hero{padding:16px 16px 24px;gap:18px}
   .dt-hero .dt-cvr{width:130px;height:130px}
   .dt-title{font-size:24px}

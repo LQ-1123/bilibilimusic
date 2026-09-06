@@ -10,11 +10,12 @@ import io
 import re
 import time
 from dataclasses import dataclass, field
+from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 import qrcode
 
-from app.core.cookies import CookieStore, local_fingerprint
+from app.core.cookies import ACCOUNT_METADATA, CookieStore, local_fingerprint, login_cookies
 from app.core.link_parser import VideoRef
 from app.core.url_guard import validate_bilibili_url
 from app.core.wbi import extract_wbi_keys, sign_params
@@ -185,8 +186,17 @@ class BiliClient:
                 "Accept": "application/json, text/plain, */*",
                 "Accept-Language": "zh-CN,zh;q=0.9",
             },
-            cookies=store.all(),
         )
+        self._reset_http_cookies()
+
+    def _reset_http_cookies(self) -> None:
+        # httpx 自动接收的域 Cookie 与 dict.update 生成的无域 Cookie 会重名。
+        # 从持久状态重建唯一的一组，账号元数据不作为 Cookie 发给 B 站。
+        jar = httpx.Cookies()
+        for key, value in self.store.all().items():
+            if key not in ACCOUNT_METADATA:
+                jar.set(key, value, domain=".bilibili.com", path="/")
+        self.http.cookies = jar
 
     async def aclose(self) -> None:
         await self.http.aclose()
@@ -222,7 +232,7 @@ class BiliClient:
     async def ensure_fingerprint(self) -> None:
         """首次运行获取 buvid3/buvid4，规避 -352 风控；失败则本地生成兜底。"""
         if self.store.has_fingerprint:
-            self.http.cookies.update(self.store.all())
+            self._reset_http_cookies()
             return
         try:
             data = await self._get_json("/x/frontend/finger/spi")
@@ -230,7 +240,7 @@ class BiliClient:
         except Exception:
             fp = local_fingerprint()
         self.store.set_many(fp)
-        self.http.cookies.update(fp)
+        self._reset_http_cookies()
 
     # ---- WBI ----
 
@@ -418,6 +428,8 @@ class BiliClient:
 
     async def my_info(self) -> dict:
         """当前登录用户信息（nav：mid/uname/face 等），进程内缓存 10 分钟；失败返回空 dict。"""
+        if not self.store.logged_in:
+            return {}
         now = time.time()
         if self._me and now < self._me[0]:
             return self._me[1]
@@ -510,6 +522,21 @@ class BiliClient:
         mid = int(data["mid"])
         self.store.set_many({"mid": str(mid)})
         return mid
+
+    async def verify_login(self) -> dict:
+        """登录/恢复时向 nav 实时核验身份，不能使用旧账号或失败响应的缓存。"""
+        if not self.store.logged_in:
+            raise BiliApiError(-101, "未取得 B 站登录态，请重新登录")
+        data = await self._get_json("/x/web-interface/nav")
+        mid = str(data.get("mid") or "")
+        if not data.get("isLogin") or not mid.isascii() or not mid.isdigit() or int(mid) <= 0:
+            raise BiliApiError(-101, "B 站登录态未生效，请重新登录")
+        cookie_mid = self.store.get("DedeUserID") or self.store.get("dedeuserid")
+        if cookie_mid and cookie_mid != mid:
+            raise BiliApiError(-101, "B 站登录凭据与账号不一致，请重新登录")
+        self.store.set_many({"mid": mid})
+        self._me = (time.time() + 600, data)
+        return data
 
     # ---- 收藏夹池（曲库的 B 站侧存储） ----
 
@@ -630,6 +657,11 @@ class BiliClient:
                 removed += 1
         return removed
 
+    async def find_in_folder(self, media_id: int, aid: int, max_pages: int = 50) -> bool:
+        """单曲是否在指定收藏夹内（对账删除前的二次核实）。"""
+        found, _ = await self._find_in_folder(media_id, aid, max_pages)
+        return found
+
     async def _find_in_folder(self, media_id: int, aid: int, max_pages: int) -> tuple[bool, int]:
         """按页在收藏夹里查找 aid，返回 (是否找到, 实际翻页数)。"""
         pn = 1
@@ -684,6 +716,65 @@ class BiliClient:
 
     # ---- 扫码登录 ----
 
+    def _accept_login(self, resp: httpx.Response, data: dict) -> dict[str, str]:
+        cookies = login_cookies({cookie.name: cookie.value for cookie in resp.cookies.jar})
+        # 部分 passport 响应把凭据放在成功回调 URL，而非 Set-Cookie。
+        callback = urlsplit(str(data.get("url") or ""))
+        host = callback.hostname or ""
+        if callback.scheme in ("http", "https") and (host == "bilibili.com" or host.endswith(".bilibili.com")):
+            fallback = login_cookies(dict(parse_qsl(callback.query)))
+            cookies = {**fallback, **cookies}
+        if not cookies.get("SESSDATA") or not cookies.get("bili_jct"):
+            self._reset_http_cookies()
+            raise BiliApiError(-101, "B 站未返回完整登录凭据，请重新登录")
+        self.store.replace_login(cookies)
+        self._reset_http_cookies()
+        self._me = None
+        self._folders = None
+        return cookies
+
+    # ---- 短信验证码登录（passport 极验 v3：前端滑块拿三件套，后端只转发） ----
+
+    async def captcha_get(self) -> dict:
+        """登录用极验参数：{token(captcha_key), geetest:{gt, challenge}}。"""
+        data = await self._get_json(_PASSPORT + "/x/passport-login/captcha", {"source": "main-web"})
+        return data
+
+    async def sms_send(
+        self, tel: str, cid: str = "86", *, token: str = "",
+        challenge: str = "", validate: str = "", seccode: str = "",
+    ) -> dict:
+        """发送短信验证码（字段名对齐 B 站官方前端：token=极验captcha的token，三件套平铺）。
+
+        成功响应 data.captcha_key 供登录接口使用。
+        """
+        resp = await self.http.post(
+            _PASSPORT + "/x/passport-login/web/sms/send",
+            data={
+                "cid": cid, "tel": tel, "source": "main-web",
+                "token": token, "challenge": challenge,
+                "validate": validate, "seccode": seccode,
+            },
+        )
+        payload = self._parse_json_response(resp)
+        return payload
+
+    async def sms_login(self, tel: str, code: str, captcha_key: str, cid: str = "86") -> dict:
+        """短信验证码登录（端点 /web/login/sms，带发送时返回的 captcha_key）；成功即写入 CookieStore。"""
+        resp = await self.http.post(
+            _PASSPORT + "/x/passport-login/web/login/sms",
+            data={
+                "cid": cid, "tel": tel, "code": code,
+                "captcha_key": captcha_key, "source": "main-web",
+            },
+        )
+        data = self._parse_json_response(resp)
+        if data.get("status") != 0:
+            self._reset_http_cookies()
+            raise BiliApiError(-101, "B 站登录尚未完成，请先在 B 站完成账号验证后重试")
+        cookies = self._accept_login(resp, data)
+        return {"cookies": list(cookies)}
+
     async def qrcode_generate(self) -> QrCode:
         data = await self._get_json(_PASSPORT + "/x/passport-login/web/qrcode/generate")
         img = qrcode.QRCode(border=1)
@@ -705,37 +796,26 @@ class BiliClient:
             _PASSPORT + "/x/passport-login/web/qrcode/poll",
             params={"qrcode_key": qrcode_key},
         )
-        try:
-            payload = resp.json()
-        except ValueError as exc:
-            raise BiliApiError(-400, "登录轮询接口返回异常") from exc
-        data = payload.get("data") or {}
+        data = self._parse_json_response(resp)
         code = int(data.get("code", -1))
         if code == 0:
-            cookies = {
-                k: v
-                for k, v in resp.cookies.items()
-                if k in ("SESSDATA", "bili_jct", "dedeuserid", "sid")
-            }
-            if cookies:
-                self.store.set_many(cookies)
-                self.http.cookies.update(cookies)
-                self._folders = None  # 换账号，夹池缓存失效
+            cookies = self._accept_login(resp, data)
             return QrPoll(status="confirmed", cookies=cookies)
-        return QrPoll(status=_QR_STATUS.get(code, "waiting"))
+        if code not in _QR_STATUS:
+            raise BiliApiError(code, data.get("message") or "B 站登录失败，请重新生成二维码")
+        return QrPoll(status=_QR_STATUS[code])
 
     async def login_status(self) -> dict:
         """校验当前登录态是否仍有效。"""
         if not self.store.logged_in:
             return {"loggedIn": False}
         data = await self._get_json("/x/web-interface/nav", ok_codes=(0, -101))
+        if not data.get("isLogin"):
+            self.logout()
         return {"loggedIn": bool(data.get("isLogin")), "username": data.get("uname") or ""}
 
     def logout(self) -> None:
         self.store.clear_login()
         self._folders = None
-        for k in ("SESSDATA", "bili_jct", "dedeuserid", "sid"):
-            try:
-                del self.http.cookies[k]
-            except KeyError:
-                pass
+        self._me = None
+        self._reset_http_cookies()

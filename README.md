@@ -120,6 +120,11 @@ GET  /api/auth/status          → {loggedIn, username, maxQuality: "64K"|"192K"
 DELETE /api/auth               → 退出登录
 ```
 
+扫码和短信登录都先在内存中接收凭据，再通过 B 站 `nav` 实时核验账号；只有核验和账号数据保存成功才返回登录成功。
+每个服务实例同时激活一个账号。各账号的数据库和 Cookie 分别保存在 `data/accounts/{mid}/`，切换后可恢复原账号曲库；
+进行中的请求固定使用开始时的账号，切换会停止旧账号的导入、同步和导出任务。
+退出会清除登录凭据与当前账号标记，保留曲库。旧版数据仅在保存身份与实际登录账号一致时迁移，身份冲突时保留原库并要求重新登录。
+
 ### 歌单 ⇆ 收藏夹（账号持久化）
 
 曲库强关联 B 站账号，事实源在 B 站侧，自建服务可随时丢弃重建（登录即自动恢复）：
@@ -224,10 +229,14 @@ centroidCurve / entryPoints / exitPoints`（entry/exit 各 8 个候选，带节�
 
 ```
 data/
-  bilibili_music.db   # 曲库（SQLite）
+  accounts/{mid}/
+    bilimusic.db     # 该账号的曲库（SQLite）
+    cookies.json     # 该账号的登录凭据（0600）
+  active_mid         # 当前账号标记，退出时清除
+  bilibili_music.db   # 未迁移的旧版曲库，归属核验后封存为 .claimed
   music/{bvid}.m4a    # 音频
   covers/{bvid}.jpg   # 封面
-  cookies.json        # buvid 与登录 cookie（0600，仅本机可读）
+  cookies.json        # 设备指纹；迁移后清除旧版登录凭据
 ```
 
 Docker：

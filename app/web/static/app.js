@@ -3,6 +3,9 @@
   "use strict";
 
   var $ = function (id) { return document.getElementById(id); };
+  function accountKey(name) {
+    return name + ":" + (document.body.dataset.mid || "guest");
+  }
   // 双轨播放器：audio 始终指向「当前承载播放」的元素（active 指针），过渡时轮换
   var audioA = $("audio");
   var audioB = $("audio2");
@@ -151,7 +154,7 @@
     try {
       var cur = playlist[current];
       if (!cur || !audio.src) return;
-      localStorage.setItem("bmSession", JSON.stringify({
+      localStorage.setItem(accountKey("bmSession"), JSON.stringify({
         songId: cur.id,
         position: audio.currentTime || 0,
         queueIds: playlist.map(function (s) { return s.id; })
@@ -161,7 +164,7 @@
 
   function restoreSession() {
     var raw = null;
-    try { raw = localStorage.getItem("bmSession"); } catch (e) {}
+    try { raw = localStorage.getItem(accountKey("bmSession")); } catch (e) {}
     if (!raw) return;
     var s;
     try { s = JSON.parse(raw); } catch (e) { return; }
@@ -198,7 +201,7 @@
   }
 
   function fetchSongs(q) {
-    return fetch("/api/songs" + (q ? "?q=" + encodeURIComponent(q) : ""))
+    return fetch("/api/songs" + (q ? "?q=" + encodeURIComponent(q) : ""), { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : { songs: [] }; })
       .then(function (d) { return d.songs || []; });
   }
@@ -300,13 +303,11 @@
   document.addEventListener("click", function (e) {
     var delEl = e.target.closest("[data-del]");
     if (delEl) {
-      if (confirm("确定从曲库删除这首歌？（本地文件一并删除）")) {
-        fetch("/api/songs/" + delEl.dataset.del, { method: "DELETE" })
-          .then(function () {
-            if (window.htmx) htmx.trigger(document.body, "refreshSongs");
-            refreshPlaylist();
-          });
-      }
+      fetch("/api/songs/" + delEl.dataset.del, { method: "DELETE" })
+        .then(function () {
+          if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+          refreshPlaylist();
+        });
       return; // 删除点击不穿透到整卡播放
     }
     var playEl = e.target.closest("[data-play]");
@@ -394,9 +395,10 @@
   });
   window.addEventListener("beforeunload", saveSession);
 
-  // ---------- Smart Transition（智能过渡） ----------
+  // ---------- Smart Transition：纯在线版已停用（依赖本地音频分析）----------
+  // 保留调用点与降级路径（playSongSmart/planChain 等以 smartEnabled() 短路），代码可整体回退
   function smartEnabled() {
-    return localStorage.getItem("bmSmartTransition") !== "0";
+    return false;
   }
   function setGain(el, v) {
     if (gains && gains[el.id]) gains[el.id].gain.value = v;
@@ -522,14 +524,6 @@
         .catch(function () { delete analysisPending[id]; });
     });
   }
-  var smartToggle = $("smart-toggle");
-  if (smartToggle) {
-    smartToggle.checked = smartEnabled();
-    smartToggle.addEventListener("change", function () {
-      localStorage.setItem("bmSmartTransition", smartToggle.checked ? "1" : "0");
-    });
-  }
-
   // 单曲循环开关（独立于自动决策链）
   var repeatToggle = $("repeat-one-toggle");
   if (repeatToggle) {
@@ -731,54 +725,231 @@
   // 搜索框由 v3.js 接管（下拉：曲库命中 + B 站结果）；播放队列不再跟随搜索词
   refreshPlaylist();
 
-  // ---------- 扫码登录页 ----------
+  // ---------- 扫码登录弹窗（未登录时任意操作触发；打开才生成二维码） ----------
   var qrImg = $("qr-img");
-  if (qrImg) {
-    var qrcodeKey = null;
-    var pollTimer = null;
+  var qrcodeKey = null;
+  var pollTimer = null;
+  var qrLive = false;
+  var pollBusy = false;
+  var qrAttempt = 0;
 
-    function genQr() {
-      $("qr-status").textContent = "正在生成二维码…";
-      qrImg.hidden = true;
-      $("qr-refresh").classList.add("hidden");
-      fetch("/api/auth/qrcode", { method: "POST" })
-        .then(function (r) { if (!r.ok) throw new Error("fail"); return r.json(); })
-        .then(function (d) {
-          qrImg.src = d.qrPngDataUrl;
-          qrImg.hidden = false;
-          $("qr-status").textContent = "请用 B 站 App 扫一扫";
-          qrcodeKey = d.qrcodeKey;
-          if (pollTimer) clearInterval(pollTimer);
-          pollTimer = setInterval(checkPoll, 1500);
-        })
-        .catch(function () { $("qr-status").textContent = "生成失败，请刷新页面重试"; });
-    }
-
-    function checkPoll() {
-      // 服务端生成的 key 固定为 32 位十六进制；先校验再拼入同源路径
-      if (!qrcodeKey || !/^[0-9a-f]{32}$/.test(qrcodeKey)) return;
-      var url = "/api/auth/qrcode/" + qrcodeKey;
-      fetch(url)
-        .then(function (r) { return r.ok ? r.json() : null; })
-        .then(function (d) {
-          if (!d) return;
-          if (d.status === "scanned") $("qr-status").textContent = "已扫码，请在手机上确认登录";
-          if (d.status === "expired") {
-            clearInterval(pollTimer);
-            $("qr-status").textContent = "二维码已失效";
-            $("qr-refresh").classList.remove("hidden");
-          }
-          if (d.status === "confirmed") {
-            clearInterval(pollTimer);
-            $("qr-status").textContent = "登录成功，正在跳转…";
-            setTimeout(function () { location.href = "/"; }, 800);
-          }
-        });
-    }
-
-    $("qr-refresh").addEventListener("click", genQr);
-    genQr();
+  function stopQr() {
+    qrAttempt++;
+    qrLive = false;
+    qrcodeKey = null;
+    pollBusy = false;
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
   }
+
+  function authJson(response) {
+    return response.json().then(function (data) {
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "登录请求失败，请重试");
+      return data;
+    });
+  }
+
+  function genQr() {
+    stopQr();
+    qrLive = true;
+    var attempt = qrAttempt;
+    $("qr-status").textContent = "正在生成二维码…";
+    qrImg.hidden = true;
+    $("qr-refresh").classList.add("hidden");
+    fetch("/api/auth/qrcode", { method: "POST" })
+      .then(authJson)
+      .then(function (d) {
+        if (attempt !== qrAttempt || !qrLive) return;
+        qrImg.src = d.qrPngDataUrl;
+        qrImg.hidden = false;
+        $("qr-status").textContent = "请用 B 站 App 扫一扫";
+        qrcodeKey = d.qrcodeKey;
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(checkPoll, 1500);
+      })
+      .catch(function (error) {
+        if (attempt !== qrAttempt) return;
+        stopQr();
+        $("qr-status").textContent = error.message || "生成失败，稍后重试";
+        $("qr-refresh").classList.remove("hidden");
+      });
+  }
+
+  function checkPoll() {
+    // 服务端生成的 key 固定为 32 位十六进制；先校验再拼入同源路径
+    if (!qrLive || pollBusy || !qrcodeKey || !/^[0-9a-f]{32}$/.test(qrcodeKey)) return;
+    pollBusy = true;
+    var attempt = qrAttempt;
+    fetch("/api/auth/qrcode/" + qrcodeKey)
+      .then(authJson)
+      .then(function (d) {
+        if (attempt !== qrAttempt || !qrLive) return;
+        if (d.status === "scanned") $("qr-status").textContent = "已扫码，请在手机上确认登录";
+        if (d.status === "expired") {
+          stopQr();
+          $("qr-status").textContent = "二维码已失效";
+          $("qr-refresh").classList.remove("hidden");
+        }
+        if (d.status === "confirmed") {
+          stopQr();
+          $("qr-status").textContent = "登录成功，正在进入…";
+          setTimeout(function () { location.href = "/"; }, 800);
+        }
+      })
+      .catch(function (error) {
+        if (attempt !== qrAttempt) return;
+        stopQr();
+        $("qr-status").textContent = error.message || "登录失败，请重试";
+        $("qr-refresh").classList.remove("hidden");
+      })
+      .finally(function () { if (attempt === qrAttempt) pollBusy = false; });
+  }
+
+  window.openLogin = function () {
+    var m = $("login-modal");
+    if (!m) return;
+    m.classList.remove("hidden");
+    if (!qrLive) { qrLive = true; genQr(); }
+  };
+  window.closeLogin = function () {
+    var m = $("login-modal");
+    if (!m) return;
+    m.classList.add("hidden");
+    stopQr(); // 关窗后到达的响应不能重新开始轮询
+  };
+  var qrRefreshBtn = $("qr-refresh");
+  if (qrRefreshBtn) qrRefreshBtn.addEventListener("click", genQr);
+  var loginCloseBtn = $("login-close");
+  if (loginCloseBtn) loginCloseBtn.addEventListener("click", window.closeLogin);
+  if (location.search.indexOf("login=1") >= 0) window.openLogin(); // 兼容旧 /login 链接
+
+  // ---------- 短信验证码登录（B 站同款极验滑块：gt.js 懒加载） ----------
+  var gtReady = null;
+  function loadGt() {
+    if (window.initGeetest) return Promise.resolve();
+    if (gtReady) return gtReady;
+    gtReady = new Promise(function (resolve, reject) {
+      var s = document.createElement("script");
+      s.src = "https://static.geetest.com/static/tools/gt.js";
+      s.onload = resolve;
+      s.onerror = function () { gtReady = null; reject(new Error("gt.js 加载失败")); };
+      document.head.appendChild(s);
+    });
+    return gtReady;
+  }
+  function smsMsg(txt, isErr) {
+    var el = $("sms-msg");
+    if (!el) return;
+    el.textContent = txt || "";
+    el.classList.toggle("err", !!isErr);
+  }
+  var smsCountdown = 0;
+  function tickSmsBtn() {
+    var btn = $("sms-send");
+    if (!btn) return;
+    if (smsCountdown > 0) {
+      btn.disabled = true;
+      btn.textContent = smsCountdown + "s";
+    } else {
+      btn.disabled = false;
+      btn.textContent = "获取验证码";
+    }
+  }
+  var smsCaptchaKey = ""; // B 站流程：发送成功后返回 captcha_key，登录时必带
+  // 获取验证码：拉极验参数 → 弹滑块 → 通过后调发送接口
+  function smsSend() {
+    var tel = ($("sms-tel").value || "").trim();
+    if (!/^\d{11}$/.test(tel)) { smsMsg("请输入 11 位手机号", true); return; }
+    smsMsg("加载验证组件…");
+    loadGt()
+      .then(function () { return fetch("/api/auth/captcha").then(function (r) { return r.ok ? r.json() : null; }); })
+      .then(function (cap) {
+        if (!cap || !cap.geetest) throw new Error("获取验证参数失败");
+        window.initGeetest({
+          gt: cap.geetest.gt, challenge: cap.geetest.challenge,
+          offline: false, new_captcha: true, product: "bind", // bind 模式：不绑 DOM，verify() 手动弹滑块
+        }, function (captchaObj) {
+          captchaObj.onReady(function () { captchaObj.verify(); smsMsg("请完成滑块验证…"); });
+          captchaObj.onSuccess(function () {
+            var v = captchaObj.getValidate();
+            fetch("/api/auth/sms/send", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tel: tel, cid: "86", token: cap.token,
+                challenge: v.geetest_challenge, validate: v.geetest_validate, seccode: v.geetest_seccode,
+              }),
+            }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+              .then(function (res) {
+                if (res.ok && res.d.ok) {
+                  smsCaptchaKey = res.d.captchaKey || "";
+                  smsMsg("验证码已发送，5 分钟内有效");
+                  smsCountdown = 60;
+                  tickSmsBtn();
+                  var iv = setInterval(function () {
+                    smsCountdown--; tickSmsBtn();
+                    if (smsCountdown <= 0) clearInterval(iv);
+                  }, 1000);
+                } else {
+                  smsMsg((res.d && res.d.detail) || "发送失败，请重试", true);
+                }
+              });
+          });
+          captchaObj.onError(function () { smsMsg("验证组件出错，请重试", true); });
+          captchaObj.onClose(function () { smsMsg("完成滑块验证后才能发送验证码", true); });
+        });
+      })
+      .catch(function (e) { smsMsg(e.message || "加载失败，请重试", true); });
+  }
+  var smsSendBtn = $("sms-send");
+  if (smsSendBtn) smsSendBtn.addEventListener("click", smsSend);
+  var smsGo = $("sms-go");
+  if (smsGo) smsGo.addEventListener("click", function () {
+    var tel = ($("sms-tel").value || "").trim();
+    var code = ($("sms-code").value || "").trim();
+    if (!/^\d{11}$/.test(tel)) { smsMsg("请输入 11 位手机号", true); return; }
+    if (!/^\d{6}$/.test(code)) { smsMsg("请输入 6 位验证码", true); return; }
+    if (!smsCaptchaKey) { smsMsg("请先获取短信验证码", true); return; }
+    if (smsGo.disabled) return;
+    stopQr();
+    smsGo.disabled = true;
+    smsMsg("登录中…");
+    fetch("/api/auth/sms/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tel: tel, code: code, cid: "86", captchaKey: smsCaptchaKey }),
+    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (res.ok && res.d.ok === true) {
+          smsMsg("登录成功，正在进入…");
+          setTimeout(function () { location.href = "/"; }, 600);
+        } else {
+          smsMsg((res.d && res.d.detail) || "登录失败，请重试", true);
+        }
+      })
+      .catch(function () { smsMsg("网络错误，请重试", true); })
+      .finally(function () { smsGo.disabled = false; });
+  });
+
+  // 未登录：任何 htmx/fetch 打到鉴权接口的 401 都弹登录窗
+  // 初始加载抑制窗口：页面装载期的局部请求 401 不弹窗（空骨架自然呈现），之后的用户操作才弹
+  var suppress401 = true;
+  setTimeout(function () { suppress401 = false; }, 2000);
+  document.body.addEventListener("htmx:responseError", function (e) {
+    var xhr = e.detail && e.detail.xhr;
+    if (xhr && xhr.status === 401 && !suppress401) {
+      if (e.preventDefault) e.preventDefault();
+      window.openLogin();
+    }
+  });
+  var rawFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    return rawFetch(input, init).then(function (resp) {
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      if (resp.status === 401 && url.indexOf("/api/") === 0 && url.indexOf("/api/auth") !== 0 && !suppress401) {
+        window.openLogin();
+      }
+      return resp;
+    });
+  };
   // 登出处理见 export.js（账号相关杂项）
   // ---------- 供外部调用的播放器 API ----------
   window.BiliPlayer = {
@@ -816,12 +987,12 @@
   // ---------- 歌单（每歌单对应收藏夹 bilimusic- <歌单名>） ----------
 
   function activePlaylistId() {
-    return localStorage.getItem("bm_pl") || "0";
+    return localStorage.getItem(accountKey("bm_pl")) || "0";
   }
 
   function markActivePlaylist() {
     var active = activePlaylistId();
-    var activeName = localStorage.getItem("bm_pl_name") || "全部歌曲";
+    var activeName = localStorage.getItem(accountKey("bm_pl_name")) || "全部歌曲";
     document.querySelectorAll("[data-pl]").forEach(function (c) {
       c.classList.toggle("on", String(c.dataset.pl) === active);
     });
@@ -843,8 +1014,8 @@
   };
 
   window.selectPlaylist = function (id, el) {
-    localStorage.setItem("bm_pl", String(id));
-    localStorage.setItem("bm_pl_name", (el && el.dataset.name) || "全部歌曲");
+    localStorage.setItem(accountKey("bm_pl"), String(id));
+    localStorage.setItem(accountKey("bm_pl_name"), (el && el.dataset.name) || "全部歌曲");
     markActivePlaylist();
     // 主页「全部歌曲」已由推荐歌曲取代：仅详情页等仍挂 #songs 的场景需要刷新
     if (document.getElementById("songs")) {
@@ -1058,9 +1229,12 @@
     }
   });
 
-  // ---------- 最近播放（本机 localStorage 记录；曲库歌与实时流统一进货架） ----------
+  // ---------- 最近播放（本机 localStorage 记录；曲库歌与实时流统一进货架；按账号 mid 隔离） ----------
+  function historyKey() {
+    return "bmHistory:" + (document.body.dataset.mid || "0");
+  }
   function bmHistory() {
-    try { return JSON.parse(localStorage.getItem("bmHistory") || "[]"); } catch (e) { return []; }
+    try { return JSON.parse(localStorage.getItem(historyKey()) || "[]"); } catch (e) { return []; }
   }
   function escHtml(s) {
     return String(s || "").replace(/[&<>"']/g, function (c) {
@@ -1071,7 +1245,7 @@
     var inner =
       '<span class="im">' +
       '<img src="' + escHtml(x.cover) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' +
-      '<span class="fab" aria-hidden="true"></span></span>' +
+      '</span>' +
       '<span class="t1">' + escHtml(x.title) + "</span>" +
       '<span class="t2">' + escHtml(x.artist) + "</span>";
     // 曲库歌走 data-play 委托（点选即播）；实时流走 playRecRow（bvid 试听）
@@ -1092,7 +1266,7 @@
     var h = bmHistory().filter(function (x) { return x.k !== entry.k; });
     entry.ts = Date.now();
     h.unshift(entry);
-    try { localStorage.setItem("bmHistory", JSON.stringify(h.slice(0, 20))); } catch (e) {}
+    try { localStorage.setItem(historyKey(), JSON.stringify(h.slice(0, 20))); } catch (e) {}
     renderHistory();
   };
   renderHistory();

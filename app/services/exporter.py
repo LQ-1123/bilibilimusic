@@ -46,6 +46,7 @@ class ExportService:
     def __init__(self, bili: BiliClient) -> None:
         self.bili = bili
         self._tasks: dict[str, ExportState] = {}
+        self._jobs: set[asyncio.Task] = set()
         self._single = asyncio.Lock()  # 同一时间只允许一个导出任务
 
     def get(self, export_id: str) -> ExportState | None:
@@ -56,19 +57,31 @@ class ExportService:
             raise ValueError("请先在「账号」页扫码登录 B 站再导出")
         state = ExportState(id=uuid.uuid4().hex[:12])
         self._tasks[state.id] = state
-        asyncio.create_task(self._run(state))
+        job = asyncio.create_task(self._run(state))
+        self._jobs.add(job)
+        job.add_done_callback(self._jobs.discard)
         return state
 
+    async def shutdown(self) -> None:
+        jobs = list(self._jobs)
+        for job in jobs:
+            job.cancel()
+        if jobs:
+            await asyncio.gather(*jobs, return_exceptions=True)
+
     async def _run(self, state: ExportState) -> None:
-        async with self._single:
-            try:
+        try:
+            async with self._single:
                 await self._export(state)
-            except BiliApiError as exc:
-                state.status = "failed"
-                state.error = exc.message
-            except Exception as exc:  # noqa: BLE001
-                state.status = "failed"
-                state.error = str(exc) or repr(exc)
+        except asyncio.CancelledError:
+            state.status, state.error = "failed", "账号切换或服务关闭，导出已停止"
+            raise
+        except BiliApiError as exc:
+            state.status = "failed"
+            state.error = exc.message
+        except Exception as exc:  # noqa: BLE001
+            state.status = "failed"
+            state.error = str(exc) or repr(exc)
 
     async def _export(self, state: ExportState) -> None:
         state.status = "syncing"

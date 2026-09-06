@@ -4,13 +4,6 @@
   <div class="rec-card" data-bvid="{{ r.bvid }}" onclick="playRecRow(this)" title="{{ r.title }}">
     <span class="im">
       <img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
-      <span class="fab" aria-hidden="true"></span>
-      <button class="mini-act love rec-collect" type="button" data-bvid="{{ r.bvid }}" title="收藏入库（自动同步 B 站夹）"
-              onclick="event.stopPropagation()"
-              hx-post="/web/import"
-              hx-vals='{"url": "https://www.bilibili.com/video/{{ r.bvid }}"}'
-              hx-include="#collect-playlist-id"
-              hx-target="#task-list" hx-swap="innerHTML">♥</button>
     </span>
     <span class="t1">{{ r.title }}</span>
     <span class="t2">{{ r.artist }}</span>
