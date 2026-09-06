@@ -398,28 +398,6 @@
     var la = $("lyrics-artist"), pa = $("player-artist");
     if (la) la.addEventListener("click", upFromPlayer);
     if (pa) pa.addEventListener("click", upFromPlayer);
-    // Mini Player：接管播放控制 + 当前曲同步
-    var umPrev = $("um-prev"), umNext = $("um-next"), umToggle = $("um-toggle"), umLyrics = $("um-lyrics");
-    if (umPrev && window.BiliPlayer) umPrev.addEventListener("click", function () { BiliPlayer.prev(); });
-    if (umNext && window.BiliPlayer) umNext.addEventListener("click", function () { BiliPlayer.next(); });
-    if (umToggle && window.BiliPlayer) umToggle.addEventListener("click", function () { BiliPlayer.toggle(); });
-    if (umLyrics) umLyrics.addEventListener("click", function () {
-      window.__hidePanel(p);
-      if (window.toggleLyrics) toggleLyrics();
-    });
-    function syncMini() {
-      if (p.classList.contains("hidden")) return;
-      var song = window.BiliPlayer && BiliPlayer.currentSong ? BiliPlayer.currentSong() : null;
-      var trial = window.BiliPlayer && BiliPlayer.trialInfo ? BiliPlayer.trialInfo() : null;
-      var t = trial ? trial.title : (song ? song.title : "—");
-      var a = trial ? trial.artist : (song ? song.artist : "");
-      var c = trial ? trial.cover : (song ? song.coverUrl : "");
-      var tt = $("um-title"), aa = $("um-artist"), cc = $("um-cover");
-      if (tt.textContent !== t) tt.textContent = t;
-      if (aa.textContent !== a) aa.textContent = a;
-      if (c && !cc.src.endsWith(c) && cc.getAttribute("src") !== c) cc.src = c;
-    }
-    setInterval(syncMini, 800);
   })();
 
   // ---------- 已收藏状态：爱心灰→点亮 ----------

@@ -8,12 +8,12 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>document.documentElement.dataset.theme = localStorage.getItem("bmTheme") || "dark";</script>
-  <link rel="stylesheet" href="/static/style.css?v=95">
+  <link rel="stylesheet" href="/static/style.css?v=97">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/transition.js?v=7" defer></script>
   <script src="/static/app.js?v=29" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=33" defer></script>
+  <script src="/static/v3.js?v=34" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %}>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -203,17 +203,6 @@
         </div>
       </div>
       <div class="up-body" id="up-body"></div>
-    </div>
-    <div id="up-mini">
-      <button id="um-prev" type="button" title="上一首"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2.2v14H6zM20 5v14l-9.5-7z"/></svg></button>
-      <button id="um-toggle" type="button" title="播放/暂停">
-        <svg class="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
-        <svg class="i-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M7 5h3.4v14H7zM13.6 5H17v14h-3.6z"/></svg>
-      </button>
-      <button id="um-next" type="button" title="下一首"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15.8 5H18v14h-2.2zM4 5v14l9.5-7z"/></svg></button>
-      <img id="um-cover" alt="" referrerpolicy="no-referrer">
-      <div class="um-meta"><b id="um-title">—</b><span id="um-artist"></span></div>
-      <button id="um-lyrics" type="button" title="歌词"><span style="font-size:12px;font-weight:800">词</span></button>
     </div>
   </div>
   <div id="export-modal" class="modal hidden">
