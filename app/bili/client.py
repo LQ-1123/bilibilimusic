@@ -177,6 +177,7 @@ class BiliClient:
         self._fav_lock = asyncio.Lock()
         self._folders: tuple[float, list[dict]] | None = None  # (时间戳, 夹池)，TTL 缓存
         self._me: tuple[float, dict] | None = None  # (过期时间, nav 用户信息)，TTL 缓存
+        self._playurl_cache: dict[tuple[str, int], tuple[float, list]] = {}  # playurl 解析缓存
         self.http = httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=False,
@@ -315,6 +316,13 @@ class BiliClient:
         return items, total
 
     async def get_audio_streams(self, bvid: str, cid: int) -> list[AudioStream]:
+        # playurl 解析结果缓存：浏览器 audio 的分段 Range 请求会反复回源，
+        # 每次都现解析会高频触发 B 站 playurl 风控（表现为播放卡住）。
+        cache = self._playurl_cache.setdefault((bvid, cid), (0.0, []))
+        import time as _time
+
+        if cache[1] and _time.monotonic() - cache[0] < 600:
+            return cache[1]
         params = {"bvid": bvid, "cid": cid, "qn": 64, "fnval": 16, "fourk": 1}
         data = await self._get_json_signed("/x/player/wbi/playurl", params)
         dash = data.get("dash") or {}
@@ -335,6 +343,7 @@ class BiliClient:
             )
         if not streams:
             raise BiliApiError(-404, "未取到音频流（视频可能太老，未提供 DASH 分离音轨）")
+        self._playurl_cache[(bvid, cid)] = (_time.monotonic(), streams)
         return streams
 
     # ---- 字幕（歌词来源之一） ----
@@ -399,6 +408,44 @@ class BiliClient:
                 )
             return hits
         return []
+
+    async def search_users(self, keyword: str, limit: int = 5) -> list[dict]:
+        """关键词搜索 B 站 UP 主（bili_user 类型搜索，搜索框联动用）。"""
+        keyword = (keyword or "").strip()
+        if not keyword:
+            return []
+        data = await self._get_json_signed(
+            "/x/web-interface/wbi/search/type",
+            {"keyword": keyword, "search_type": "bili_user"},
+        )
+        out = []
+        for item in (data.get("result") or [])[:limit]:
+            mid = int(item.get("mid") or 0)
+            if not mid:
+                continue
+            out.append(
+                {
+                    "mid": mid,
+                    "name": strip_highlight(str(item.get("uname") or "")).strip(),
+                    "sign": str(item.get("usign") or "").strip(),
+                    "fans": int(item.get("fans") or 0),
+                    "face": str(item.get("face") or ""),
+                }
+            )
+        return out
+
+    async def get_user_card(self, mid: int) -> dict:
+        """用户卡片信息（mid → name/face），打开 UP 主页用。"""
+        data = await self._get_json_signed(
+            "/x/web-interface/card", {"mid": int(mid), "photo": "true"}
+        )
+        card = data.get("card") or {}
+        return {
+            "mid": int(card.get("mid") or mid),
+            "name": str(card.get("name") or "").strip(),
+            "face": str(card.get("face") or "").strip(),
+            "sign": str(card.get("sign") or "").strip(),
+        }
 
     # ---- 推荐 ----
 

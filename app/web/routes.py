@@ -1,5 +1,6 @@
 """Web 页面路由：服务端渲染 + htmx 局部刷新。强制登录，未登录一律跳登录页。"""
 
+import asyncio
 import math
 import time
 from pathlib import Path
@@ -519,15 +520,18 @@ async def _face_hue(bili, face: str) -> int | None:
 
 
 @router.get("/web/up/resolve")
-async def up_resolve(request: Request, bvid: str = ""):
-    """bvid → UP 主 {mid, name, face, hue}；hue=头像主色调（作品页背景配色用）。"""
+async def up_resolve(request: Request, bvid: str = "", mid: int = 0):
+    """bvid 或 mid → UP 主 {mid, name, face, hue}；hue=头像主色调（作品页背景配色用）。"""
     if not request.state.cookies.logged_in:
         return JSONResponse({"error": "需要先登录"}, status_code=401)
     bvid = (bvid or "").strip()
-    if not bvid:
-        return JSONResponse({"error": "缺少 bvid"}, status_code=400)
+    if not bvid and mid <= 0:
+        return JSONResponse({"error": "缺少 bvid 或 mid"}, status_code=400)
     try:
-        owner = await request.state.bili.get_video_owner(bvid)
+        if mid > 0:
+            owner = await request.state.bili.get_user_card(mid)
+        else:
+            owner = await request.state.bili.get_video_owner(bvid)
     except BiliApiError as exc:
         return JSONResponse({"error": exc.message}, status_code=502)
     if not owner.get("mid"):
@@ -616,41 +620,79 @@ def recent_partial(request: Request):
     return templates.TemplateResponse(request, "partials/recent_rack.html", {"recent": recent})
 
 
+async def _web_search_all(bili, q: str) -> tuple[list[dict], list[dict]]:
+    """视频 + UP 主站内搜索（带缓存），搜索下拉与搜索详情页共用。"""
+    cached = _search_cache.get(q)
+    if cached and time.monotonic() - cached[0] < _SEARCH_CACHE_TTL:
+        return cached[1], cached[2]
+    hits, users = await asyncio.gather(
+        bili.search_videos(q), bili.search_users(q, limit=8)
+    )
+    results = [
+        {
+            "bvid": h.bvid,
+            "title": h.title,
+            "artist": h.artist,
+            "duration_text": _fmt_duration(h.duration),
+            "play_text": _fmt_play(h.play),
+            "cover_url": h.cover_url,
+            "import_url": f"https://www.bilibili.com/video/{h.bvid}",
+        }
+        for h in hits
+    ]
+    ups = [
+        {
+            "mid": u["mid"],
+            "name": u["name"],
+            "sign": u["sign"],
+            "fans_text": _fmt_play(u["fans"]),
+            "face": u["face"],
+        }
+        for u in users
+    ]
+    _search_cache[q] = (time.monotonic(), results, ups)
+    if len(_search_cache) > 64:  # 只留最近 32 词
+        for k in sorted(_search_cache, key=lambda k: _search_cache[k][0])[:-32]:
+            _search_cache.pop(k, None)
+    return results, ups
+
+
 @router.get("/partials/web-search", response_class=HTMLResponse)
 async def web_search(request: Request, q: str = ""):
-    """B 站站内搜索结果（曲库搜索框联动）；导入按钮复用 /web/import 链路。"""
+    """B 站站内搜索结果（曲库搜索框联动）：UP 主 + 视频；导入按钮复用 /web/import 链路。"""
     gate = _login_redirect(request)
     if gate:
         return gate
     q = (q or "").strip()
-    results, error = [], None
+    results, ups, error = [], [], None
     # 粘贴的是链接 / BV 号时不做站内搜索，交给导入框处理
     if q and not (q.lower().startswith("http") or BV_RE.search(q) or parse_video_url(q)):
-        cached = _search_cache.get(q)
-        if cached and time.monotonic() - cached[0] < _SEARCH_CACHE_TTL:
-            results = cached[1]
-        else:
-            try:
-                results = [
-                    {
-                        "bvid": h.bvid,
-                        "title": h.title,
-                        "artist": h.artist,
-                        "duration_text": _fmt_duration(h.duration),
-                        "play_text": _fmt_play(h.play),
-                        "cover_url": h.cover_url,
-                        "import_url": f"https://www.bilibili.com/video/{h.bvid}",
-                    }
-                    for h in await request.state.bili.search_videos(q)
-                ]
-                _search_cache[q] = (time.monotonic(), results)
-                if len(_search_cache) > 64:  # 只留最近 32 词
-                    for k in sorted(_search_cache, key=lambda k: _search_cache[k][0])[:-32]:
-                        _search_cache.pop(k, None)
-            except BiliApiError as exc:
-                error = str(exc)
+        try:
+            results, ups = await _web_search_all(request.state.bili, q)
+        except BiliApiError as exc:
+            error = str(exc)
     return templates.TemplateResponse(
-        request, "partials/web_search.html", {"results": results, "error": error}
+        request, "partials/web_search.html",
+        {"results": results, "ups": ups, "error": error},
+    )
+
+
+@router.get("/partials/search-detail", response_class=HTMLResponse)
+async def search_detail(request: Request, q: str = ""):
+    """搜索详情页（回车进入）：上排 UP 主圆形卡、下方视频方形封面网格。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    q = (q or "").strip()
+    results, ups, error = [], [], None
+    if q and not (q.lower().startswith("http") or BV_RE.search(q) or parse_video_url(q)):
+        try:
+            results, ups = await _web_search_all(request.state.bili, q)
+        except BiliApiError as exc:
+            error = str(exc)
+    return templates.TemplateResponse(
+        request, "partials/search_detail.html",
+        {"q": q, "results": results, "ups": ups, "error": error},
     )
 
 

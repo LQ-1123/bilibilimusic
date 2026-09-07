@@ -12,11 +12,11 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=120">
+  <link rel="stylesheet" href="/static/style.css?v=148">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/app.js?v=45" defer></script>
+  <script src="/static/app.js?v=52" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=46" defer></script>
+  <script src="/static/v3.js?v=54" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -73,7 +73,6 @@
     <nav class="side-nav" aria-label="主导航">
       <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
       <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg><use href="#i-compass"/></svg>推荐</button>
-      <button class="side-item" type="button" data-nav="playlists"><svg><use href="#i-note"/></svg>播放列表</button>
       <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg><use href="#i-user"/></svg>UP 主</button>
     </nav>
     <div class="side-sec" style="margin-top:2px">
@@ -108,9 +107,9 @@
   <footer id="player-bar" class="hidden">
     <span class="p-time" id="t-cur">0:00</span>
     <div class="p-ctl">
-      <button id="btn-prev" type="button" title="上一首">⏮</button>
-      <button id="btn-toggle" type="button" class="big" title="播放/暂停">▶</button>
-      <button id="btn-next" type="button" title="下一首">⏭</button>
+      <button id="btn-prev" type="button" title="上一首" aria-label="上一首"><svg aria-hidden="true"><use href="#a-prev"/></svg></button>
+      <button id="btn-toggle" type="button" class="big" title="播放" aria-label="播放"><svg aria-hidden="true"><use href="#a-play"/></svg></button>
+      <button id="btn-next" type="button" title="下一首" aria-label="下一首"><svg aria-hidden="true"><use href="#a-next"/></svg></button>
     </div>
     <div class="p-meta">
       <img id="player-cover" alt="" referrerpolicy="no-referrer" title="点封面打开歌词">
@@ -124,8 +123,8 @@
       </div>
     </div>
     <div class="p-acts">
-      <button id="btn-lyrics" type="button" title="歌词" style="font-size:13px;font-weight:800">词</button>
-      <button id="btn-queue" type="button" title="播放队列">☰</button>
+      <button id="btn-lyrics" type="button" title="歌词" aria-label="歌词"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-7l-5 3v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 8h4v4l-2 3H7l2-3H7zm6 0h4v4l-2 3h-2l2-3h-2z" fill="currentColor"/></svg></button>
+      <button id="btn-queue" type="button" title="播放队列" aria-label="播放队列"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h12M9 12h12M9 19h12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g fill="currentColor"><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="12" r="1.5"/><circle cx="3" cy="19" r="1.5"/></g></svg></button>
       <span class="volhost">
         <button type="button" title="音量"><svg><use href="#i-vol"/></svg></button>
         <span class="vol"><input id="vol" type="range" min="0" max="100" value="100" aria-label="音量"></span>
@@ -155,15 +154,23 @@
   </div>
 
   <div id="lyrics-panel" class="hidden">
+    <img id="lyrics-backdrop" alt="" aria-hidden="true" referrerpolicy="no-referrer">
+    <div class="ly-volhost" aria-label="音量">
+      <svg><use href="#i-vol"/></svg>
+      <input id="ly-vol" type="range" min="0" max="100" value="100" aria-label="音量">
+    </div>
     <div class="l-left">
       <button id="btn-lyrics-close" type="button" title="收起歌词">✕</button>
       <img id="lyrics-cover" alt="" referrerpolicy="no-referrer">
-      <div class="l-song">
-        <b id="lyrics-title">—</b>
-        <span id="lyrics-artist"></span>
-      </div>
-      <div class="ly-morerow">
-        <button id="ly-more" type="button" title="更多操作">···</button>
+      <div class="l-songrow">
+        <div class="l-song">
+          <b id="lyrics-title">—</b>
+          <span id="lyrics-artist"></span>
+        </div>
+        <div class="ly-morerow">
+          <button id="ly-star" type="button" title="收藏到我的曲库（同步 B 站收藏夹）">★</button>
+          <button id="ly-more" type="button" title="更多操作">···</button>
+        </div>
       </div>
     </div>
     <div class="l-hero">
@@ -173,7 +180,6 @@
           <b id="ly-title-big">—</b>
           <span id="ly-artist-big"></span>
         </div>
-        <button id="ly-bubble" type="button" title="歌词">词</button>
       </div>
     </div>
     <div id="lyrics-scroll"></div>
@@ -189,6 +195,7 @@
           <svg class="i-play"><use href="#a-play"/></svg><svg class="i-pause"><use href="#a-pause"/></svg>
         </button>
         <button id="ly-next" type="button" title="下一首"><svg><use href="#a-next"/></svg></button>
+        <button id="ly-bubble" type="button" title="歌词"><svg viewBox="0 0 24 24"><path fill="currentColor" d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/></svg></button>
         <button id="ly-add" type="button" title="添加至歌单">＋</button>
       </div>
     </div>

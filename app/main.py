@@ -128,6 +128,8 @@ async def static_no_cache(request, call_next):
         response = await call_next(request)
     if request.url.path.startswith("/static"):
         response.headers["Cache-Control"] = "no-cache"
+    elif request.url.path.startswith("/api/stream"):
+        pass  # 音频流走 Range 语义，禁缓存头会阻碍 WebView 渐进缓冲
     elif request.url.path.startswith("/api"):
         response.headers["Cache-Control"] = "no-store"  # 曲库/收藏状态必须实时，杜绝中间缓存
     return response

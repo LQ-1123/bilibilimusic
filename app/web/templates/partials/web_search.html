@@ -1,9 +1,22 @@
 {% if error %}
 <div class="sd-empty">B 站搜索失败：{{ error }}</div>
-{% elif results %}
+{% elif results or ups %}
+{% if ups %}
+<div class="sd-sec">UP 主 · 点击进入作品页</div>
+{% for u in ups[:5] %}
+<div class="sd-row sd-up" data-mid="{{ u.mid }}" data-name="{{ u.name }}" title="{{ u.sign }}">
+  <img class="sd-ava" src="{{ u.face }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+  <div class="sd-meta">
+    <div class="sd-t">{{ u.name }}</div>
+    <div class="sd-s">{{ u.fans_text }} 粉丝{% if u.sign %} · {{ u.sign }}{% endif %}</div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% if results %}
 <div class="sd-sec">B 站 · 点击试听</div>
 {% for r in results %}
-<div class="sd-row" data-bvid="{{ r.bvid }}">
+<div class="sd-row" data-bvid="{{ r.bvid }}" data-artist="{{ r.artist }}">
   <img class="sd-cov" src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
   <div class="sd-meta">
     <div class="sd-t" title="{{ r.title }}">{{ r.title }}</div>
@@ -11,4 +24,5 @@
   </div>
 </div>
 {% endfor %}
+{% endif %}
 {% endif %}

@@ -243,6 +243,13 @@
     $("player-cover").src = song.coverUrl;
     $("player-title").textContent = song.title;
     $("player-artist").textContent = song.artist + " · " + (song.qualityLabel || "");
+    // 切歌即重置进度显示（否则上一首的粉色填充/时间码会遗留到新歌开头）
+    var seekEl = $("seek");
+    if (seekEl) {
+      seekEl.value = 0;
+    }
+    $("t-cur").textContent = "0:00";
+    $("t-dur").textContent = "0:00";
     if ("mediaSession" in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: song.title,
@@ -274,6 +281,16 @@
   }
 
   function skip(delta) {
+    // 试听态：在同列表组成的试听队列内切换（推荐/搜索/UP 页的歌）
+    var q = window.__trialQueue;
+    if (recActive && recAudio && q && q.items && q.items.length && window.playStream) {
+      var ti = q.i + delta;
+      if (ti < 0) ti = q.items.length - 1;
+      if (ti >= q.items.length) ti = 0;
+      q.i = ti;
+      window.playStream(q.items[ti].bvid, q.items[ti], null);
+      return;
+    }
     stopTrial();
     naturalPlan = null;
     if (delta === 1 && playMode() === "random" && playlist.length > 1) {
@@ -303,10 +320,16 @@
   document.addEventListener("click", function (e) {
     var delEl = e.target.closest("[data-del]");
     if (delEl) {
+      var deletedRow = delEl.closest("[data-play]");
+      if (deletedRow) deletedRow.hidden = true;
       fetch("/api/songs/" + delEl.dataset.del, { method: "DELETE" })
-        .then(function () {
+        .then(function (response) {
+          if (!response.ok) throw new Error("Delete failed");
           if (window.htmx) htmx.trigger(document.body, "refreshSongs");
           refreshPlaylist();
+        }).catch(function () {
+          if (deletedRow) deletedRow.hidden = false;
+          if (window.__toast) window.__toast("删除失败，请重试");
         });
       return; // 删除点击不穿透到整卡播放
     }
@@ -333,9 +356,16 @@
   $("btn-prev").addEventListener("click", function () { skip(-1); });
   $("btn-next").addEventListener("click", function () { skip(1); });
 
+  function setPlayerToggle(paused) {
+    var button = $("btn-toggle");
+    button.querySelector("use").setAttribute("href", paused ? "#a-play" : "#a-pause");
+    button.title = paused ? "播放" : "暂停";
+    button.setAttribute("aria-label", button.title);
+  }
+
   function onPlayPauseUI(e) {
     if (e.target !== audio) return;
-    $("btn-toggle").textContent = audio.paused ? "▶" : "⏸";
+    setPlayerToggle(audio.paused);
     if (audio.paused) saveSession();
   }
   function onEnded(e) {
@@ -353,7 +383,6 @@
     if (e.target !== audio) return;
     if (audio.duration && !seekDragging) {
       seek.value = Math.round((audio.currentTime / audio.duration) * 1000);
-      seek.style.setProperty("--p", (seek.value / 10) + "%"); // 已播粉色填充
       $("t-cur").textContent = fmt(audio.currentTime);
       $("t-dur").textContent = fmt(audio.duration);
     }
@@ -376,7 +405,6 @@
   var seek = $("seek");
   seek.addEventListener("input", function () {
     seekDragging = true;
-    seek.style.setProperty("--p", (seek.value / 10) + "%"); // 拖动实时填充
     if (audio.duration) {
       $("t-cur").textContent = fmt((seek.value / 1000) * audio.duration);
     }
@@ -598,8 +626,20 @@
 
   // 播放页封面/标题同步到大小两处（顶栏小封面 + 手机端大封面视图）
   function setLyricsCover(src) {
-    if (!src) return;
+    var backdrop = $("lyrics-backdrop");
+    if (backdrop && backdrop.getAttribute("src") !== (src || null)) {
+      backdrop.classList.remove("ready");
+      backdrop.onload = function () { backdrop.classList.add("ready"); };
+      backdrop.onerror = function () { backdrop.classList.remove("ready"); };
+      if (src) backdrop.src = src;
+      else backdrop.removeAttribute("src");
+    }
     var a = $("lyrics-cover"), b = $("lyrics-cover-big");
+    if (!src) {
+      if (a) a.removeAttribute("src");
+      if (b) b.removeAttribute("src");
+      return;
+    }
     if (a) a.src = src;
     if (b) b.src = src;
   }
@@ -1108,9 +1148,15 @@
     if (!recActive || !recAudio) return;
     $("player-bar").classList.remove("hidden");
     $("player-title").textContent = recAudio.dataset.title || "实时流试听";
-    $("player-artist").textContent =
-      (recAudio.dataset.artist ? recAudio.dataset.artist + " · " : "") + "发现 · 实时流（未入库）";
+    $("player-artist").textContent = recAudio.dataset.artist || "";
     if (recAudio.dataset.cover) $("player-cover").src = recAudio.dataset.cover;
+    // 试听接管即重置进度显示（清掉曲库歌遗留的填充/时间码）
+    var seekEl = $("seek");
+    if (seekEl) {
+      seekEl.value = 0;
+    }
+    $("t-cur").textContent = "0:00";
+    $("t-dur").textContent = "0:00";
   }
 
   // 迷你圆钮只显示单字符态（▶/⏸/⏳），旧长文案按钮兼容
@@ -1153,8 +1199,11 @@
     document.body.classList.add("trial");
     syncTrialUI();
     recAudio.addEventListener("ended", function () {
+      if (!recActive || recAudio.dataset.bvid !== bvid) return;
+      var q = window.__trialQueue;
+      if (q && q.items && q.items.length > 1) { skip(1); return; }
       resetRecButtons();
-      $("btn-toggle").textContent = "▶";
+      setPlayerToggle(true);
       if (audioA.paused && audioB.paused) document.body.classList.remove("playing");
     });
     recAudio.addEventListener("error", function () {
@@ -1167,7 +1216,7 @@
       setRecBtn(active, "⏸ 暂停");
     });
     recAudio.addEventListener("play", function () {
-      $("btn-toggle").textContent = "⏸";
+      setPlayerToggle(false);
       document.body.classList.add("playing");
       syncTrialUI();
       document.querySelectorAll(".trk-rec, .rec-card").forEach(function (row) {
@@ -1179,7 +1228,7 @@
       if (recActive) updateLyricHighlight(recAudio.currentTime); // 歌词跟随试听进度
     });
     recAudio.addEventListener("pause", function () {
-      $("btn-toggle").textContent = "▶";
+      setPlayerToggle(true);
       if (audioA.paused && audioB.paused) document.body.classList.remove("playing");
     });
     recAudio.play().catch(resetRecButtons);
