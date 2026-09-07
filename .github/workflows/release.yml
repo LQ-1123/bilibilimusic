@@ -41,6 +41,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
+          cache-on-failure: true
       - run: python -m pip install -r packaging/requirements.txt pyinstaller==6.19.0 pytest psutil
       - run: python -m pytest tests/test_embedded.py -q
       - run: node --test tests/test_delete_song.js tests/test_trial_queue.js tests/test_transition.js
@@ -53,7 +54,7 @@ jobs:
         working-directory: desktop
       - run: cargo test --manifest-path desktop/src-tauri/Cargo.toml --locked
       - if: runner.os == 'macOS'
-        run: npm run dist -- --bundles dmg
+        run: npm run dist -- --bundles app,dmg
         working-directory: desktop
       - if: runner.os == 'Windows'
         run: npm run dist -- --bundles nsis
