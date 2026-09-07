@@ -1,0 +1,126 @@
+name: Build and Release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (must match application version)'
+        required: true
+        default: 'v0.1.0'
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-15-intel
+            arch: x64
+          - os: windows-latest
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: python -m pip install -r packaging/requirements.txt pyinstaller==6.19.0 pytest
+      - run: python -m pytest tests/test_embedded.py -q
+      - run: node --test tests/test_delete_song.js tests/test_trial_queue.js tests/test_transition.js
+      - run: python packaging/build-backend.py
+      - if: runner.os != 'Windows'
+        run: python packaging/smoke-backend.py desktop/backend/bilimusic-backend/bilimusic-backend
+      - if: runner.os == 'Windows'
+        run: python packaging/smoke-backend.py desktop/backend/bilimusic-backend/bilimusic-backend.exe
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run dist -- --${{ matrix.arch }}
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            desktop/dist/*.dmg
+            desktop/dist/*.exe
+          if-no-files-found: error
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Restore signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/bilimusic.jks"
+      - run: |
+          mkdir -p android/app/src/main/res/drawable
+          cp app/web/static/icon-192.png android/app/src/main/res/drawable/icon.png
+          gradle -p android assembleRelease --stacktrace
+        env:
+          ANDROID_KEYSTORE: ${{ runner.temp }}/bilimusic.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: bash packaging/smoke-android.sh
+      - run: cp android/app/build/outputs/apk/release/app-release.apk BiliMusic-0.1.0-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: BiliMusic-*.apk
+          if-no-files-found: error
+  publish:
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
+          cd ..
+          gh release create "$RELEASE_TAG" release-assets/* --target "$GITHUB_SHA" --title "BiliMusic $RELEASE_TAG" --notes-file packaging/release-notes.md

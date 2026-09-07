@@ -7,3 +7,12 @@ __pycache__/
 .v2c/
 .video_agent/
 .zcode/
+desktop/node_modules/
+desktop/backend/
+desktop/dist/
+build/
+android/.gradle/
+android/**/build/
+android/local.properties
+*.jks
+*.keystore

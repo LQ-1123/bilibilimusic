@@ -1,0 +1,52 @@
+plugins { id 'com.android.application'; id 'com.chaquo.python' }
+
+android {
+    namespace 'io.github.lq1123.bilimusic'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'io.github.lq1123.bilimusic'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '0.1.0'
+        ndk { abiFilters 'arm64-v8a', 'x86_64' }
+    }
+    signingConfigs {
+        release {
+            if (System.getenv('ANDROID_KEYSTORE')) {
+                storeFile file(System.getenv('ANDROID_KEYSTORE'))
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias 'bilimusic'
+                keyPassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes { release { signingConfig signingConfigs.release; minifyEnabled false } }
+    sourceSets { main { assets.srcDir '../../app/web' } }
+}
+
+chaquopy {
+    defaultConfig {
+        version '3.11'
+        pip {
+            install 'fastapi==0.115.12'
+            install 'pydantic==1.10.22'
+            install 'uvicorn==0.34.2'
+            install 'httpx==0.28.1'
+            install 'sqlmodel==0.0.24'
+            install 'jinja2==3.1.6'
+            install 'python-multipart==0.0.20'
+            install 'qrcode==8.2'
+            install 'pillow==11.0.0'
+            install 'numpy==1.26.2'
+            options '--no-binary', 'pydantic'
+        }
+    }
+    sourceSets {
+        main {
+            srcDir '../..'
+            include 'app/**'
+            exclude '**/__pycache__/**', 'app/web/static/**', 'app/web/templates/**'
+        }
+    }
+}

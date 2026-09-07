@@ -2,6 +2,7 @@
 
 import asyncio
 import math
+import os
 import time
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from app.db.session import new_session
 from app.services import library, playlists, recs, zone
 from app.services.importer import ImportService
 
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates = Jinja2Templates(directory=str(Path(os.environ.get("BM_WEB_DIR", Path(__file__).parent)) / "templates"))
 router = APIRouter(include_in_schema=False)
 
 _ACTIVE = ("pending", "resolving", "downloading")

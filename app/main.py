@@ -5,6 +5,7 @@
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -23,7 +24,7 @@ from app.services.accounts import AccountService
 from app.storage.files import FileStore
 from app.web.routes import router as web_router
 
-_STATIC_DIR = Path(__file__).parent / "web" / "static"
+_STATIC_DIR = Path(os.environ.get("BM_WEB_DIR", Path(__file__).parent / "web")) / "static"
 log = logging.getLogger(__name__)
 
 
