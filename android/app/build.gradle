@@ -39,7 +39,6 @@ chaquopy {
             install 'qrcode==8.2'
             install 'pillow==11.0.0'
             install 'numpy==1.26.2'
-            options '--no-binary', 'pydantic'
         }
     }
     sourceSets {
