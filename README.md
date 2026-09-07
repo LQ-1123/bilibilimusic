@@ -27,6 +27,21 @@ BiliMusic 是基于 Bilibili 的个人音乐 Web 播放器。搜索歌曲、发�
 
 ## 快速开始
 
+### 安装独立客户端
+
+前往 [GitHub Releases](https://github.com/LQ-1123/bilibilimusic/releases) 下载 DMG、EXE 或 APK。安装包内置 Python 后端，不需要另行启动服务器。
+
+| 系统 | 安装包 |
+| --- | --- |
+| macOS Apple Silicon | `*-mac-arm64.dmg` |
+| macOS Intel | `*-mac-x64.dmg` |
+| Windows 64 位 | `*-win-x64.exe` |
+| Android 8 及以上，ARM64 / x86_64 | `*-android.apk` |
+
+桌面版暂未使用开发者证书签名或公证，系统可能显示安全提示。APK 使用项目固定签名；首版不保证后台播放和锁屏控制。所有平台仍需联网访问 B 站。详细构建步骤见 [打包说明](docs/packaging.md)。
+
+### 从源码启动
+
 推荐 Python 3.13。服务器需要能访问 Bilibili API 和音频 CDN。
 
 ```bash

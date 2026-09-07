@@ -27,6 +27,21 @@ Access the same server from a mobile browser. The glass highlight slides between
 
 ## Quick Start
 
+### Install a Standalone App
+
+Download DMG, EXE, or APK installers from [GitHub Releases](https://github.com/LQ-1123/bilibilimusic/releases). Each installer embeds Python and the backend, so no separate server is needed.
+
+| System | Installer |
+| --- | --- |
+| macOS Apple Silicon | `*-mac-arm64.dmg` |
+| macOS Intel | `*-mac-x64.dmg` |
+| Windows 64-bit | `*-win-x64.exe` |
+| Android 8+, ARM64 / x86_64 | `*-android.apk` |
+
+Desktop installers are not developer-signed or notarized and may trigger OS security prompts. Android uses a persistent project signing key; background playback and lock-screen controls are not guaranteed in this initial version. All platforms require internet access to Bilibili. See [packaging instructions](docs/packaging.md).
+
+### Run from Source
+
 Python 3.13 is recommended. The server needs access to Bilibili APIs and audio CDNs.
 
 ```bash
