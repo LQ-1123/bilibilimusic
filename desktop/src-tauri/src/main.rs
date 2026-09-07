@@ -45,7 +45,7 @@ fn report_error(app: &tauri::AppHandle, error: &str) {
     eprintln!("BiliMusic: {error}");
     if let Some(window) = app.get_webview_window("main") {
         let text = serde_json::to_string(&format!("启动失败 / Startup failed\n{error}")).unwrap();
-        let _ = window.eval(&format!(
+        let _ = window.eval(format!(
             "document.getElementById('status')?.replaceChildren({text})"
         ));
         let _ = window.set_title("BiliMusic - Startup failed");
@@ -197,10 +197,9 @@ fn main() {
                     let origin = load_runtime.origin.lock().unwrap().clone();
                     if origin.as_deref()
                         == Some(payload.url().origin().ascii_serialization().as_str())
+                        && std::env::var_os("BM_DESKTOP_SMOKE").is_some()
                     {
-                        if std::env::var_os("BM_DESKTOP_SMOKE").is_some() {
-                            let _ = window.eval("document.title = document.getElementById('app') && document.getElementById('audio') && window.BiliPlayer && window.playStream ? 'BILIMUSIC_SMOKE_READY' : 'BILIMUSIC_SMOKE_FAILED'");
-                        }
+                        let _ = window.eval("document.title = document.getElementById('app') && document.getElementById('audio') && window.BiliPlayer && window.playStream ? 'BILIMUSIC_SMOKE_READY' : 'BILIMUSIC_SMOKE_FAILED'");
                     }
                 })
                 .on_document_title_changed(|window, title| {

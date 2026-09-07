@@ -24,3 +24,43 @@ def test_parent_pipe_close_stops_backend(monkeypatch):
     monkeypatch.setattr(embedded, "stop", lambda: stopped.append(True))
     embedded.watch_parent(io.StringIO(""))
     assert stopped == [True]
+
+
+def test_concurrent_start_uses_one_backend(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    import sys
+    import threading
+    import time
+    import types
+    import uvicorn
+    from app import embedded
+
+    release = threading.Event()
+    ready = threading.Barrier(2)
+    module = types.ModuleType("app.main")
+    module.app = object()
+    monkeypatch.setitem(sys.modules, "app.main", module)
+    for name in ("_server", "_thread", "_url"):
+        monkeypatch.setattr(embedded, name, None)
+
+    class Server:
+        def __init__(self, config):
+            self.should_exit = False
+
+        def run(self, sockets):
+            release.wait(timeout=5)
+
+    monkeypatch.setattr(uvicorn, "Server", Server)
+    monkeypatch.setattr(embedded, "configure_data_dir", lambda directory: time.sleep(0.05))
+
+    def launch():
+        ready.wait()
+        return embedded.start(str(tmp_path))
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, second = pool.submit(launch), pool.submit(launch)
+            assert first.result() == second.result()
+    finally:
+        release.set()
+        embedded.stop()

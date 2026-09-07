@@ -8,6 +8,7 @@ import threading
 _server = None
 _thread = None
 _url = None
+_start_lock = threading.Lock()
 
 
 def configure_data_dir(directory: str) -> Path:
@@ -25,6 +26,11 @@ def loopback_socket():
 
 
 def start(directory: str) -> str:
+    with _start_lock:
+        return _start(directory)
+
+
+def _start(directory: str) -> str:
     global _server, _thread, _url
     if _thread and _thread.is_alive():
         return _url
@@ -38,10 +44,11 @@ def start(directory: str) -> str:
         app, host="127.0.0.1", loop="asyncio", http="h11", ws="none",
         access_log=False, log_level="warning", timeout_graceful_shutdown=3,
     ))
+    server = _server
 
     def run():
         try:
-            _server.run(sockets=[sock])
+            server.run(sockets=[sock])
         finally:
             sock.close()
 
