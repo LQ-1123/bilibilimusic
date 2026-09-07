@@ -17,7 +17,7 @@ from datetime import datetime, timedelta
 
 from sqlmodel import select
 
-from app.bili.client import BiliClient
+from app.bili.client import BiliClient, https_media_url
 from app.db.models import RecPool, Song
 from app.db.session import new_session
 
@@ -193,7 +193,7 @@ async def collect_for_song(bili: BiliClient, song: Song) -> dict:
                 title=title,
                 artist=str((v.get("owner") or {}).get("name") or "").strip(),
                 duration=duration,
-                cover_url=str(v.get("pic") or ""),
+                cover_url=https_media_url(str(v.get("pic") or "")),
                 seed_bvid=seed_bvid,
                 genre=classify(title, tags) or seed_genre,
                 expires_at=expires,

@@ -107,6 +107,17 @@ def _migrate(engine) -> None:
     if "lyrics_checked" not in cols:
         with engine.begin() as conn:
             conn.exec_driver_sql("ALTER TABLE song ADD COLUMN lyrics_checked INTEGER DEFAULT 0")
+    # 存量 CDN 封面 http→https：打包端 WKWebView/ATS 与 Android 明文策略拦截 http 图片
+    with engine.begin() as conn:
+        conn.exec_driver_sql(
+            "UPDATE song SET cover_path = 'https://' || substr(cover_path, 8) "
+            "WHERE cover_path LIKE 'http://%'"
+        )
+        if "recpool" in insp.get_table_names():
+            conn.exec_driver_sql(
+                "UPDATE recpool SET cover_url = 'https://' || substr(cover_url, 8) "
+                "WHERE cover_url LIKE 'http://%'"
+            )
 
 
 def new_session() -> Session:

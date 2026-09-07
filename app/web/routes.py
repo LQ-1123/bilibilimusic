@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.templating import Jinja2Templates
 from sqlmodel import func, select
 
-from app.bili.client import BiliApiError
+from app.bili.client import BiliApiError, https_media_url
 from app.core.link_parser import BV_RE, parse_video_url
 from app.core.url_guard import validate_bilibili_url
 from app.db.models import ImportTask, Song
@@ -145,7 +145,7 @@ async def home(request: Request):
     except Exception:
         rec_count = 0
     me = await request.state.bili.my_info()
-    user = {"uname": str(me.get("uname") or "已登录"), "face": str(me.get("face") or "")}
+    user = {"uname": str(me.get("uname") or "已登录"), "face": https_media_url(str(me.get("face") or ""))}
     return templates.TemplateResponse(
         request,
         "library.html",
@@ -589,7 +589,7 @@ async def up_videos_partial(request: Request, mid: int = 0, pn: int = 1, name: s
         return {
             "bvid": v["bvid"],
             "title": str(v.get("title") or "").strip(),
-            "pic": ("https:" + pic) if pic.startswith("//") else pic,
+            "pic": https_media_url(pic),
             "length": str(v.get("length") or ""),
             "play_text": _fmt_play(int(v.get("play") or 0)),
         }

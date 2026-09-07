@@ -9,7 +9,7 @@
 
 import time
 
-from app.bili.client import BiliClient, SearchHit, strip_highlight
+from app.bili.client import BiliClient, SearchHit, https_media_url, strip_highlight
 from app.services.recs import MAX_DURATION, MIN_DURATION, is_song_like
 
 CACHE_TTL_OK = 600
@@ -40,7 +40,7 @@ def _norm_video(v: dict, genre: str) -> dict | None:
         "title": strip_highlight(str(v.get("title") or "")).strip(),
         "artist": str((v.get("owner") or {}).get("name") or "").strip(),
         "duration": duration,
-        "cover_url": str(v.get("pic") or ""),
+        "cover_url": https_media_url(str(v.get("pic") or "")),
         "genre": genre,
     }
 

@@ -21,6 +21,7 @@ from app.bili.client import (
     BiliClient,
     BiliApiError,
     VideoRef,
+    https_media_url,
 )
 from app.bili.quality import pick_best_audio, quality_label
 from app.config import settings
@@ -113,7 +114,7 @@ def song_out(s: Song) -> dict:
         "qualityId": s.quality_id,
         "qualityLabel": "在线" if not s.quality_id else quality_label(s.quality_id),
         "audioUrl": f"/api/stream/{s.bvid}",  # 纯在线：实时流代理（支持 Range）
-        "coverUrl": cover if cover.startswith("http") else f"/api/songs/{s.id}/cover" + _media_token_suffix(),
+        "coverUrl": https_media_url(cover) if cover.startswith("http") else f"/api/songs/{s.id}/cover" + _media_token_suffix(),
         "coverColor": s.cover_color or _fallback_color(s.bvid),
         "aid": s.aid,
         "playlistId": s.playlist_id,
@@ -238,7 +239,7 @@ def song_cover(song_id: int, files: FileStore = Depends(_files)):
     if song is None:
         raise HTTPException(status_code=404, detail="歌曲不存在")
     if (song.cover_path or "").startswith("http"):  # 在线封面：直接重定向 CDN
-        return RedirectResponse(song.cover_path)
+        return RedirectResponse(https_media_url(song.cover_path))
     return files.cover_response(Path(song.cover_path))
 
 

@@ -5,7 +5,7 @@ on:
       tag:
         description: 'Release tag (must match application version)'
         required: true
-        default: 'v0.2.0'
+        default: 'v0.2.1'
   push:
     tags: ['v*']
 permissions:
@@ -114,7 +114,7 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: bash packaging/smoke-android.sh
-      - run: cp android/app/build/outputs/apk/release/app-release.apk BiliMusic-0.1.1-android.apk
+      - run: cp android/app/build/outputs/apk/release/app-release.apk BiliMusic-0.1.2-android.apk
       - uses: actions/upload-artifact@v4
         with:
           name: android

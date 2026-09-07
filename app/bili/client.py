@@ -67,6 +67,15 @@ class BiliApiError(Exception):
         self.message = message
 
 
+def https_media_url(url: str) -> str:
+    """B 站媒体地址统一升级 https：macOS ATS / Android 明文策略会拦 http:// 图片。"""
+    if url.startswith("http://"):
+        return "https://" + url[len("http://"):]
+    if url.startswith("//"):
+        return "https:" + url
+    return url
+
+
 @dataclass
 class VideoInfo:
     bvid: str
@@ -274,7 +283,7 @@ class BiliClient:
             title=str(data.get("title", "")).strip(),
             artist=str(data.get("owner", {}).get("name", "")).strip(),
             duration=int(data.get("duration") or 0),
-            cover_url=data.get("pic", ""),
+            cover_url=https_media_url(str(data.get("pic") or "")),
             page=idx + 1,
             part_title=str(pages[idx].get("part", "") or "").strip(),
         )
@@ -286,7 +295,7 @@ class BiliClient:
         return {
             "mid": int(owner.get("mid") or 0),
             "name": str(owner.get("name") or "").strip(),
-            "face": str(owner.get("face") or ""),
+            "face": https_media_url(str(owner.get("face") or "")),
         }
 
     async def space_arcs(self, mid: int, pn: int = 1, ps: int = 30, order: str = "pubdate") -> tuple[list[dict], int]:
@@ -402,7 +411,7 @@ class BiliClient:
                         title=strip_highlight(str(item.get("title", ""))).strip(),
                         artist=str(item.get("author", "")).strip(),
                         duration=parse_duration_text(item.get("duration")),
-                        cover_url=str(item.get("pic") or ""),
+                        cover_url=https_media_url(str(item.get("pic") or "")),
                         play=int(item.get("play") or 0),
                     )
                 )
@@ -429,7 +438,7 @@ class BiliClient:
                     "name": strip_highlight(str(item.get("uname") or "")).strip(),
                     "sign": str(item.get("usign") or "").strip(),
                     "fans": int(item.get("fans") or 0),
-                    "face": str(item.get("face") or ""),
+                    "face": https_media_url(str(item.get("face") or "")),
                 }
             )
         return out
@@ -443,7 +452,7 @@ class BiliClient:
         return {
             "mid": int(card.get("mid") or mid),
             "name": str(card.get("name") or "").strip(),
-            "face": str(card.get("face") or "").strip(),
+            "face": https_media_url(str(card.get("face") or "").strip()),
             "sign": str(card.get("sign") or "").strip(),
         }
 

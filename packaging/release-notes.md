@@ -1,8 +1,8 @@
 ## BiliMusic: standalone applications / 独立客户端
 
-Desktop v0.2.0 replaces Electron with Tauri 2 (WKWebView on macOS, WebView2 on Windows). Frontend and Python backend are retained, including existing account data directories. Android v0.1.1 retains native WebView/Chaquopy and fixes concurrent backend startup during Activity recreation.
+Desktop v0.2.1 fixes covers and avatars not rendering in packaged apps: Bilibili CDN images were served as plain `http://` and blocked by macOS App Transport Security and Android cleartext policy. All media URLs are now upgraded to `https://`, and existing libraries are migrated automatically on first launch. Android v0.1.2 ships the same fix.
 
-桌面 v0.2.0 将 Electron 替换为 Tauri 2，保留网页、Python 后端和旧数据目录。Android v0.1.1 保持原生 WebView / Chaquopy，修复 Activity 重建时重复启动后端的竞态。尚未完成内存基准测试，不承诺具体降低比例。
+桌面 v0.2.1 修复打包版封面/头像不显示：B 站 CDN 图片此前以 `http://` 明文下发，被 macOS ATS 与 Android 明文流量策略拦截。现所有媒体 URL 统一升级 `https://`，旧曲库首次启动自动迁移。Android v0.1.2 同步修复。
 
 All installers include the Python backend. No separate server or Python installation is required. Internet access to Bilibili is required for streaming.
 
