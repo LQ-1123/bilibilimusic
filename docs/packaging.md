@@ -26,7 +26,11 @@ Outputs: `desktop/src-tauri/target/release/bundle/`. CI copies installers with n
 
 Existing Electron data directories are reused, including the alternative capitalized `BiliMusic` directory. A Windows migration may leave the older Electron installation listed separately; the new application does not uninstall it automatically. Back up your data before removing an old installation.
 
+Browser-local preferences (theme, local playback history, and playback position) are not migrated from Electron's browser profile to the system WebView. Account cookies stored by Python and the SQLite music library are preserved. Close the old client before opening the new one.
+
 沿用旧 Electron 的数据目录，不需要重新导入曲库。Windows 的旧 Electron 安装项可能仍单独存在，不会自动卸载。新 Windows 安装包内含 WebView2 离线安装器，缺少系统运行时时可安装；这也意味着 EXE 体积未必小于 Electron 版本。仍未进行整组进程内存基准测试，不承诺节省比例。
+
+主题、本机播放历史和播放位置等浏览器本地偏好不会从 Electron 自动迁移；Python 保存的登录凭据和 SQLite 曲库会保留。升级时请先关闭旧客户端。
 
 ## Android
 
