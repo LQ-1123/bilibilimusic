@@ -57,15 +57,24 @@ def stop():
         _thread.join(timeout=5)
 
 
+def watch_parent(stream):
+    stream.read()
+    stop()
+
+
 def main():
     import argparse
     import signal
     import time
+    import sys
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", required=True)
+    parser.add_argument("--watch-parent-stdin", action="store_true")
     args = parser.parse_args()
     url = start(args.data_dir)
+    if args.watch_parent_stdin:
+        threading.Thread(target=watch_parent, args=(sys.stdin,), daemon=True).start()
     print("BILIMUSIC_URL=" + url, flush=True)
     signal.signal(signal.SIGTERM, lambda *_: stop())
     signal.signal(signal.SIGINT, lambda *_: stop())

@@ -1,5 +1,9 @@
 ## BiliMusic: standalone applications / 独立客户端
 
+Desktop v0.2.0 replaces Electron with Tauri 2 (WKWebView on macOS, WebView2 on Windows). Frontend and Python backend are retained, including existing account data directories. Android remains on its native WebView/Chaquopy architecture and version 0.1.0.
+
+桌面 v0.2.0 将 Electron 替换为 Tauri 2，保留网页、Python 后端和旧数据目录。Android 继续使用原生 WebView / Chaquopy，版本仍为 0.1.0。尚未完成内存基准测试，不承诺具体降低比例。
+
 All installers include the Python backend. No separate server or Python installation is required. Internet access to Bilibili is required for streaming.
 
 所有安装包均内置 Python 后端，无需额外安装 Python 或启动服务器；在线播放仍需要联网访问 B 站。

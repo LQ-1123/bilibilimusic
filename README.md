@@ -31,6 +31,8 @@ BiliMusic 是基于 Bilibili 的个人音乐 Web 播放器。搜索歌曲、发�
 
 前往 [GitHub Releases](https://github.com/LQ-1123/bilibilimusic/releases) 下载 DMG、EXE 或 APK。安装包内置 Python 后端，不需要另行启动服务器。
 
+桌面端使用 **Tauri 2 + 系统 WebView**，保留现有网页和 Python 后端；Android 使用原生 WebView + Chaquopy。Windows 安装包包含 WebView2 离线安装支持。
+
 | 系统 | 安装包 |
 | --- | --- |
 | macOS Apple Silicon | `*-mac-arm64.dmg` |

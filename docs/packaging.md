@@ -1,12 +1,12 @@
 # Standalone Builds / 独立打包
 
-The desktop shell launches a bundled Python process on an ephemeral loopback port. Android starts the same backend using Chaquopy inside the application process. Application data is kept outside the installation directory.
+The Tauri desktop shell launches a bundled Python process on an ephemeral loopback port. macOS uses WKWebView and Windows uses WebView2. Android retains the existing Java WebView and Chaquopy backend. Application data is kept outside the installation directory.
 
-桌面版使用 Electron 启动内置 Python 可执行程序；Android 使用 Chaquopy 在应用内运行后端。服务仅监听本机随机端口，数据保存在应用数据目录。
+桌面版使用 Tauri / Rust 启动内置 Python 可执行程序；Android 保持原生 WebView 和 Chaquopy。服务仅监听本机随机端口，数据保存在应用数据目录。前端没有重写，也不向网页开放 Tauri 原生权限。
 
 ## Desktop / 桌面
 
-Requires Python 3.11, Node.js 22 and the target OS. Build on macOS for DMG, Windows for EXE.
+Requires Python 3.11, Node.js 22, stable Rust and the target OS. macOS requires Xcode command-line tools; Windows requires the Visual Studio C++ build tools. Build on macOS for DMG, Windows for EXE.
 
 ```bash
 python -m pip install -r packaging/requirements.txt pyinstaller==6.19.0
@@ -16,11 +16,15 @@ npm ci
 npm run dist
 ```
 
-Outputs: `desktop/dist/`. Backend logs: `backend.log` in Electron's `userData` directory. Account data: its `data/` subdirectory.
+Outputs: `desktop/src-tauri/target/release/bundle/`. CI copies installers with normalized filenames into `desktop/dist/`. Backend logs: `backend.log` in the application-data root; account data: its `data/` subdirectory.
 
-- macOS: `~/Library/Application Support/BiliMusic/` (Electron may use package name `bilimusic` in development).
-- Windows: `%APPDATA%/BiliMusic/`.
+- macOS: `~/Library/Application Support/bilimusic/`.
+- Windows: `%APPDATA%/bilimusic/`.
 - Android: private app files directory; uninstalling removes local data.
+
+Existing Electron data directories are reused, including the alternative capitalized `BiliMusic` directory. A Windows migration may leave the older Electron installation listed separately; the new application does not uninstall it automatically. Back up your data before removing an old installation.
+
+沿用旧 Electron 的数据目录，不需要重新导入曲库。Windows 的旧 Electron 安装项可能仍单独存在，不会自动卸载。新 Windows 安装包内含 WebView2 离线安装器，缺少系统运行时时可安装；这也意味着 EXE 体积未必小于 Electron 版本。仍未进行整组进程内存基准测试，不承诺节省比例。
 
 ## Android
 
@@ -38,13 +42,13 @@ For release builds, set `ANDROID_KEYSTORE` and `ANDROID_KEYSTORE_PASSWORD`; the 
 
 ## GitHub Actions
 
-Run **Build and Release** from the Actions tab, or push a `v*` tag. Application versions in `desktop/package.json` and `android/app/build.gradle` must match the release tag; Android `versionCode` must increase for upgrades.
+Run **Build and Release** from the Actions tab, or push a `v*` tag. Keep desktop versions aligned in `desktop/package.json`, `desktop/src-tauri/Cargo.toml`, and `desktop/src-tauri/tauri.conf.json`. Android keeps its own version when unchanged; increase `versionCode` for Android updates.
 
 Repository secrets:
 
 - `ANDROID_KEYSTORE_BASE64`: base64-encoded keystore.
 - `ANDROID_KEYSTORE_PASSWORD`: keystore and key password.
 
-The workflow builds Windows x64, macOS ARM64/x64, and an Android ARM64/x64 APK. Each desktop backend is started and its page/assets tested; the Android APK must launch its backend and WebView in an emulator. Only after all jobs succeed is a Release created with installers and `SHA256SUMS.txt`.
+The workflow builds Windows x64, macOS ARM64/x64, and an Android ARM64/x64 APK. Each desktop backend is started and its page/assets tested; the actual Tauri WebView must load the local page and terminate its backend on exit. Android must launch its backend and WebView in an emulator. Only after all jobs succeed is a Release created with installers and `SHA256SUMS.txt`.
 
 所有任务通过后才发布 Release，并附带 SHA-256 校验文件。桌面开发者证书签名、公证和 Android 后台播放服务不属于首版实现。

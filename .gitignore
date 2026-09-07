@@ -10,6 +10,12 @@ __pycache__/
 desktop/node_modules/
 desktop/backend/
 desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/icons/*
+!desktop/src-tauri/icons/icon.png
+!desktop/src-tauri/icons/icon.icns
+!desktop/src-tauri/icons/icon.ico
 build/
 android/.gradle/
 android/**/build/

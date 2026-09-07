@@ -31,6 +31,8 @@ Access the same server from a mobile browser. The glass highlight slides between
 
 Download DMG, EXE, or APK installers from [GitHub Releases](https://github.com/LQ-1123/bilibilimusic/releases). Each installer embeds Python and the backend, so no separate server is needed.
 
+Desktop uses **Tauri 2 and the system WebView**, retaining the existing frontend and Python backend. Android keeps its native WebView and Chaquopy integration. Windows installers include offline WebView2 installation support.
+
 | System | Installer |
 | --- | --- |
 | macOS Apple Silicon | `*-mac-arm64.dmg` |

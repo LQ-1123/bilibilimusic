@@ -1,21 +1,12 @@
 {
   "name": "bilimusic",
-  "version": "0.1.0",
-  "description": "A standalone Bilibili music player",
-  "author": "LQ-1123",
+  "version": "0.2.0",
+  "description": "BiliMusic Tauri desktop shell",
   "private": true,
-  "main": "main.cjs",
-  "scripts": { "start": "electron .", "dist": "electron-builder --publish never" },
-  "devDependencies": { "electron": "44.2.0", "electron-builder": "26.15.3" },
-  "build": {
-    "appId": "io.github.lq1123.bilimusic",
-    "productName": "BiliMusic",
-    "directories": { "output": "dist" },
-    "files": ["main.cjs", "loading.html"],
-    "extraResources": [{ "from": "backend/bilimusic-backend", "to": "backend" }],
-    "artifactName": "BiliMusic-${version}-${os}-${arch}.${ext}",
-    "mac": { "target": "dmg", "category": "public.app-category.music", "identity": null, "icon": "../app/web/static/icon-512.png" },
-    "win": { "target": "nsis", "icon": "../app/web/static/icon-512.png" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "deleteAppDataOnUninstall": false }
-  }
+  "scripts": {
+    "start": "tauri dev",
+    "dist": "tauri build",
+    "icons": "tauri icon ../app/web/static/icon-512.png"
+  },
+  "devDependencies": { "@tauri-apps/cli": "^2.0.0" }
 }
