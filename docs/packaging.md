@@ -8,6 +8,8 @@ The Tauri desktop shell launches a bundled Python process on an ephemeral loopba
 
 Requires Python 3.11, Node.js 22, stable Rust and the target OS. macOS requires Xcode command-line tools; Windows requires the Visual Studio C++ build tools. Build on macOS for DMG, Windows for EXE.
 
+macOS installers require macOS 14 or newer, matching the bundled NumPy ARM64 wheel's deployment target. The system WebView alone supports older versions, but the complete application must meet all bundled dependencies' requirements.
+
 ```bash
 python -m pip install -r packaging/requirements.txt pyinstaller==6.19.0
 python packaging/build-backend.py

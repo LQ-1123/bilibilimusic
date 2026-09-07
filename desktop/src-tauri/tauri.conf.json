@@ -15,7 +15,7 @@
     "shortDescription": "A personal Bilibili music player",
     "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "resources": { "../backend/bilimusic-backend/": "backend/" },
-    "macOS": { "minimumSystemVersion": "11.0" },
+    "macOS": { "minimumSystemVersion": "14.0" },
     "windows": {
       "webviewInstallMode": { "type": "offlineInstaller", "silent": true },
       "nsis": { "installMode": "currentUser", "displayLanguageSelector": true, "languages": ["SimpChinese", "English"] }

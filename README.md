@@ -35,8 +35,8 @@ BiliMusic 是基于 Bilibili 的个人音乐 Web 播放器。搜索歌曲、发�
 
 | 系统 | 安装包 |
 | --- | --- |
-| macOS Apple Silicon | `*-mac-arm64.dmg` |
-| macOS Intel | `*-mac-x64.dmg` |
+| macOS 14+ Apple Silicon | `*-mac-arm64.dmg` |
+| macOS 14+ Intel | `*-mac-x64.dmg` |
 | Windows 64 位 | `*-win-x64.exe` |
 | Android 8 及以上，ARM64 / x86_64 | `*-android.apk` |
 

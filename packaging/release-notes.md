@@ -10,8 +10,8 @@ All installers include the Python backend. No separate server or Python installa
 
 | Platform / 平台 | Download / 文件 |
 | --- | --- |
-| macOS Apple Silicon | `*-mac-arm64.dmg` |
-| macOS Intel | `*-mac-x64.dmg` |
+| macOS 14+ Apple Silicon | `*-mac-arm64.dmg` |
+| macOS 14+ Intel | `*-mac-x64.dmg` |
 | Windows x64 | `*-win-x64.exe` |
 | Android 8+ ARM64 / x86_64 | `*-android.apk` |
 

@@ -35,8 +35,8 @@ Desktop uses **Tauri 2 and the system WebView**, retaining the existing frontend
 
 | System | Installer |
 | --- | --- |
-| macOS Apple Silicon | `*-mac-arm64.dmg` |
-| macOS Intel | `*-mac-x64.dmg` |
+| macOS 14+ Apple Silicon | `*-mac-arm64.dmg` |
+| macOS 14+ Intel | `*-mac-x64.dmg` |
 | Windows 64-bit | `*-win-x64.exe` |
 | Android 8+, ARM64 / x86_64 | `*-android.apk` |
 
