@@ -1,4 +1,4 @@
-package io.github.lq1123.bilibilimusic;
+package io.github.lq1123.bilimusic;
 
 import android.app.Activity;
 import android.app.AlertDialog;
