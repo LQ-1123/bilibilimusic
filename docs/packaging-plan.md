@@ -12,8 +12,13 @@ Goal: publish self-contained macOS DMG, Windows EXE and Android APK installers.
 
 ## Execution
 
-- [ ] Implement and test embedded backend lifecycle and data-directory behavior.
-- [ ] Implement Electron shell, PyInstaller build and installer configuration.
-- [ ] Implement Android WebView, embedded Python and signing configuration.
-- [ ] Add CI builds, startup smoke tests and Release publishing.
-- [ ] Run builds, resolve packaging failures, document installation and publish verified artifacts.
+- [x] Implement and test embedded backend lifecycle and data-directory behavior.
+- [x] Implement Electron shell, PyInstaller build and installer configuration.
+- [x] Implement Android WebView, embedded Python and signing configuration.
+- [x] Add CI builds, startup smoke tests and Release publishing.
+- [x] Run builds, resolve packaging failures, document installation and publish verified artifacts.
+
+## Verification
+
+Release `v0.1.0` was published by successful workflow run `34106919239`.
+All four installers and SHA256SUMS.txt are uploaded. macOS ARM64/x64 and Windows x64 bundled backends passed startup/page/static-asset smoke tests. The signed Android APK passed installation and local backend/WebView startup on the Android 35 x86_64 emulator. Physical Android devices and desktop GUI playback have not been manually tested.
