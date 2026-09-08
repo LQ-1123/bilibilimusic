@@ -69,3 +69,36 @@ def test_part_duration_and_pages_from_one_view():
         assert [(p.cid, p.part, p.duration) for p in info.pages] == [(111, '01 · 晴天', 200), (222, '02. 夜曲', 300)]
         assert len(calls) == 1
     asyncio.run(run())
+
+
+def test_part_display_title_strips_index_noise():
+    from app.services.importer import part_display_title
+    assert part_display_title("陶喆合集", "01 · 晴天") == "陶喆合集 · 晴天"
+    assert part_display_title("陶喆合集", "第3集 夜曲") == "陶喆合集 · 夜曲"
+    assert part_display_title("陶喆合集", "12.《Melody》") == "陶喆合集 · 《Melody》"
+
+
+def test_part_display_title_no_duplicate_main_title():
+    from app.services.importer import part_display_title
+    main = "PLAYLIST | 陶喆 | 精选歌单"
+    assert part_display_title(main, f"{main} · 11.月亮") == f"{main} · 11.月亮"
+    # 分P名完整覆盖主标题时不重复拼接
+
+
+def test_album_songs_payload_respects_materialized_pages(db_env):
+    from app.api.routes import _album_songs_payload
+    from app.db.models import Album
+    with Session(dbs._get_engine(None)) as session:
+        album = Album(kind="paged", source_bvid="BV1lazy0000", title="懒专辑",
+                      artist="UP", cover_url="", total_pages=5, materialized_pages=2)
+        session.add(album)
+        session.flush()
+        for i in range(1, 6):
+            session.add(Song(bvid=f"BVlazy{i:02d}", cid=9000 + i, title=f"t{i}",
+                             artist="a", audio_path="", cover_path="",
+                             album_id=album.id, track_no=i))
+        session.commit()
+        payload = _album_songs_payload(album, session)
+    assert len(payload["songs"]) == 2          # 只返回已物化的前两首
+    assert payload["hasMore"] is True          # 提示前端继续 materialize
+    assert payload["materializedPages"] == 2

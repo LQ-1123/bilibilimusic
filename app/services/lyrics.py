@@ -3,8 +3,9 @@
 来源优先级（质量从高到低）：
 1. B 站人工 CC 字幕（UP 主上传的歌词字幕，带时间轴）；
 2. LRCLIB 正式歌词（开源歌词库，syncedLyrics 即标准 LRC，免 key）；
-3. B 站 AI 字幕（语音识别兜底，唱歌部分准确率一般）；
-4. LRCLIB 纯文本歌词（无轴，前端静态展示）。
+3. 网易云歌词（非官方接口，中文覆盖最好；限频 + 失败冷却 + 静默降级，仅收带轴）；
+4. B 站 AI 字幕（语音识别兜底，唱歌部分准确率一般）；
+5. LRCLIB 纯文本歌词（无轴，前端静态展示）。
 
 LRCLIB 明确标为 instrumental 的曲目保留纯音乐提示，不用 AI 字幕覆盖。
 
@@ -12,6 +13,7 @@ LRCLIB 请求走独立的 httpx 客户端（不带 B 站 cookie，登录态不�
 取词结果统一为文本存库：带时间轴的 LRC，或无轴纯文本（前端降级静态展示）。
 """
 
+import asyncio
 import logging
 import re
 import time
@@ -30,6 +32,13 @@ _LRCLIB = "https://lrclib.net/api"
 _LRCLIB_TIMEOUT = 10.0
 _DURATION_TOLERANCE = 3.0  # LRCLIB 结果时长与歌曲时长的匹配容差（秒）
 _INSTRUMENTAL_TEXT = "纯音乐，请欣赏"
+
+# 网易云（非官方接口）：进程级限频与失败冷却，第三方故障不拖慢取词主链路
+_NETEASE_API = "https://music.163.com"
+_NETEASE_MIN_INTERVAL = 1.5
+_NETEASE_COOLDOWN = 60.0
+_ncm_state = {"last": 0.0, "cooldown_until": 0.0}
+_SYNCED_HEAD_RE = re.compile(r"\[\d{1,2}:\d{2}")
 
 # B 站标题里的标签/噪声（【4K】【官方MV】、Official Video、翻唱、无损音源…）
 _BRACKET_RE = re.compile(r"【[^】]*】|\[[^\]]*\]|「[^」]*」|『[^』]*』|（[^）]*）|\([^)]*\)")
@@ -153,6 +162,9 @@ class LyricsService:
             text, synced = from_lrclib
             if synced or text == _INSTRUMENTAL_TEXT:
                 return text, "lrclib"
+        from_ncm = await self._from_netease(song.title, song.artist, song.duration)
+        if from_ncm:
+            return from_ncm
         body = await self._subtitle_body(song, ai_only=True)
         if body:
             return subtitle_body_to_lrc(body), "ai"
@@ -236,3 +248,75 @@ class LyricsService:
         except ValueError:
             return []
         return data if isinstance(data, list) else []
+
+    # ---- 网易云（非官方接口） ----
+
+    async def _netease_throttle(self) -> None:
+        now = time.monotonic()
+        if now < _ncm_state["cooldown_until"]:
+            return  # 冷却中：跳过本次请求（外层拿到空结果自然降级）
+        gap = time.monotonic() - _ncm_state["last"]
+        if gap < _NETEASE_MIN_INTERVAL:
+            await asyncio.sleep(_NETEASE_MIN_INTERVAL - gap)
+        _ncm_state["last"] = time.monotonic()
+
+    async def _netease_search(self, query: str) -> list[dict]:
+        if time.monotonic() < _ncm_state["cooldown_until"]:
+            return []  # 冷却中：不碰网易云（调用方自然降级到后续来源）
+        await self._netease_throttle()
+        try:
+            resp = await self.http.get(
+                _NETEASE_API + "/api/search/get/web",
+                params={"s": query, "type": 1, "limit": 5},
+                headers={"Referer": _NETEASE_API},
+            )
+        except httpx.HTTPError:
+            _ncm_state["cooldown_until"] = time.monotonic() + _NETEASE_COOLDOWN
+            return []
+        if resp.status_code != 200:
+            return []
+        try:
+            data = resp.json()
+        except ValueError:
+            return []
+        if not isinstance(data, dict):
+            return []
+        songs = (data.get("result") or {}).get("songs") or []
+        return [song for song in songs if isinstance(song, dict) and song.get("id")]
+
+    async def _netease_lyric(self, song_id: int) -> str:
+        if time.monotonic() < _ncm_state["cooldown_until"]:
+            return ""
+        await self._netease_throttle()
+        try:
+            resp = await self.http.get(
+                _NETEASE_API + "/api/song/lyric",
+                params={"id": song_id, "lv": 1, "kv": 1},
+                headers={"Referer": _NETEASE_API},
+            )
+        except httpx.HTTPError:
+            _ncm_state["cooldown_until"] = time.monotonic() + _NETEASE_COOLDOWN
+            return ""
+        if resp.status_code != 200:
+            return ""
+        try:
+            return str((resp.json().get("lrc") or {}).get("lyric") or "")
+        except ValueError:
+            return ""
+
+    async def _from_netease(self, title: str, artist: str, duration: int) -> tuple[str, str] | None:
+        """网易云搜索：歌名候选（+UP主）逐个试，时长容差内且带时间轴才采纳（来源 ncm）。"""
+        for candidate in title_candidates(title)[:2]:
+            queries: list[str] = []
+            if artist.strip():
+                queries.append(f"{candidate} {artist.strip()}")
+            queries.append(candidate)
+            for query in queries:
+                for item in await self._netease_search(query):
+                    duration_ms = int(item.get("duration") or 0)
+                    if duration and duration_ms and abs(duration_ms / 1000 - duration) > _DURATION_TOLERANCE:
+                        continue
+                    lyric = await self._netease_lyric(int(item["id"]))
+                    if lyric and _SYNCED_HEAD_RE.search(lyric[:200]):
+                        return lyric.strip(), "ncm"
+        return None

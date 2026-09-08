@@ -21,7 +21,7 @@
 ## 1. 下一批（建议立即开工）：#14 专辑一期（多分P paged）
 
 进度：**全链路已通（2026-09-08 会话内实测，Android 15 模拟器）**——导入 17P 视频→专辑+17 曲目（各自 cid）→详情→按分 P 播放（P2 = 对应 cid 流）→分 P 歌词（P1/P2 的 CC 内容不同）→删除+重导入复测 ✅；含下拉刷新。会话内修复：导入 DetachedInstance（会话外访问过期 ORM 属性）、`albumRequest` 端点对齐（原拉 meta 无 songs）、`MediaPlaybackService` 包名/目录错位（编译断点）。
-剩余：删专辑的 B 站侧取消收藏、>300P 懒物化、分 P 标题清洗、series 二期。
+剩余：删专辑的 B 站侧取消收藏 ✅、>300P 懒物化 ✅（materialize 端点 + playAlbum 循环）、分 P 标题清洗 ✅、series 二期（独立开工）。
 
 **目标**：粘贴多分 P 视频链接（≥2P）导入为「专辑」，按分 P 播放/看词/收藏，行为符合台账 #14 语义矩阵。F0 的 cid 流路由已就绪，这是它的价值兑现。
 
@@ -42,6 +42,7 @@
 - JS 播放命令暂不走桥，先做「原生侧镜像播放状态」的最小闭环（Web 起播时把曲元数据推给壳，壳起前台服务托管音频焦点）；
 - 锁屏/蓝牙 AVRCP/Smart Transition 迁移留二、三段。
 - 实测：播放中 dumpsys 可见前台通知（标题/艺人）；`playbackStopped` 已接队尾/边界停。
+- 三键按钮已用系统 Notification Action 实现 ✅（通知栏实测：暂停/上下曲回控 WebView 生效）；封面大图 + 进度条 + Media3 Session 留升级。
 - **验收**：手册 §3 #3 基础项已过；媒体卡片交互（进度/按钮）待 Media3 Session 升级后验。
 
 ## 3. 穿插小项（每项 ≤1~2 天，可任意插队）
@@ -50,7 +51,7 @@
 |---|---|---|
 | #10 歌词源 | 网易云源（限频+静默降级+来源角标）+ 歌词页「重试/换源」（`?force=1`） | 中文覆盖率主提升 |
 | #11 下拉刷新 | 前端自绘 PTR，仅移动端 feed 视图顶部 | 纯前端 |
-| #20 无边框 | Rust `decorations(false)` + capabilities + 自绘三键 | **先 1 小时 spike**：验证 http origin 的 IPC 可用性，卡死则退方案 B（Overlay） |
+| #20 无边框 | Rust `decorations(false)` + capabilities remote 授权 + 自绘三键/拖拽 | spike 已过：remote IPC 授权方案确定，cargo check + smoke 通过 ✅；剩屏幕目检 |
 | ~~#22 关闭按钮~~ | 已按「hover 显现」落地（style v153） | ✅ 完成 |
 | #12 截断点位 | 等你截图指认具体位置 | title 全文已全员兜底 |
 | #6 性能 | 真机 profile 后定点（封面缩略/backdrop-filter 审计） | 需实体真机 |

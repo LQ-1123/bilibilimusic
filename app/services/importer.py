@@ -6,6 +6,7 @@
 
 import asyncio
 import logging
+import re
 import random
 import uuid
 
@@ -17,6 +18,25 @@ from app.core.link_parser import resolve_share_text
 from app.db.models import Album, ImportTask, Song
 from app.db.session import context_mid, new_session
 from app.services import library, playlists
+
+# 懒物化阈值：超过该分 P 数的专辑先只建起始分 P，其余由前端 materialize 按需补齐
+_ALBUM_LAZY_PAGES = 300
+_PART_NOISE_RE = re.compile(
+    r"^\s*(?:第?\s*\d{1,4}\s*[集话回期部]\s*[·.:：、_-]*\s*|\d{1,3}\s*[.·、_-]\s*)"
+)
+
+
+def part_display_title(main: str, part: str) -> str:
+    """分 P 展示标题：去掉「01.」「第3集」等序号噪声；分 P 名已含主标题信息时不再拼接。"""
+    part = (part or "").strip()
+    cleaned = _PART_NOISE_RE.sub("", part).strip() or part
+    main_compact = re.sub(r"\s+", "", main or "")
+    part_compact = re.sub(r"\s+", "", cleaned)
+    if not part_compact or main_compact in part_compact:
+        return cleaned or main
+    if part_compact in main_compact:
+        return main
+    return f"{main} · {cleaned}"
 from app.storage.files import FileStore
 
 _ACTIVE_STATUSES = ("pending", "resolving", "downloading")
@@ -142,9 +162,11 @@ class ImportService:
             playlist_id = playlists.ensure_default().id or 0
 
         is_album = ref.page == 1 and len(info.pages) > 1
+        lazy_pages = is_album and len(info.pages) > _ALBUM_LAZY_PAGES
         album = Album(kind="paged", source_bvid=info.bvid, title=info.title,
                       artist=info.artist, cover_url=info.cover_url,
-                      total_pages=len(info.pages), materialized_pages=len(info.pages)) if is_album else None
+                      total_pages=len(info.pages),
+                      materialized_pages=1 if lazy_pages else len(info.pages)) if is_album else None
         song = Song(
             bvid=info.bvid,
             aid=info.avid,
@@ -171,16 +193,16 @@ class ImportService:
                 session.commit()
                 session.refresh(song)
                 song_id = song.id
-                if album is not None:
-                    for page in info.pages:
+                if album is not None and not lazy_pages:
+                    for index, page in enumerate(info.pages, start=1):
                         if page.cid == info.cid:
                             continue
-                        part = page.part or f"P{page.cid}"
                         child = Song(bvid=info.bvid, aid=info.avid, cid=page.cid,
-                                     title=f"{info.title} · {part}", artist=info.artist,
+                                     title=part_display_title(info.title, page.part),
+                                     artist=info.artist,
                                      duration=page.duration, audio_path="", cover_path=info.cover_url,
                                      source_url=raw_text, playlist_id=playlist_id,
-                                     album_id=album.id or 0, track_no=info.pages.index(page) + 1)
+                                     album_id=album.id or 0, track_no=index)
                         session.add(child)
                     session.commit()
             except Exception:  # noqa: BLE001  并发导入同一 bvid：复用已入库的那条

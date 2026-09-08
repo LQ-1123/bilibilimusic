@@ -72,7 +72,8 @@
   3. 前端自绘三键（与深浅主题联动的玻璃圆钮；macOS 惯例放左上）+ 顶栏拖拽区 `data-tauri-drag-region`；按钮调 `window.__TAURI__.window.getCurrentWindow().minimize()/toggleMaximize()/close()`；
   4. 若 IPC 被 http origin 限制卡死 → 方案 B：`titleBarStyle: Overlay`（白条消失、保留系统交通灯浮层，零 IPC）。
 - **推进/补完（2026-09-08）**：main.rs 已 `decorations(false)`；capabilities/main.json 就位并补 `"remote": {"urls": ["http://127.0.0.1:*", "http://localhost:*"]}`——页面最终落在后端 http origin，无 remote 授权时 `__TAURI__` 不注入、三键失效（即台账预警的 spike 点）；base.html 顶栏自绘三键 + pointerdown 拖拽/双击最大化（v3.js，仅 `__TAURI__` 存在时显示）。
-- **验证**：macOS 构建；拖拽/三键/全屏/双主题；Windows 侧后续补右上布局。
+- **验证（2026-09-08）**：cargo check ✅；debug 构建后 smoke 通过 ✅（BM_DESKTOP_SMOKE 标记 `native-webview-ready`：后端启动 + Webview 加载应用页全链路通）；桌面三键/拖拽/双击最大化留屏幕目检。
+- **构建注意**：后端二进制用 `python packaging/build-backend.py`（PyInstaller）生成到 `desktop/backend/bilimusic-backend/`（该目录已占位但二进制不入库，debug 构建直接引用它）。
 
 ---
 
@@ -81,7 +82,7 @@
 ### #3 后台播放不稳、无系统媒体条/锁屏控制 ｜ `[修中]` ｜ P1（分水岭）
 - **本轮推进（2026-09-08）**：Android Manifest 已加入媒体前台服务、通知权限与 `mediaPlayback` service；新增 `MediaPlaybackService` 通知渠道/持久在线通知，WebView 起播经 `BiliMusicNative.playbackStarted()` 启动服务。尚未接入原生音频引擎、媒体按钮和进度同步。Android Gradle 编译受本机 wrapper 锁文件权限阻塞；Python 回归 114 通过、2 跳过，前端脚本语法检查通过。
 - **现象**：切后台/锁屏后播放不稳定；通知栏没有媒体卡片；锁屏不可控；蓝牙耳机/线控无效。根因：Android 是裸 WebView——WebView **不支持** `navigator.mediaSession`，前端 mediaSession 代码（app.js:253 起）只在桌面浏览器生效。
-- **第一段落地（2026-09-08）**：`MediaPlaybackService`（foreground，mediaPlayback 类型）+ 播放通知（标题/艺人/ongoing）；页面桥 `BiliMusicNative.playbackStarted/stopped` 起停服务；Manifest 声明服务与 FOREGROUND_SERVICE_MEDIA_PLAYBACK/POST_NOTIFICATIONS 权限；androidx.core 依赖已加。通知进度条/媒体按钮（Media3 Session）留后续段。**修法**（路线 B 渐进，四段式，总估 4–8 周）：
+- **第一段落地（2026-09-08）**：`MediaPlaybackService`（foreground，mediaPlayback 类型）+ 播放通知（标题/艺人/ongoing）；页面桥 `BiliMusicNative.playbackStarted/stopped` 起停服务；Manifest 声明服务与 FOREGROUND_SERVICE_MEDIA_PLAYBACK/POST_NOTIFICATIONS 权限；androidx.core 依赖已加。已升级为**系统媒体卡片**并实测 ✅：MediaSessionCompat + MediaStyle（封面大图、播放/暂停大钮、上一首/下一首、进度状态）；按钮与锁屏/耳机线控经 Session 回调 → evaluateJavascript 回控 WebView 播放器（暂停/切歌实测生效，图标随 `playbackPaused` 桥同步）；运行时申请 POST_NOTIFICATIONS。封面缓存 + 进度经 `playbackProgress` 桥（1s 节流）上报。Media3 迁移可后续再做（现 androidx.media 方案已满足锁屏/通知/线控）。**修法**（路线 B 渐进，四段式，总估 4–8 周）：
   1. **前台服务**：`MediaPlaybackService`（foreground，Android 14+ 声明 `android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK`；13+ 运行时申请 `POST_NOTIFICATIONS`）；MediaStyle 通知带封面/进度/收藏按钮；点击通知回对应页（需 #1 寻址）；
   2. **Media3 Session**：播放引擎迁原生，直接拉本地后端流（`/api/stream` 已支持 Range；务必先修 cid bug，见 §F0）；锁屏/蓝牙 AVRCP/线控/音频焦点全由 Session 提供；
   3. **JS Bridge**：接口先行设计（播放/暂停/切歌/进度/音量/封面歌词元数据双向同步），Web UI 保留现状，播放命令改走桥；
@@ -177,7 +178,11 @@
   1. **DetachedInstance 修复**：playAlbum 首次导入报「Instance not bound to a Session」——commit 后在会话外访问过期 ORM 属性；改为会话内取标量、会话外统一 `library.get_song()` 重载；
   2. **albumRequest 端点对齐**：前端 `albumRequest(id,false)` 原拉专辑 meta（无 songs 数组），改为 `GET /api/albums/{id}/songs`；后端 GET songs 与 POST materialize 统一返回前端契约 `{songs, hasMore, materializedPages}`；
   3. **Android 15 模拟器全链路实测 ✅**：导入 BV1amxrzXEnk（17P）→ 专辑+17 曲目（各自 cid 的 audioUrl）→ 详情 17 行 → 播 P2 = P2 的 cid 流 → P1/P2 歌词按各自 cid 取 CC（内容不同）→ 删除专辑 API + 重导入复测通过；
-  4. **待补**：删专辑的 B 站侧取消收藏（当前仅本地删除）、>300P 懒物化、分P标题清洗、series 二期。
+  4. **单曲移除不伤收藏 ✅**：`DELETE /api/albums/{id}/songs/{sid}`（仅本地删除）+ 前端 data-del 分支路由（其余分 P 共用该视频收藏，不受影响）；
+  5. **删专辑的 B 站侧取消收藏 ✅**：delete_album 改 async，按专辑内 (aid, fav_folder_id) 去重后逐视频取消收藏（尽力而为不阻塞本地删除）；
+  6. **懒物化 ✅**：>300P 超大合集导入时只建起始分 P（materialized_pages=1），其余由 playAlbum 的 hasMore 循环经 POST materialize 按需补建（materialize 改为真正补建曲目行并返回 `{songs, hasMore, materializedPages}` 契约）；
+  7. **分 P 标题清洗 ✅**：`part_display_title` 去「01.」「第3集」等序号噪声，分 P 名已含主标题信息时不重复拼接；
+  8. **待补**：series 二期（跨视频合集）。
 用户已拍板：范围=**多分P视频 + B 站跨视频合集都要**；同步=**保持 B 站收藏夹哲学**（收藏夹=整视频一次；本地=专辑+曲目；换设备专辑先恢复单行、曲目按需回填）。
 - 现状盘点（已查证）：`link_parser` 支持 `?p=n`；`get_video_info`/`get_audio_streams(bvid,cid)`/`get_subtitle_tracks(bvid,aid,cid)` 全按 cid 工作；importer 单 P 导入正确（存 `Song.cid`，标题拼「主标题 · 分P标题」）；缺 Album 实体与多 P 共存（Song.bvid 唯一）。
 - **第一期（paged，最短链路）**：
@@ -197,7 +202,12 @@
 
 - 风险：合集含非音乐内容（自决）；接口频控（拉 pages/列表限速）；超大合集懒加载；标题噪声清洗词表迭代。
 
-### #10 歌词源增强（替代 Shazam 思路） ｜ `[修中]` ｜ P1
+### #10 歌词源增强（替代 Shazam 思路） ｜ `[已修·网易云源落地]` ｜ P1
+- **落地（2026-09-08）**：
+  1. 网易云源：`_from_netease`（非官方接口 search/lyric，进程级限频 1.5s + 失败冷却 60s + 静默降级），插入优先级 CC → LRCLIB带轴 → **网易云(ncm，仅收带轴、时长容差±3s)** → AI → LRCLIB纯文本；
+  2. 放开手动重取：`GET /api/songs/{id}/lyrics?force=1` + 歌词页「↻ 重试」按钮（backend ensure_for_song(force)）；
+  3. 来源角标：歌词页 `来源 · B站字幕/LRCLIB/网易云/...`（前端 ncm 映射已加）。
+- **验证**：单元测试 3 例（命中 ncm / 时长容差过滤 / 故障静默降级）；真实 API 实测 ✅「晴天 周杰伦」→ ncm 带轴歌词。QQ音乐备选与冷门歌真机抽查留后续。
 - **本轮部分修复（2026-09-08）**：发现 `fetch_for_song()` 命中 LRCLIB 纯文本后直接返回，跳过 AI 时间轴字幕，与既定优先级不符。已改为 CC → LRCLIB 带轴 → AI → LRCLIB 纯文本；LRCLIB 明确纯音乐标记维持直接返回。新增 4 例覆盖 AI 优于纯文本、纯文本兜底、带轴优于 AI、纯音乐标记。完整 Python 回归 111 通过、2 跳过（缺真实音频样本），前端现有 17 例通过。旧歌词缓存不自动重取；本条网易云源、手动重取与来源 UI 待办保持未完成。
 - **本轮继续（2026-09-08）**：歌曲歌词页新增重试按钮，调用 `/api/songs/{id}/lyrics?force=1` 清除缓存并重新执行取词链；试听歌词不显示重试入口。`tests/test_lyrics.py` 20 通过，前端脚本语法检查通过。网易云源、来源角标和错误反馈仍待完成。
 - **来源角标（2026-09-08）**：歌词页现在展示 CC / AI / LRCLIB / 网易云来源（后端已有来源值时），切歌或重试会清空并重新更新角标。歌词专项 20 通过，Node 前端回归 17 通过。

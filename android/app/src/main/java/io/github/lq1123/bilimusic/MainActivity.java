@@ -31,6 +31,13 @@ public class MainActivity extends Activity {
     private String origin;
     private TextView statusText;
     private int insTop, insBottom, insLeft, insRight;
+    private static WebView activeWeb;
+
+    /** 通知按钮回控页面播放器（MediaPlaybackService 调用，主线程执行）。 */
+    static void evalInPage(String js) {
+        WebView view = activeWeb;
+        if (view != null) view.post(() -> view.evaluateJavascript(js, null));
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -152,10 +159,22 @@ public class MainActivity extends Activity {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
                 });
             }
-            @JavascriptInterface public void playbackStarted(String title, String artist) {
+            @JavascriptInterface public void playbackStarted(String title, String artist, String coverUrl) {
                 Intent intent = new Intent(MainActivity.this, MediaPlaybackService.class)
-                    .putExtra("title", title).putExtra("artist", artist);
+                    .putExtra("title", title).putExtra("artist", artist)
+                    .putExtra("cover", coverUrl == null ? "" : coverUrl).putExtra("paused", false);
                 if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(intent); else startService(intent);
+            }
+            @JavascriptInterface public void playbackProgress(double position, double duration) {
+                Intent intent = new Intent(MainActivity.this, MediaPlaybackService.class)
+                    .setAction(MediaPlaybackService.ACTION_SYNC)
+                    .putExtra("position", (long) position).putExtra("duration", (long) duration);
+                startService(intent);
+            }
+            @JavascriptInterface public void playbackPaused(boolean value) {
+                Intent intent = new Intent(MainActivity.this, MediaPlaybackService.class)
+                    .setAction(MediaPlaybackService.ACTION_SYNC).putExtra("paused", value);
+                startService(intent);
             }
             @JavascriptInterface public void playbackStopped() {
                 stopService(new Intent(MainActivity.this, MediaPlaybackService.class));
@@ -238,6 +257,12 @@ public class MainActivity extends Activity {
         // debug 构建开放 WebView 远程调试（验收手册的 chrome://inspect 依赖此项）
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true);
         setContentView(web);
+        activeWeb = web; // 供通知按钮回控页面播放器（#3 第一段）
+        // Android 13+ 通知需要运行时权限：首次进入请求一次
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 7101);
+        }
         // 后端就绪：WebView 200ms 淡入，替代硬切（#9）
         web.setAlpha(0f);
         web.animate().alpha(1f).setDuration(200).start();
@@ -259,6 +284,7 @@ public class MainActivity extends Activity {
     }
     @Override protected void onDestroy() {
         if (web != null) web.destroy();
+        activeWeb = null;
         super.onDestroy();
     }
 }

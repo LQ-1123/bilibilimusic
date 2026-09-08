@@ -21,6 +21,7 @@ from app.bili.client import (
     BILIBILI_REFERER,
     BiliClient,
     BiliApiError,
+    VideoRef,
     https_media_url,
 )
 from app.bili.quality import pick_best_audio, quality_label
@@ -30,7 +31,7 @@ from app.core.url_guard import UnsafeUrlError, validate_bilibili_url
 from app.db.models import Album, ImportTask, Song
 from app.db.session import new_session
 from app.services import library, playlists, recs
-from app.services.importer import ImportService
+from app.services.importer import ImportService, part_display_title
 from app.storage.files import FileStore
 
 log = logging.getLogger(__name__)
@@ -216,35 +217,92 @@ def list_album_songs(album_id: int) -> dict:
 
 
 @router.post("/albums/{album_id}/materialize")
-def materialize_album(album_id: int) -> dict:
+async def materialize_album(album_id: int, request: Request) -> dict:
+    """懒物化（#14）：按需补建专辑缺失的分 P 曲目行（超大合集导入时只建起始分 P）。"""
     with new_session() as session:
         album = session.get(Album, album_id)
         if album is None:
             raise HTTPException(status_code=404, detail="专辑不存在")
-        album.materialized_pages = album.total_pages
-        session.add(album); session.commit(); session.refresh(album)
+        if album.materialized_pages >= album.total_pages:
+            return _album_songs_payload(album, session)
+        source_bvid, album_title = album.source_bvid, album.title
+
+    bili: BiliClient = request.state.bili
+    info = await bili.get_video_info(VideoRef(bvid=source_bvid))
+
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        if album is None:
+            raise HTTPException(status_code=404, detail="专辑不存在")
+        existing_cids = {s.cid for s in session.exec(
+            select(Song).where(Song.album_id == album_id)).all()}
+        for index, page in enumerate(info.pages, start=1):
+            if page.cid in existing_cids:
+                continue
+            session.add(Song(bvid=source_bvid, aid=info.avid, cid=page.cid,
+                             title=part_display_title(album_title, page.part),
+                             artist=info.artist, duration=page.duration,
+                             audio_path="", cover_path=info.cover_url,
+                             source_url="", playlist_id=0,
+                             album_id=album_id, track_no=index))
+        album.materialized_pages = min(album.total_pages, len(info.pages))
+        session.add(album)
+        session.commit()
         return _album_songs_payload(album, session)
 
 
 def _album_songs_payload(album: Album, session) -> dict:
-    """前端契约（playAlbum）：{songs, hasMore, materializedPages}，按需物化超大合集。"""
+    """前端契约（playAlbum）：{songs, hasMore, materializedPages}，只返回已物化的分 P。"""
     songs = session.exec(
         select(Song).where(Song.album_id == album.id).order_by(Song.track_no)  # type: ignore[attr-defined]
     ).all()
-    return {"songs": [song_out(s) for s in songs], "hasMore": False,
+    limit = album.materialized_pages or 0
+    visible = [s for s in songs if s.track_no <= limit]
+    return {"songs": [song_out(s) for s in visible], "hasMore": limit < album.total_pages,
             "materializedPages": album.materialized_pages}
 
 
 @router.delete("/albums/{album_id}")
-def delete_album(album_id: int) -> dict:
+async def delete_album(album_id: int, request: Request) -> dict:
+    # 语义矩阵（paged）：删专辑 = 取消收藏该视频（B 站一次）+ 本地曲目清理
     with new_session() as session:
         album = session.get(Album, album_id)
         if album is None:
             raise HTTPException(status_code=404, detail="专辑不存在")
-        for song in session.exec(select(Song).where(Song.album_id == album_id)).all():
-            session.delete(song)
-        session.delete(album); session.commit()
-        return {"ok": True}
+        songs = session.exec(select(Song).where(Song.album_id == album_id)).all()
+        song_ids = [s.id for s in songs]
+        fav_targets = {(s.aid, s.fav_folder_id) for s in songs if s.aid}
+
+    bili: BiliClient = request.state.bili
+    for aid, folder_id in fav_targets:  # 全部分 P 共用一个视频：取消收藏一次即可
+        try:
+            if folder_id:
+                await bili.unfavorite_song(aid, folder_id=folder_id)
+            else:
+                await bili.unfavorite_song(aid)
+        except (BiliApiError, httpx.HTTPError):  # 尽力而为：B 站失败不阻塞本地删除
+            pass
+
+    with new_session() as session:
+        for sid in song_ids:
+            song = session.get(Song, sid)
+            if song is not None:
+                session.delete(song)
+        session.delete(album)
+        session.commit()
+    return {"ok": True}
+
+
+@router.delete("/albums/{album_id}/songs/{song_id}")
+def remove_album_song(album_id: int, song_id: int) -> dict:
+    """专辑内移除单曲：仅本地删除，不动 B 站收藏（全部分 P 与该视频收藏共用）。"""
+    with new_session() as session:
+        song = session.get(Song, song_id)
+        if song is None or song.album_id != album_id:
+            raise HTTPException(status_code=404, detail="曲目不在该专辑中")
+        session.delete(song)
+        session.commit()
+    return {"ok": True}
 
 def playlist_out(p) -> dict:
     from app.services.playlists import folder_ids

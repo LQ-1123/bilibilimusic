@@ -308,7 +308,7 @@
     setGain(audioB, audioB === audio ? 1 : 0);
     audio.src = song.audioUrl;
     audio.play().catch(function () {});
-    try { if (window.BiliMusicNative && BiliMusicNative.playbackStarted) BiliMusicNative.playbackStarted(song.title, song.artist); } catch (e) {}
+    try { if (window.BiliMusicNative && BiliMusicNative.playbackStarted) BiliMusicNative.playbackStarted(song.title, song.artist, song.coverUrl || ""); } catch (e) {}
     updateNowPlaying(song);
     pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
     if (smartEnabled()) prefetchAnalyses();
@@ -403,6 +403,22 @@
     if (delEl) {
       var deletedRow = delEl.closest("[data-play]");
       if (deletedRow) deletedRow.hidden = true;
+      var albumId = deletedRow && deletedRow.dataset && deletedRow.dataset.album;
+      if (albumId) {
+        // 专辑内移除单曲：仅本地删除，不动 B 站收藏（其余分 P 共用该视频收藏）
+        fetch("/api/albums/" + albumId + "/songs/" + delEl.dataset.del, { method: "DELETE" })
+          .then(function (response) {
+            if (!response.ok) throw new Error("remove failed");
+            if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+            return fetch("/partials/album-tracks?album_id=" + albumId, { cache: "no-store" })
+              .then(function (r) { return r.text(); })
+              .then(function (html) { document.getElementById("dt-songs").innerHTML = html; });
+          }).catch(function () {
+            if (deletedRow) deletedRow.hidden = false;
+            if (window.__toast) window.__toast("移除失败，请重试");
+          });
+        return;
+      }
       fetch("/api/songs/" + delEl.dataset.del, { method: "DELETE" })
         .then(function (response) {
           if (!response.ok) throw new Error("Delete failed");
@@ -449,6 +465,8 @@
     button.querySelector("use").setAttribute("href", paused ? "#a-play" : "#a-pause");
     button.title = paused ? "播放" : "暂停";
     button.setAttribute("aria-label", button.title);
+    // 壳层通知的播放/暂停图标跟随（#3 第一段）
+    try { if (window.BiliMusicNative && BiliMusicNative.playbackPaused) BiliMusicNative.playbackPaused(!!paused); } catch (e) {}
   }
   function onPlayPauseUI(e) {
     if (e.target !== audio) return;
@@ -474,6 +492,16 @@
       $("t-cur").textContent = fmt(audio.currentTime);
       $("t-dur").textContent = fmt(audio.duration);
     }
+    // 进度推给壳层媒体通知（1s 节流，#3）
+    try {
+      var now = Date.now();
+      if (!onTimeUpdate.lastPush || now - onTimeUpdate.lastPush >= 1000) {
+        onTimeUpdate.lastPush = now;
+        if (window.BiliMusicNative && BiliMusicNative.playbackProgress) {
+          BiliMusicNative.playbackProgress(audio.currentTime || 0, audio.duration || 0);
+        }
+      }
+    } catch (e) {}
     if (Date.now() - lastPositionSave > 3000) {
       lastPositionSave = Date.now();
       saveSession();

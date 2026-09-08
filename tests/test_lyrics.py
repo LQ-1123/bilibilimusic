@@ -247,3 +247,59 @@ async def test_fetch_instrumental_marker_beats_ai():
     }]) as http:
         svc = LyricsService(FakeBili([_AI_TRACK], _BODY), http=http)
         assert await svc.fetch_for_song(_song()) == ("纯音乐，请欣赏", "lrclib")
+
+
+# ---- 网易云源（#10）----
+
+def _ncm_http(calls: list, *, songs: list | None = None, lyric: str = "", fail: bool = False):
+    """网易云接口桩：search 返回 songs，lyric 返回歌词；fail=True 模拟网络故障。"""
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        calls.append(url)
+        if fail:
+            raise httpx.ConnectError("ncm down", request=request)
+        if "/api/search/get/web" in url:
+            return httpx.Response(200, json={"result": {"songs": songs or []}, "code": 200})
+        if "/api/song/lyric" in url:
+            return httpx.Response(200, json={"lrc": {"lyric": lyric}, "code": 200})
+        return httpx.Response(404)
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+def _no_netcdf_guard(monkeypatch):
+    """关掉网易云限频与冷却，让单元测试即时完成。"""
+    import app.services.lyrics as mod
+    monkeypatch.setattr(mod, "_NETEASE_MIN_INTERVAL", 0.0)
+    monkeypatch.setattr(mod, "_ncm_state", {"last": 0.0, "cooldown_until": 0.0})
+
+
+async def test_fetch_netease_synced_beats_ai(monkeypatch):
+    _no_netcdf_guard(monkeypatch)
+    calls: list = []
+    async with _ncm_http(calls, songs=[{
+        "id": 9, "name": "晴天", "duration": 299000,
+    }], lyric="[00:01.00]故事的小黄花\n[00:33.10]从出生那年就飘着") as http:
+        svc = LyricsService(FakeBili([], []), http=http)
+        result = await svc.fetch_for_song(_song())
+    assert result == ("[00:01.00]故事的小黄花\n[00:33.10]从出生那年就飘着", "ncm")
+    assert any("music.163.com" in c for c in calls)
+
+
+async def test_fetch_netease_skips_wrong_duration(monkeypatch):
+    _no_netcdf_guard(monkeypatch)
+    calls: list = []
+    async with _ncm_http(calls, songs=[{
+        "id": 9, "name": "别的歌", "duration": 120000,
+    }], lyric="[00:01.00]不是这首") as http:
+        svc = LyricsService(FakeBili([], []), http=http)
+        result = await svc.fetch_for_song(_song())
+    assert result is None  # 时长差太远不采纳，也不落 AI 字幕（无字幕）
+
+
+async def test_fetch_netease_failure_silent(monkeypatch):
+    _no_netcdf_guard(monkeypatch)
+    calls: list = []
+    async with _ncm_http(calls, fail=True) as http:
+        svc = LyricsService(FakeBili([], []), http=http)
+        result = await svc.fetch_for_song(_song())
+    assert result is None  # 网易云故障静默降级，不抛错
