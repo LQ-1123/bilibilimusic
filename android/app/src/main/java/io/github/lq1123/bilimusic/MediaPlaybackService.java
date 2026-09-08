@@ -71,9 +71,35 @@ public final class MediaPlaybackService extends Service {
             lastDuration = intent.getLongExtra("duration", lastDuration);
             paused = intent.getBooleanExtra("paused", paused);
         }
+        registerNoisyReceiver();
         updateSessionState();
         startForeground(NOTIFICATION_ID, buildNotification());
         return START_STICKY;
+    }
+
+    // 耳机拔出（#4）：AUDIO_BECOMING_NOISY 时暂停页面播放（Chromium 不处理此广播）
+    private android.content.BroadcastReceiver noisyReceiver;
+
+    private void registerNoisyReceiver() {
+        if (noisyReceiver != null) return;
+        noisyReceiver = new android.content.BroadcastReceiver() {
+            @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
+                android.util.Log.i("BiliMusic", "BECOMING_NOISY received -> pause page");
+                // 直接暂停媒体元素（pause 事件会同步 UI 与壳层通知图标；toggle 在暂停态会误恢复）
+                MainActivity.evalInPage("document.getElementById('audio').pause()");
+                paused = true;
+                startForeground(NOTIFICATION_ID, buildNotification());
+                updateSessionState();
+            }
+        };
+        registerReceiver(noisyReceiver, new android.content.IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY));
+    }
+
+    private void unregisterNoisyReceiver() {
+        if (noisyReceiver != null) {
+            unregisterReceiver(noisyReceiver);
+            noisyReceiver = null;
+        }
     }
 
     private void updateSessionState() {
@@ -137,6 +163,7 @@ public final class MediaPlaybackService extends Service {
 
     @Override public void onDestroy() {
         running = false;
+        unregisterNoisyReceiver();
         if (session != null) { session.release(); session = null; }
         stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();

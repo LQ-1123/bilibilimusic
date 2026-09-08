@@ -121,10 +121,12 @@ public class MainActivity extends Activity {
     private void pushInsets(int top, int bottom, int left, int right) {
         insTop = top; insBottom = bottom; insLeft = left; insRight = right;
         if (web == null) return;
-        String js = "document.documentElement.style.setProperty('--inset-top','" + top + "px');"
-            + "document.documentElement.style.setProperty('--inset-bottom','" + bottom + "px');"
-            + "document.documentElement.style.setProperty('--inset-left','" + left + "px');"
-            + "document.documentElement.style.setProperty('--inset-right','" + right + "px');";
+        // insets 是物理像素；CSS 变量按 WebView 的 CSS px 消费，必须除以 density
+        float d = getResources().getDisplayMetrics().density;
+        String js = "document.documentElement.style.setProperty('--inset-top','" + (top / d) + "px');"
+            + "document.documentElement.style.setProperty('--inset-bottom','" + (bottom / d) + "px');"
+            + "document.documentElement.style.setProperty('--inset-left','" + (left / d) + "px');"
+            + "document.documentElement.style.setProperty('--inset-right','" + (right / d) + "px');";
         web.evaluateJavascript(js, null);
     }
 

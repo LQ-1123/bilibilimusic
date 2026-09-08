@@ -40,6 +40,8 @@
   3. `themes.xml` 状态栏/导航栏改透明；style v151 全部固定/交互元素 inset 化：.topbar、.dt-top、#m-dock、#player-bar、#queue-panel、.search-drop、.topbar.searching、.l-left、.l-bottom、#btn-lyrics-close、#up-close、.ly-volhost（`var(--inset-*, env(safe-area-inset-*))` 双回退，iOS PWA 走 env，桌面为 0）；
   4. 原生桥 `BiliMusicNative.setTheme()`（@JavascriptInterface，runOnUiThread 应用 APPEARANCE_LIGHT_STATUS/NAVIGATION_BARS，API<30 用 SYSTEM_UI_FLAG_LIGHT_*），v3.js setTheme 每次切换调用。
 - **验证**：Android 15 模拟器实测全过——深色主题浅色图标、浅色主题深色图标（截图）；滚动内容滑入透明系统栏之下、Dock/播放条/顶栏正确内缩；insets 注入值 top=63px/bottom=126px；横屏刘海与实体真机留抽查。
+
+- **单位修正（2026-09-08 用户实测复现）**：注入的 insets 是物理像素、CSS 变量按 CSS px 消费（density 2.625），底部多垫 ~2.6 倍 → Tab 胶囊离系统导航栏过远。修复：pushInsets 除以 `displayMetrics.density` 后注入（实测 top 24 / bottom 48 CSS px，Dock 紧贴导航栏上方，截图确认）。
 - **现象**：打开应用后顶部状态栏区域发白、看不到状态栏内容；底部导航栏一条白边框，非沉浸。
 - **根因**（截图+代码确认）：
   - `AndroidManifest` 用系统浅色主题 `@android:style/Theme.Material.Light.NoActionBar` → 窗口背景白；
@@ -84,6 +86,8 @@
   3. **JS Bridge**：接口先行设计（播放/暂停/切歌/进度/音量/封面歌词元数据双向同步），Web UI 保留现状，播放命令改走桥；
   4. **Smart Transition 策略**：v1 原生单轨 + 前端给过渡计划，或原生双 ExoPlayer crossfade；TrackAnalysis 数据在 SQLite，完整复刻后置。
 - 配套：#4 音频焦点与耳机拔出（becoming noisy）在此一并实现（来电/他 App 播放→暂停；拔出→暂停）；进程被杀冷启→恢复播放（见 #1 寻址 + 播放状态持久化）。
+- **#4 落地（2026-09-08）**：耳机拔出——`MediaPlaybackService` 注册 `ACTION_AUDIO_BECOMING_NOISY` 接收器（起播注册/销毁反注册），收到即 `evalInPage` 直接 `audio.pause()`（pause 事件自动同步 UI 与通知图标），并置 MediaSession 暂停态。音频焦点（来电/他 App 抢占）由 Chromium AudioFocusDelegate 原生处理（WebView 内建），无需自管。
+- **#4 验证（2026-09-08，Android 15 模拟器）**：接收器注册 ✓（dumpsys broadcasts 确认 filter 在列）；evalInPage 通路 ✓（通知栏暂停键实测生效，同构代码）；**shell 模拟广播卡 ordered 队列无法投递（模拟器限制）→ 真实拔耳机触发留真机抽查**。
 - **验证**：锁屏播放 10 分钟；来电打断/恢复；蓝牙切歌；通知栏操作同步 UI。
 
 ### #18 登录验证页唤起失败 → 浏览器登录兜底 ｜ `[已修]` ｜ P1
@@ -268,7 +272,7 @@
 ## H. 修复进度勾选
 
 - [x] #1 返回语义（Web 层 + Android 壳桥接，模拟器全过）｜ [x] #2 系统栏（方案 A+B 沉浸全落地）｜ [x] #17 路由 ｜ [x] #20 无边框（Overlay 原生方案定稿）
-- [x] #3 第一段（前台服务+通知；Session/锁屏/蓝牙待做）｜ [ ] #4 全量音频焦点 ｜ [x] #18 浏览器登录兜底（真机浏览器完整登录待抽查）
+- [x] #3 第一段（前台服务+MediaSession 媒体卡片）｜ [x] #4 音频焦点（Chromium 原生）+ 耳机拔出（真机抽查）｜ [x] #18 浏览器登录兜底（真机浏览器完整登录待抽查）
 - [x] #8 空格 ｜ [x] #15 按钮序 ｜ [x] #19 音量填充 ｜ [x] #12 省略（title 全文）｜ [x] #13 滚动 ｜ [x] #16 蓝框 ｜ [x] #7 建歌单
 - [x] #9 品牌启动（双端） ｜ [x] #5 轮询 ｜ [ ] #6 性能 ｜ [ ] #11 下拉刷新
 - [x] #14 专辑一期（主体；B 站取消收藏/懒物化/series 待做） ｜ [x] #10 歌词源·重试换源部分（网易云源待做）
