@@ -77,7 +77,7 @@
 
 ## B. 原生音乐能力（P1，方向性）
 
-### #3 后台播放不稳、无系统媒体条/锁屏控制 ｜ `[修中]` ｜ P1（分水岭）
+### #3 后台播放不稳、无系统媒体条/锁屏控制 ｜ `[修中·一段+升级已落地]` ｜ P1（分水岭）
 - **本轮推进（2026-09-08）**：Android Manifest 已加入媒体前台服务、通知权限与 `mediaPlayback` service；新增 `MediaPlaybackService` 通知渠道/持久在线通知，WebView 起播经 `BiliMusicNative.playbackStarted()` 启动服务。尚未接入原生音频引擎、媒体按钮和进度同步。Android Gradle 编译受本机 wrapper 锁文件权限阻塞；Python 回归 114 通过、2 跳过，前端脚本语法检查通过。
 - **现象**：切后台/锁屏后播放不稳定；通知栏没有媒体卡片；锁屏不可控；蓝牙耳机/线控无效。根因：Android 是裸 WebView——WebView **不支持** `navigator.mediaSession`，前端 mediaSession 代码（app.js:253 起）只在桌面浏览器生效。
 - **第一段落地（2026-09-08）**：`MediaPlaybackService`（foreground，mediaPlayback 类型）+ 播放通知（标题/艺人/ongoing）；页面桥 `BiliMusicNative.playbackStarted/stopped` 起停服务；Manifest 声明服务与 FOREGROUND_SERVICE_MEDIA_PLAYBACK/POST_NOTIFICATIONS 权限；androidx.core 依赖已加。已升级为**系统媒体卡片**并实测 ✅：MediaSessionCompat + MediaStyle（封面大图、播放/暂停大钮、上一首/下一首、进度状态）；按钮与锁屏/耳机线控经 Session 回调 → evaluateJavascript 回控 WebView 播放器（暂停/切歌实测生效，图标随 `playbackPaused` 桥同步）；运行时申请 POST_NOTIFICATIONS。封面缓存 + 进度经 `playbackProgress` 桥（1s 节流）上报。Media3 迁移可后续再做（现 androidx.media 方案已满足锁屏/通知/线控）。**修法**（路线 B 渐进，四段式，总估 4–8 周）：
@@ -159,7 +159,7 @@
 - 候选：封面原图未缩略（B 站封面按需取小尺寸）、列表 htmx 整段重渲、backdrop-filter 大面使用（液态玻璃 blur 只在固定层保留，滚动内容避免）、图片 `loading=lazy` + `decoding=async`、头像已有懒解析（upFaceCache）。
 - 修法在真机 profile（WebView 远程调试 Performance）后按热点逐个做。
 
-### #11 手机端下拉刷新 ｜ `[待修]` ｜ P1
+### #11 手机端下拉刷新 ｜ `[已修·真机手势待抽查]` ｜ P1
 - **本轮落地（2026-09-08）**：`v3.js` 在移动粗指针设备的主页/曲库顶部加入自绘下拉刷新，64px 阈值触发 `refreshSongs`，详情、弹层、按钮和输入控件不抢占手势；添加加载/就绪状态样式。Node 交互回归 17 例通过，真机手势与网络刷新仍待抽查。
 - **修法**：前端自绘（不加 androidx 依赖）：
   1. 仅触摸设备 + 移动布局（matchMedia）且主滚动容器 `scrollTop<=0` + 当前为 feed 视图（主页/曲库）时启用；
@@ -172,7 +172,7 @@
 
 ## E. 内容与数据
 
-### #14 合集 → 专辑 ｜ `[修中·一期主体完成]` ｜ P1（架构级，分两期）
+### #14 合集 → 专辑 ｜ `[已修·一期完成，series 二期待做]` ｜ P1（架构级，分两期）
 - **本轮推进（2026-09-08）**：完成基础数据层与查询闭环：新增 `Album` 与 `Song.album_id/track_no`，Song 唯一键迁移为 `(bvid,cid)`（含旧 SQLite bvid 唯一索引/约束重建与数据保留），`get_video_info()` 暴露全部 pages 元数据并使用分 P 时长；新增专辑列表/详情/曲目/物化/删除 API、Web 货架/曲目片段，以及无 `p=` 多分 P 导入时一次创建 Album 和全部 Song。专项测试 9 通过；完整 Python 回归 114 通过、2 跳过。收藏语义、导入懒物化与 series 合集仍待完成。
 - **二次推进（2026-09-08 同日，接手补完）**：
   1. **DetachedInstance 修复**：playAlbum 首次导入报「Instance not bound to a Session」——commit 后在会话外访问过期 ORM 属性；改为会话内取标量、会话外统一 `library.get_song()` 重载；
@@ -260,12 +260,12 @@
 | B0 快赢批 | #8 #15 #19 #12 #13 #16 #7 + F0(cid) | ✅ 2026-09-08 完成（浏览器 + 模拟器验收） |
 | B1 壳与导航 | #1(back-stack) #2(方案A+B e2e) #17(路由收口) #9(品牌启动) | ✅ 2026-09-08 完成（真机抽查待做） |
 | B1.5 补充 | #18(浏览器登录兜底) #5(轮询) #21(歌词对比度) | ✅ 2026-09-08 完成 |
-| B2 原生播放 | #3/#4 第一段(前台服务+MediaStyle 通知) → 二段(Session/锁屏/蓝牙) → 三段(JS Bridge) | ⏳ 下一大项（分阶段 3~6 周） |
-| B3 内容 | #14 一期(paged 专辑) → 二期(series)；#10(歌词源) | ⏳ #14 一期建议紧接当前批次启动（F0 已就绪） |
+| B2 原生播放 | #3 一段+升级（前台服务 + MediaSession 媒体卡片）、#4 音频焦点 + 耳机拔出 已落地；二段（Media3 迁移/锁屏深测）待定 | ✅ 一段完成（真机抽查待做） |
+| B3 内容 | #14 一期(paged 专辑) ✅ → 二期(series) 待开工；#10 歌词源（网易云源 + 重试换源 + 来源角标）✅ | ✅ 一期完成 |
 | B4 桌面/视觉 | #20(Overlay 原生标题栏·已修) #22(关闭钮·已修) #21(已修) #6(性能·待真机profile) | ✅ 大部完成 |
-| B5 补充 | #11(下拉刷新) | ⏳ 独立小项 |
+| B5 补充 | #11(下拉刷新) | ✅ 2026-09-08 落地（真机手势待抽查） |
 
-> 已提交：`3eb2ad0..dc44bc1` 六笔（upic 头像 / F0 cid / 前端体验批 / Android 壳 / 桌面启动页 / 文档）。
+> 已提交：`3eb2ad0..dc44bc1` 六笔（upic 头像 / F0 cid / 前端体验批 / Android 壳 / 桌面启动页 / 文档）+ `5a26c67` 网易云源与专辑懒物化 + `45b06a6` Overlay 标题栏 + `8a4f02e` insets 单位换算与耳机拔出 + `36ffda5` next-steps 刷新（后四笔本地待推）。
 > #14 一期推进（用户开工 + 会话补完）：专辑数据层/导入/播放/歌词/详情 UI 模拟器全链路 ✅；会话内修复 DetachedInstance、albumRequest 端点对齐、MediaPlaybackService 包名错位。
 > 后续计划详见 `docs/next-steps.md`。
 
@@ -274,9 +274,9 @@
 - [x] #1 返回语义（Web 层 + Android 壳桥接，模拟器全过）｜ [x] #2 系统栏（方案 A+B 沉浸全落地）｜ [x] #17 路由 ｜ [x] #20 无边框（Overlay 原生方案定稿）
 - [x] #3 第一段（前台服务+MediaSession 媒体卡片）｜ [x] #4 音频焦点（Chromium 原生）+ 耳机拔出（真机抽查）｜ [x] #18 浏览器登录兜底（真机浏览器完整登录待抽查）
 - [x] #8 空格 ｜ [x] #15 按钮序 ｜ [x] #19 音量填充 ｜ [x] #12 省略（title 全文）｜ [x] #13 滚动 ｜ [x] #16 蓝框 ｜ [x] #7 建歌单
-- [x] #9 品牌启动（双端） ｜ [x] #5 轮询 ｜ [ ] #6 性能 ｜ [ ] #11 下拉刷新
-- [x] #14 专辑一期（主体；B 站取消收藏/懒物化/series 待做） ｜ [x] #10 歌词源·重试换源部分（网易云源待做）
+- [x] #9 品牌启动（双端） ｜ [x] #5 轮询 ｜ [ ] #6 性能 ｜ [x] #11 下拉刷新（真机手势待抽查）
+- [x] #14 专辑一期完成（series 二期待开工） ｜ [x] #10 歌词源（网易云源 + 重试换源 + 来源角标，实测命中「晴天」）
 - [x] #21 歌词对比度 ｜ [x] #22 关闭钮（hover 显现）
 - [x] F0 cid 流路由
 
-> 批次记录：**B0 快赢批 + #1 + #5 + #17 + #21 + #9(桌面) 已于 2026-09-08 完成编码，浏览器 + Android 15 模拟器（BM35 AVD）双端验收**（详见 acceptance-manual §9）；#2 为下一个 P0，实体真机抽查建议随 #2 一起做。
+> 批次记录：**B0 快赢批 + B1 壳与导航 + B1.5 + B2 一段/升级 + B3 一期 + B4 视觉 均已完成编码与模拟器/桌面验收**（详见 acceptance-manual §9）；剩余：实体真机抽查、#6 性能 profile、#14 series 二期、#3 深段（Media3）。

@@ -283,6 +283,6 @@
 | 09-08 | #4 耳机拔出 | Android 15 模拟器 | ✅ 代码/注册/通路 | BECOMING_NOISY 接收器注册 ✓（dumpsys）；evalInPage 通路 ✓（通知暂停键同构实测）；shell 广播卡 ordered 无法真实触发（模拟器限制）→ 真机拔耳机终验 |
 | 09-08 | #4 音频焦点 | 设计确认 | ✅ 方案确认 | 来电/他 App 抢占由 Chromium AudioFocusDelegate 原生处理（WebView 内建），不自管避免双重请求冲突；真机来电场景抽查 |
 
-**进度汇总**：通过 21 / 25 组（#1 #2 #3 第一段 #5 #7 #9 #10 #13 #14 一期 #15 #16 #17 #18 #20 #21 #22 均含模拟器/桌面实测）｜ 遗留：#3 深段（Media3 迁移/锁屏深测）· #4 显式验证 · #6 真机 profile · #14 series 二期 · #20 手感目检 · 真机抽查（手势导航/锁屏 30 分钟/逐 P 听音/收藏粒度）
+**进度汇总**：通过 21 / 25 组（#1 #2 #3 一段+升级 #5 #7 #9 #10 #13 #14 一期 #15 #16 #17 #18 #20 #21 #22 均含模拟器/桌面实测）｜ 遗留：#3 深段（Media3 迁移/锁屏深测）· #4 真机终验（来电/拔耳机）· #6 真机 profile · #14 series 二期 · #11 真机手势 · #20 手感目检 · 真机抽查（手势导航/锁屏 30 分钟/逐 P 听音/收藏粒度）
 
 > **模拟器验收环境（2026-09-08 搭建）**：Android Studio SDK + `emulator` 包 + `system-images;android-35;default;arm64-v8a`，AVD 名 `BM35`（Pixel 6，三键导航）。项目侧需：`android/local.properties`（sdk.dir）、Gradle wrapper 8.11.1、`brew install python@3.11`（Chaquopy buildPython，构建时 PATH 前置）、`PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。种子数据：`adb push` 曲库 DB/cookies/active_mid 到 `/data/local/tmp` 后 `run-as` 拷入 `files/data/`。WebView 调试：debug 构建已开 `setWebContentsDebuggingEnabled`，`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后可用 CDP（websocket 需 `suppress_origin=True`）。
