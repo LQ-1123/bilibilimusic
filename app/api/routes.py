@@ -20,7 +20,6 @@ from app.bili.client import (
     BILIBILI_REFERER,
     BiliClient,
     BiliApiError,
-    VideoRef,
     https_media_url,
 )
 from app.bili.quality import pick_best_audio, quality_label
@@ -113,7 +112,8 @@ def song_out(s: Song) -> dict:
         "duration": s.duration,
         "qualityId": s.quality_id,
         "qualityLabel": "在线" if not s.quality_id else quality_label(s.quality_id),
-        "audioUrl": f"/api/stream/{s.bvid}",  # 纯在线：实时流代理（支持 Range）
+        # 多分 P 视频按导入时存的 cid 路由（p>1 的歌曲不再播成第一分 P）
+        "audioUrl": f"/api/stream/{s.bvid}" + (f"?cid={s.cid}" if s.cid else ""),
         "coverUrl": https_media_url(cover) if cover.startswith("http") else f"/api/songs/{s.id}/cover" + _media_token_suffix(),
         "coverColor": s.cover_color or _fallback_color(s.bvid),
         "aid": s.aid,
@@ -481,20 +481,39 @@ def recs_dismiss(bvid: str) -> dict:
 
 # ---- 实时流代理（推荐试听：解析直链后边下边转发，不落盘） ----
 
+def _pick_stream_cid(cids: list[int], cid: int | None) -> int:
+    """流路由分 P 选择：默认第一分 P；显式 cid 必须属于该视频（防串 P），否则 400。"""
+    picked = cids[0]
+    if cid is not None and cid > 0:
+        if cid not in cids:
+            raise HTTPException(status_code=400, detail="cid 与该视频不匹配")
+        picked = cid
+    return picked
+
+
 @router.get("/stream/{bvid}")
 async def stream_bvid(
-    bvid: str, request: Request, range_header: str | None = Header(default=None, alias="Range")
+    bvid: str,
+    request: Request,
+    cid: int | None = None,
+    range_header: str | None = Header(default=None, alias="Range"),
 ):
     """推荐歌曲实时播放：现解析 playurl → 代理 CDN 音频流（支持 Range/206）。
 
     直链域名经 url_guard 白名单校验，仅放行 B 站 CDN；不写磁盘。
+    cid：可选分 P 指定（曲库多分 P 歌曲按导入时存的 Song.cid 路由，避免播成 P1）；
+    必须属于该视频，否则 400 而不是静默播错。
     """
     if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
         raise HTTPException(status_code=400, detail="bvid 格式错误")
     bili: BiliClient = request.state.bili
     try:
-        info = await bili.get_video_info(VideoRef(bvid=bvid))
-        streams = await bili.get_audio_streams(info.bvid, info.cid)
+        cids = await bili.video_page_cids(bvid)
+    except BiliApiError as exc:
+        raise HTTPException(status_code=502, detail=exc.message)
+    picked = _pick_stream_cid(cids, cid)
+    try:
+        streams = await bili.get_audio_streams(bvid, picked)
     except BiliApiError as exc:
         raise HTTPException(status_code=502, detail=exc.message)
     best = pick_best_audio(streams)

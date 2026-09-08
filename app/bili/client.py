@@ -288,6 +288,14 @@ class BiliClient:
             part_title=str(pages[idx].get("part", "") or "").strip(),
         )
 
+    async def video_page_cids(self, bvid: str) -> list[int]:
+        """视频全部分 P 的 cid 列表（与 get_video_info 同一 wbi view 数据）；无分 P 抛 BiliApiError。"""
+        data = await self._get_json_signed("/x/web-interface/wbi/view", {"bvid": bvid})
+        pages = data.get("pages") or []
+        if not pages:
+            raise BiliApiError(-400, "视频没有可用的分 P")
+        return [int(p["cid"]) for p in pages]
+
     async def get_video_owner(self, bvid: str) -> dict:
         """视频 UP 主信息 {mid, name, face}（wbi view 同族；点 UP 名进作品页用）。"""
         data = await self._get_json_signed("/x/web-interface/wbi/view", {"bvid": bvid})
