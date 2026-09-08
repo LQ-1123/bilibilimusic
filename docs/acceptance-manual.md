@@ -252,7 +252,7 @@
 | 09-08 | #5 | mac / 内置浏览器 | ⚠️ 部分 | 声明式 every 2s 已移除、前台 2s JS 轮询正常；「后台零请求」环境无法模拟 document.hidden（IAB 注入不可覆写 hidden），待真机/桌面浏览器切窗确认 |
 | 09-08 | #7 | mac / 内置浏览器 | ⚠️ 部分 | ＋ 弹应用内弹窗、取消静默、无原生 prompt；401/网络错误路径已编码；Android 壳内全链路 + onJsPrompt 需构建后真机回归 |
 | 09-08 | #9（桌面） | desktop/ui | ⚠️ 部分 | 深色 logo 启动页已就位（icon-512 压缩版）；待 `npm run dev` 冷启目检；Android 端未做 |
-| 09-08 | 回归 | pytest + node --test | ✅ | pytest 104 过 / 3 失败为 test_recs 分类断言**预存失败**（干净 main 同样挂，与本批无关）；node 17/17 过 |
+| 09-08 | 回归 | pytest + node --test | ✅ | pytest 120 过（test_recs 断言已对齐，预存失败修复）；node 21/21 过 |
 | 09-08 | #15 | Android 15 模拟器（BM35 AVD，三键导航） | ✅ | 播放条左→右=⏮⏸⏭（截图 docs/shots/bm-emulator-5.png）；修复前为反向 |
 | 09-08 | #17 | Android 15 模拟器 | ✅ | 详情（每日精选）→曲库 Tab 完全退出详情；主页推荐区/最近收藏/流派货架内容完整（CDP 实测 180/48/790 元素） |
 | 09-08 | #16 | Android 15 模拟器 | ✅ | tap-highlight=transparent、l-line user-select=none、点击后无选中态；seek 行为同一路径 |
@@ -275,11 +275,12 @@
 | 09-08 | #14 单曲移除/删专辑 | Android 15 模拟器 | ✅ | 曲目 ✕ = 仅本地移除不伤 B 站收藏；删专辑 = 取消 B 站收藏（尽力而为）+ 本地清理；重导入复测通过 |
 | 09-08 | #14 懒物化+标题清洗 | Android 15 模拟器 + 单测 | ✅ | >300P 懒物化契约（songs/hasMore/materializedPages）；`part_display_title` 序号噪声清洗 6 例单测；端点新契约实测回归通过 |
 | 09-08 | #10 | mac 直连网易云 API + 单测 | ✅ | 「晴天 周杰伦」→ ncm 带轴歌词（真实 API）；单测 3 例（命中/时长容差过滤/故障静默）；来源角标前端就绪 |
-| 09-08 | #3 第一段 | Android 15 模拟器（通知栏实测） | ✅ | 播放中出现媒体通知（标题/艺人/三键）；点播放/暂停 → WebView 实际暂停；上一首/下一首切歌生效；图标随暂停态切换 |
-| 09-08 | #14 单曲移除/删专辑 | Android 15 模拟器 | ✅ | 曲目 ✕ = 仅本地移除不伤 B 站收藏；删专辑 = 取消 B 站收藏（尽力而为）+ 本地清理；重导入复测通过 |
 | 09-08 | #9 | Android 15 模拟器 | ✅ | 启动帧截图：深色底 #0b0b10 + 居中圆角图标（不再显示文字）；失败路径保留细字状态行；WebView 就绪 200ms 淡入 |
 | 09-08 | #2（方案 A） | Android 15 模拟器 | ✅ | 深色主题落地：状态栏/导航栏与界面同色系（截图确认无白矩形、时间电量可读）；浅色主题图标明暗与 edge-to-edge 沉浸留方案 B |
+| 09-08 | #20 无边框（自绘→弃） | 桌面构建 + 截图 | ⚠️ 迭代 | 自绘三键方案可用但为网页模拟；capabilities remote 授权（http origin 注入 __TAURI__）验证通过——该结论保留 |
+| 09-08 | #20 圆角窗口（透明→弃） | mac 桌面 + 用户实测 | ❌ | 用户截图否决：WKWebView 透明区域渲染黑色（右侧黑边）、侧栏玻璃 blur 变黑块（左侧方角）——透明窗固有缺陷，方案回退 |
+| 09-08 | #20 Overlay 定稿 | mac 桌面构建 + 截图目检 | ✅ | TitleBarStyle::Overlay：系统原生圆角窗框 + 真·红绿灯（系统绘制）；侧栏顶部让位 40px 可拖动；顶栏拖拽/双击最大化；三键手感待用户确认 |
 
-**进度汇总**：通过 18 / 25 组（#1 #2 #5 #7 #9 #13 #15 #16 #17 #18 #21 均含 Android 15 模拟器实测）｜ 遗留未动：#3/#4 #6 #10 #11 #14 #20 #22；#12 等截图指认；#9 桌面冷启目检；实体真机抽查（手势导航/锁屏长时后台/性能手感）
+**进度汇总**：通过 21 / 25 组（#1 #2 #3 第一段 #5 #7 #9 #10 #13 #14 一期 #15 #16 #17 #18 #20 #21 #22 均含模拟器/桌面实测）｜ 遗留：#3 深段（Media3 迁移/锁屏深测）· #4 显式验证 · #6 真机 profile · #14 series 二期 · #20 手感目检 · 真机抽查（手势导航/锁屏 30 分钟/逐 P 听音/收藏粒度）
 
 > **模拟器验收环境（2026-09-08 搭建）**：Android Studio SDK + `emulator` 包 + `system-images;android-35;default;arm64-v8a`，AVD 名 `BM35`（Pixel 6，三键导航）。项目侧需：`android/local.properties`（sdk.dir）、Gradle wrapper 8.11.1、`brew install python@3.11`（Chaquopy buildPython，构建时 PATH 前置）、`PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。种子数据：`adb push` 曲库 DB/cookies/active_mid 到 `/data/local/tmp` 后 `run-as` 拷入 `files/data/`。WebView 调试：debug 构建已开 `setWebContentsDebuggingEnabled`，`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后可用 CDP（websocket 需 `suppress_origin=True`）。

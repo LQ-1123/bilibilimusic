@@ -3,35 +3,27 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
 
-  // Tauri 桌面端的自绘窗口控制；浏览器/Android 没有桥时保持隐藏。
+  // Tauri 桌面端（#20）：Overlay 标题栏——红绿灯由系统画；顶栏/侧栏顶部空白可拖动、双击最大化。
   (function () {
-    var controls = document.querySelector(".window-controls");
     var api = window.__TAURI__ && window.__TAURI__.window;
-    if (!controls || !api || !api.getCurrentWindow) return;
-    controls.classList.add("available");
+    if (api && api.getCurrentWindow) {
+      document.documentElement.classList.add("tauri");
+    }
+    if (!api || !api.getCurrentWindow) return;
     var win = api.getCurrentWindow();
-    controls.addEventListener("click", function (event) {
-      var button = event.target.closest("[data-window-action]");
-      if (!button) return;
-      var action = button.dataset.windowAction;
-      var call = action === "minimize" ? win.minimize() : action === "maximize" ? win.toggleMaximize() : win.close();
-      if (call && call.catch) call.catch(function () {});
-    });
-    controls.addEventListener("pointerdown", function (event) {
-      if (event.target.closest("button")) return;
-      if (win.startDragging) win.startDragging().catch(function () {});
-    });
-    var topbar = document.getElementById("topbar");
-    if (topbar) {
-      topbar.addEventListener("pointerdown", function (event) {
-        if (event.target.closest("input,button")) return;
+    function draggable(el) {
+      if (!el) return;
+      el.addEventListener("pointerdown", function (event) {
+        if (event.target.closest("input,button,a")) return;
         if (win.startDragging) win.startDragging().catch(function () {});
       });
-      topbar.addEventListener("dblclick", function (event) {
-        if (event.target.closest("input,button")) return;
+      el.addEventListener("dblclick", function (event) {
+        if (event.target.closest("input,button,a")) return;
         win.toggleMaximize().catch(function () {});
       });
     }
+    draggable(document.getElementById("topbar"));
+    draggable(document.querySelector(".sidebar .side-nav")); // 侧栏顶部（红绿灯下方）
   }());
 
   // ---------- 主题（深/浅切换：顶栏圆钮 / 侧栏设置弹层 / 手机账号 Tab 三处入口共享） ----------

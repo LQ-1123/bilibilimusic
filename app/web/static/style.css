@@ -70,10 +70,10 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .tb-cir{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--stroke);
   display:grid;place-items:center;color:var(--txt2);transition:.2s;flex:none;font-size:15px}
 .tb-cir:hover{color:var(--txt);background:var(--card2)}
-.window-controls{display:none;gap:5px;align-items:center;position:absolute;right:12px;top:calc(16px + var(--inset-top, 0px))}
-.window-controls.available{display:flex}
-.window-controls .tb-cir{width:28px;height:28px;font-size:14px}
-.window-controls .window-close:hover{background:#e5484d;color:#fff}
+.tb-cir{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--stroke);
+  display:grid;place-items:center;color:var(--txt2);transition:.2s;flex:none;font-size:15px}
+.tb-cir:hover{color:var(--txt);background:var(--card2)}
+
 .tb-search{flex:0 1 480px;height:42px;border-radius:999px;border:1px solid var(--stroke);
   display:flex;align-items:center;gap:10px;padding:0 17px;color:var(--txt3);transition:.22s;min-width:0}
 .tb-search:focus-within{border-color:var(--pink);outline:3px solid var(--pink-tint);outline-offset:2px}
@@ -1041,6 +1041,12 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 
 /* Albums reuse the library poster and detail surfaces. */
 .album-card .en{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 桌面 Tauri 壳（#20）：macOS Overlay 标题栏——系统原生圆角窗框 + 真·红绿灯；
+   侧栏顶部让位标题栏（红绿灯区约 28px），侧栏上部空白处可拖动窗口 */
+html.tauri .sidebar{padding-top:40px}
+html.tauri .sidebar::before{content:"";position:absolute;top:0;left:0;right:0;height:40px;
+  -webkit-app-region:drag;app-region:drag}
 .dt-cvr.album-cover{overflow:hidden}
 .dt-cvr.album-cover>img{width:100%;height:100%;object-fit:cover}
 .album-more{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:24px 0}

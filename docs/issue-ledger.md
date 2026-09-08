@@ -62,18 +62,14 @@
 - **补充（2026-09-08 用户实测）**：手机端 Tab 的旧 CSS 映射（`body[data-mtab="home"]` 隐藏推荐歌单/最近收藏）导致「主页→曲库→主页后推荐歌单消失」，与验收标准「主页完整显示、与首次进入一致」矛盾——已删除该隐藏规则（style v150），现在主页始终完整，曲库 Tab 仅隐藏发现区（hero/流派货架）。
 - **验证**：浏览器（手机视口）全过：详情→曲库正确退出详情、主页推荐区/最近收藏/流派货架完整；真机路径 主页→推荐歌单→曲库→主页→推荐歌单 待截图对比。
 
-### #20 macOS 顶部白色系统标题栏 ｜ `[修中·代码就位待构建验证]` ｜ P1
-- **本轮落地（2026-09-08）**：Tauri 窗口关闭原生 decorations，启用 `main` capability 与 global Tauri API；Web 顶栏增加桌面端最小化/最大化/关闭和拖拽/双击最大化。已补齐资源目录占位，`cargo check` 通过；真正运行仍需先用 `packaging/build-backend.py` 生成 PyInstaller backend。
-- **现象**：桌面端顶部一条白系统标题栏 + 原生红黄绿；要求去除，窗口按钮直接在应用内渲染。
-- **根因**：`desktop/src-tauri/src/main.rs` 的 `WebviewWindowBuilder` 未设 `decorations(false)`；`tauri.conf.json` 无 capabilities 文件（`"capabilities": []` → IPC 全关）。
-- **修法**：方案 A（推荐，自绘）：
-  1. Rust：`.decorations(false)`（可加 `.title_bar_style(TitleBarStyle::Overlay)` 过渡保留交通灯测试期）；
-  2. 新增 `desktop/src-tauri/capabilities/main.json`：window 标识 `main`，permissions 含 `core:default` + `core:window:allow-minimize / allow-toggle-maximize / allow-close / allow-start-dragging`；**remote urls**（`http://127.0.0.1:*`，端口通配）——需 spike 验证动态端口 http 页面的 IPC 注入（`withGlobalTauri: true`）；
-  3. 前端自绘三键（与深浅主题联动的玻璃圆钮；macOS 惯例放左上）+ 顶栏拖拽区 `data-tauri-drag-region`；按钮调 `window.__TAURI__.window.getCurrentWindow().minimize()/toggleMaximize()/close()`；
-  4. 若 IPC 被 http origin 限制卡死 → 方案 B：`titleBarStyle: Overlay`（白条消失、保留系统交通灯浮层，零 IPC）。
-- **推进/补完（2026-09-08）**：main.rs 已 `decorations(false)`；capabilities/main.json 就位并补 `"remote": {"urls": ["http://127.0.0.1:*", "http://localhost:*"]}`——页面最终落在后端 http origin，无 remote 授权时 `__TAURI__` 不注入、三键失效（即台账预警的 spike 点）；base.html 顶栏自绘三键 + pointerdown 拖拽/双击最大化（v3.js，仅 `__TAURI__` 存在时显示）。
-- **验证（2026-09-08）**：cargo check ✅；debug 构建后 smoke 通过 ✅（BM_DESKTOP_SMOKE 标记 `native-webview-ready`：后端启动 + Webview 加载应用页全链路通）；桌面三键/拖拽/双击最大化留屏幕目检。
-- **构建注意**：后端二进制用 `python packaging/build-backend.py`（PyInstaller）生成到 `desktop/backend/bilimusic-backend/`（该目录已占位但二进制不入库，debug 构建直接引用它）。
+### #20 macOS 顶部白色系统标题栏 ｜ `[已修·Overlay 原生方案]` ｜ P1
+- **现象**：桌面端顶部一条白系统标题栏 + 原生红黄绿；用户最终要求：仿苹果原生（圆角窗口 + 左上角红绿灯）。
+- **迭代过程（2026-09-08，三版收敛）**：
+  1. **自绘方案**：`decorations(false)` + capabilities（`core:default` + minimize/toggleMaximize/close/start-dragging + **remote urls `http://127.0.0.1:*`**——页面落在后端 http origin，无 remote 授权 `__TAURI__` 不注入，即原预警 spike 点，已验证可行）+ 顶栏/侧栏自绘三键与拖拽。可用但按钮是网页模拟的。
+  2. **透明圆角方案（弃用）**：`transparent(true)` + Cargo `macos-private-api` 特性 + conf `app.macOSPrivateApi: true` + `html.tauri .app` 12px CSS 圆角。**用户实测否决**：WKWebView 透明区域渲染成黑色（右侧黑边）、侧栏玻璃 backdrop-filter 在透明窗上成黑块（左侧方角）——WKWebView 透明窗口的固有缺陷。
+  3. **Overlay 原生方案（定稿 ✅）**：`title_bar_style(TitleBarStyle::Overlay)` 替代 decorations+transparent——**窗口圆角与红绿灯全部由 macOS 系统绘制**（原生圆角/投影/真·交通灯），内容延伸到标题栏下；侧栏顶部让位 40px（CSS `html.tauri .sidebar`）且该区可拖动；顶栏空白拖动/双击最大化（v3.js v59）；自绘三键与 macos-private-api 全部移除（构建更干净）。
+- **验证**：cargo build ✅；截图确认系统级红黄绿三钮在左上、原生窗框圆角；拖拽/双击/三键手感待用户确认。
+- **构建注意**：后端二进制用 `python packaging/build-backend.py`（PyInstaller）生成到 `desktop/backend/bilimusic-backend/`（不入库，debug 构建直接引用）。**改动 Web 模板/静态资源后必须重跑该脚本再启动桌面端**，否则 bundle 里是旧资源（本日多次踩到）。
 
 ---
 
@@ -262,7 +258,7 @@
 | B1.5 补充 | #18(浏览器登录兜底) #5(轮询) #21(歌词对比度) | ✅ 2026-09-08 完成 |
 | B2 原生播放 | #3/#4 第一段(前台服务+MediaStyle 通知) → 二段(Session/锁屏/蓝牙) → 三段(JS Bridge) | ⏳ 下一大项（分阶段 3~6 周） |
 | B3 内容 | #14 一期(paged 专辑) → 二期(series)；#10(歌词源) | ⏳ #14 一期建议紧接当前批次启动（F0 已就绪） |
-| B4 桌面/视觉 | #20(无边框·先spike) #22(关闭钮·已修) #6(性能·待真机profile) | ⏳ 穿插 |
+| B4 桌面/视觉 | #20(Overlay 原生标题栏·已修) #22(关闭钮·已修) #21(已修) #6(性能·待真机profile) | ✅ 大部完成 |
 | B5 补充 | #11(下拉刷新) | ⏳ 独立小项 |
 
 > 已提交：`3eb2ad0..dc44bc1` 六笔（upic 头像 / F0 cid / 前端体验批 / Android 壳 / 桌面启动页 / 文档）。
@@ -271,7 +267,7 @@
 
 ## H. 修复进度勾选
 
-- [x] #1 返回语义（Web 层 + Android 壳桥接，模拟器全过）｜ [x] #2 系统栏（方案 A+B 沉浸全落地）｜ [x] #17 路由 ｜ [ ] #20 无边框（代码就位待构建验证）
+- [x] #1 返回语义（Web 层 + Android 壳桥接，模拟器全过）｜ [x] #2 系统栏（方案 A+B 沉浸全落地）｜ [x] #17 路由 ｜ [x] #20 无边框（Overlay 原生方案定稿）
 - [x] #3 第一段（前台服务+通知；Session/锁屏/蓝牙待做）｜ [ ] #4 全量音频焦点 ｜ [x] #18 浏览器登录兜底（真机浏览器完整登录待抽查）
 - [x] #8 空格 ｜ [x] #15 按钮序 ｜ [x] #19 音量填充 ｜ [x] #12 省略（title 全文）｜ [x] #13 滚动 ｜ [x] #16 蓝框 ｜ [x] #7 建歌单
 - [x] #9 品牌启动（双端） ｜ [x] #5 轮询 ｜ [ ] #6 性能 ｜ [ ] #11 下拉刷新

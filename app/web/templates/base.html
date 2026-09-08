@@ -12,12 +12,12 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=153">
+  <link rel="stylesheet" href="/static/style.css?v=156">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/app.js?v=60" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=58" defer></script>
+  <script src="/static/v3.js?v=59" defer></script>
   <script src="/static/back-stack.js?v=3" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
@@ -59,11 +59,6 @@
         <svg class="t-moon"><use href="#i-moon"/></svg>
         <svg class="t-sun"><use href="#i-sun"/></svg>
       </button>
-      <div class="window-controls" aria-label="窗口控制">
-        <button type="button" class="tb-cir" data-window-action="minimize" title="最小化">−</button>
-        <button type="button" class="tb-cir" data-window-action="maximize" title="最大化">□</button>
-        <button type="button" class="tb-cir window-close" data-window-action="close" title="关闭">×</button>
-      </div>
     </div>
 
     <!-- 功能触发器（按用户要求不从 UI 显示）：手机端账号 Tab 的同步/导出行为依赖这些 ID -->
@@ -76,7 +71,7 @@
   </main>
 
   <aside class="sidebar">
-    <!-- 主导航：跳转目标待定（用户将逐个指定），暂不接任何点击行为 -->
+    <!-- 主导航（Tauri 壳用 macOS Overlay 标题栏：系统画原生红绿灯，CSS 侧栏顶部让位） -->
     <nav class="side-nav" aria-label="主导航">
       <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
       <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg><use href="#i-compass"/></svg>推荐</button>
