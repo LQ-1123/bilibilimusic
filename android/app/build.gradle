@@ -3,6 +3,7 @@ plugins { id 'com.android.application'; id 'com.chaquo.python' }
 android {
     namespace 'io.github.lq1123.bilimusic'
     compileSdk 35
+    buildFeatures { buildConfig true }
     defaultConfig {
         applicationId 'io.github.lq1123.bilimusic'
         minSdk 26

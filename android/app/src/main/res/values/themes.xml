@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 深色品牌主题（#2 / #9）：windowBackground 与应用底色一致；系统栏透明（#2 方案 B 边到边，
+     图标明暗由 Theme.BiliMusic 原生桥随应用主题切换） -->
+<resources>
+    <color name="bm_bg">#0b0b10</color>
+    <style name="Theme.BiliMusic" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bm_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
