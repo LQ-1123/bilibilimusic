@@ -1,7 +1,7 @@
 # BiliMusic 下一步计划（Next Steps）
 
 > 维护日期：2026-09-08 晚 ｜ 配套：`docs/issue-ledger.md`（问题台账）、`docs/acceptance-manual.md`（验收手册）
-> 当前基线：**台账 25 组验收，代码侧全部完成**（模拟器 + 桌面 + 浏览器实测）；本地 4 笔提交待推送（GitHub 网络恢复后 `git push`）。
+> 当前基线：**台账 25 组验收，代码侧全部完成**；**v0.3.0 已发布**（CI run `34243426193` 五 job 全绿），`main` 与 tag `v0.3.0` 均已同步远端。
 
 ---
 
@@ -53,17 +53,20 @@
 | #6 性能定点 | 封面缩略、backdrop-filter 审计 | 真机 profile 出热点后 |
 | 通知点击深链 | contentIntent 目前只回 Activity，可带"展开歌词页" | 产品需要 |
 
-## 4. 发版建议（功能已齐，值得切版本）
+## 4. 发版 v0.3.0 ✅ 已发布（2026-09-08）
 
-真机抽查完成后建议发 **v0.3.0**（变更量大，值得 minor 版）：
-1. `android/app/build.gradle`：versionCode 3→4、versionName 0.1.2→0.3.0
-2. `desktop/src-tauri/tauri.conf.json` 与 `desktop/package.json`：0.2.1→0.3.0
-3. 跑 `packaging/` 打包脚本出双端产物（smoke 脚本已具备）
-4. release notes 汇总台账 ✅ 项（用户可见口径）
+CI run `34243426193` 全绿（mac arm64 / mac x64 / win x64 / android / publish），产物：`BiliMusic-0.3.0-mac-arm64.dmg`、`-mac-x64.dmg`、`-win-x64.exe`、`-android.apk` + `SHA256SUMS.txt`。
+发布页：https://github.com/LQ-1123/bilibilimusic/releases/tag/v0.3.0
+
+- 版本号：Android `versionCode 4 / versionName 0.3.0`；桌面 `tauri.conf.json` + `package.json` + `Cargo.toml`（含 `Cargo.lock` 同步，满足 CI `--locked`）。
+- CI 硬编码同步：默认 tag `v0.3.0`、APK 产物名 `BiliMusic-0.3.0-android.apk`。
+- release notes：双语重写（后台播放/专辑/歌词源/壳与导航四组）。
+- 发布中修复：Windows job 因 `title_bar_style`（macOS 专属 API）编译失败 → `#[cfg(target_os = "macos")]` 隔离（提交 `1f5ad6b`），tag 重发指向该提交。
+- 推送提示：本机 DNS 将 `github.com` 解析到不通的 `20.205.243.166`，可用 GitHub 可达 IP（如 `140.82.112.3`）经临时本地 CONNECT 代理完成推送。
 
 ## 5. 工程事项
 
-- [ ] **push 4 笔待推提交**（GitHub 网络恢复后）
+- [x] **push 提交与 tag**（2026-09-08：经临时 IP 代理推送成功，`main` + `v0.3.0` 已同步远端）
 - [ ] 真机抽查结果回填 acceptance-manual §9
 - [x] 台账 §H 与本文档同步收尾（2026-09-08：矛盾点已按代码事实校正）
 - [ ] 会话结束前按需关闭：模拟器 / 桌面 App / dev server
