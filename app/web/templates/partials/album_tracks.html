@@ -1,0 +1,26 @@
+{% if songs %}
+<div class="tracklist">
+  {% for s in songs %}
+  <div class="trk card" data-play="{{ s.id }}" data-bvid="{{ s.bvid }}" data-album="{{ s.album_id or album.id }}">
+    <span class="no">{{ s.track_no }}</span>
+    <span class="eqbox"><span class="eq"><i></i><i></i><i></i></span></span>
+    <span class="im"><img src="{{ s.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+    <div class="tt">
+      <div class="t1" title="{{ s.title }}">{{ s.title }}</div>
+      <div class="t2">{{ s.artist }}</div>
+    </div>
+    <span class="pl-pill">{{ s.pl_name or '我的曲库' }}</span>
+    <span class="q{{ '' if s.quality_label == '192K' else ' dim' }}">{{ s.quality_label }}</span>
+    <span class="du">{{ s.duration_text }}</span>
+    <span class="row-acts">
+      <button class="addto" type="button" data-add="{{ s.id }}" title="加入歌单">＋</button>
+      <button class="del" type="button" data-del="{{ s.id }}" aria-label="从专辑隐藏曲目（保留 B 站收藏）">✕</button>
+    </span>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">专辑暂无可播放曲目。隐藏的曲目不会重新加入播放队列。</div>
+{% endif %}
+
+{% if has_more %}<div class="album-more"><button class="btn-share" type="button" onclick="loadMoreAlbum(this)">加载更多曲目</button><span class="hint">按分 P 顺序继续加载</span></div>{% endif %}

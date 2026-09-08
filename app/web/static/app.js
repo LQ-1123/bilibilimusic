@@ -63,6 +63,9 @@
   // ---------- 播放器 ----------
   var playlist = []; // [{id,title,artist,qualityLabel,audioUrl,coverUrl,duration}]
   var current = -1;
+  var albumQueueId = null;
+  var queueGeneration = 0;
+  var refreshGeneration = 0;
   var currentQuery = ""; // 播放队列跟随当前搜索筛选
 
   // 播放顺序 = 自动决策链：按过渡得分把队列贪心排序（智能过渡关闭时 = 原顺序）
@@ -96,7 +99,7 @@
 
   // 队列展示顺序 = 自动决策链（智能过渡关闭时 = 原顺序）
   function queueDisplay() {
-    if (!smartEnabled() || !chainOrder.length) return playlist.slice();
+    if (albumQueueId !== null || !smartEnabled() || !chainOrder.length) return playlist.slice();
     var byId = {};
     playlist.forEach(function (s) { byId[s.id] = s; });
     var out = [];
@@ -111,7 +114,7 @@
   // 直到排完整条队列。分析未就绪的歌按原顺序排在已分析歌之后，分析到位后自动重排。
   function planChain() {
     if (!playlist.length) { chainOrder = []; renderQueue(); return; }
-    if (!smartEnabled()) {
+    if (albumQueueId !== null || !smartEnabled()) {
       chainOrder = playlist.map(function (s) { return s.id; });
       renderQueue();
       return;
@@ -158,7 +161,7 @@
 
   // 播放模式：order 顺序（到队尾停）/ loop 列表循环 / random 随机（歌词页模式钮切换）
   function playMode() {
-    return localStorage.getItem("bmPlayMode") || "order";
+    return albumQueueId !== null ? "order" : (localStorage.getItem("bmPlayMode") || "order");
   }
 
   // 链上的上/下一首；order 模式到队尾/队首即止，loop 环绕
@@ -244,20 +247,55 @@
       .then(function (d) { return d.songs || []; });
   }
 
-  function refreshPlaylist() {
-    return fetchSongs(currentQuery).then(function (songs) {
-      var playingId = current >= 0 && playlist[current] ? playlist[current].id : null;
+  function orderedAlbumSongs(data) {
+    return (data.songs || []).slice().sort(function (a, b) { return a.trackNo - b.trackNo; });
+  }
+
+  async function albumRequest(id, materialize) {
+    var response = await fetch("/api/albums/" + encodeURIComponent(id) + (materialize ? "/materialize" : "/songs"),
+      { method: materialize ? "POST" : "GET", cache: "no-store" });
+    if (!response.ok) { var error = new Error("专辑加载失败，请重试"); error.status = response.status; throw error; }
+    return response.json();
+  }
+
+  async function playAlbum(id, startSongId) {
+    var generation = ++queueGeneration;
+    try {
+      var data = await albumRequest(id, false);
+      while (data.hasMore) {
+        if (generation !== queueGeneration) return;
+        var previous = data.materializedPages;
+        data = await albumRequest(id, true);
+        if (data.hasMore && data.materializedPages === previous) throw new Error("专辑曲目加载未完成，请重试");
+      }
+      if (generation !== queueGeneration) return;
+      var songs = orderedAlbumSongs(data);
+      var selected = startSongId == null ? songs[0] : songs.find(function (song) { return String(song.id) === String(startSongId); });
+      if (!selected) throw new Error("这首曲目已移除，或专辑暂无可播放曲目");
+      albumQueueId = String(id);
       playlist = songs;
       current = -1;
-      if (playingId !== null) {
-        for (var i = 0; i < playlist.length; i++) {
-          if (playlist[i].id === playingId) { current = i; break; }
-        }
-      }
-      planChain();
-      // 首次加载：恢复上次会话（不自动出声，一键 ▶ 续播）
-      if (!sessionRestored) { sessionRestored = true; restoreSession(); planChain(); }
-    });
+      playSong(selected);
+    } catch (error) {
+      if (generation === queueGeneration && window.__toast) window.__toast(error.message);
+    }
+  }
+
+  async function refreshPlaylist() {
+    var generation = queueGeneration, request = ++refreshGeneration, albumId = albumQueueId;
+    var songs;
+    try { songs = albumId === null ? await fetchSongs(currentQuery) : orderedAlbumSongs(await albumRequest(albumId, false)); }
+    catch (error) {
+      if (error.status !== 404) return;
+      songs = [];
+    }
+    if (generation !== queueGeneration || request !== refreshGeneration || albumId !== albumQueueId) return;
+    var playingId = current >= 0 && playlist[current] ? playlist[current].id : null;
+    playlist = songs;
+    current = playlist.findIndex(function (song) { return song.id === playingId; });
+    if (albumId !== null && playingId !== null && current < 0) { audio.pause(); cancelTransition(); naturalPlan = null; }
+    planChain();
+    if (!sessionRestored) { sessionRestored = true; restoreSession(); planChain(); }
   }
 
   function playSong(song) {
@@ -270,6 +308,7 @@
     setGain(audioB, audioB === audio ? 1 : 0);
     audio.src = song.audioUrl;
     audio.play().catch(function () {});
+    try { if (window.BiliMusicNative && BiliMusicNative.playbackStarted) BiliMusicNative.playbackStarted(song.title, song.artist); } catch (e) {}
     updateNowPlaying(song);
     pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
     if (smartEnabled()) prefetchAnalyses();
@@ -343,7 +382,7 @@
     }
     var ni = chainNextIndex(delta);
     if (ni < 0) {
-      if (delta === 1) { try { audio.pause(); } catch (e) {} } // 顺序模式到队尾：停
+      if (delta === 1) { if (window.BiliMusicNative && BiliMusicNative.playbackStopped) BiliMusicNative.playbackStopped(); try { audio.pause(); } catch (e) {} } // 顺序模式到队尾：停
       return;
     }
     var nextSong = playlist[ni];
@@ -377,10 +416,17 @@
     }
     var playEl = e.target.closest("[data-play]");
     if (playEl) {
-      var ready = playlist.length ? Promise.resolve() : refreshPlaylist();
+      if (playEl.dataset.album) { playAlbum(playEl.dataset.album, playEl.dataset.play); return; }
+      var wasAlbum = albumQueueId !== null;
+      albumQueueId = null; ++queueGeneration;
+      var ready = playlist.length && !wasAlbum ? Promise.resolve() : refreshPlaylist();
       ready.then(function () {
         for (var i = 0; i < playlist.length; i++) {
-          if (String(playlist[i].id) === playEl.dataset.play) { playSongSmart(playlist[i]); return; }
+          if (String(playlist[i].id) === playEl.dataset.play) {
+            if (playlist[i].albumId) playAlbum(playlist[i].albumId, playlist[i].id);
+            else playSongSmart(playlist[i]);
+            return;
+          }
         }
       });
     }
@@ -404,7 +450,6 @@
     button.title = paused ? "播放" : "暂停";
     button.setAttribute("aria-label", button.title);
   }
-
   function onPlayPauseUI(e) {
     if (e.target !== audio) return;
     setPlayerToggle(audio.paused);
@@ -412,14 +457,14 @@
   }
   function onEnded(e) {
     if (e.target !== audio) return;
-    if (repeatOne) {
+    if (repeatOne && albumQueueId === null) {
       audio.currentTime = 0;
       audio.play().catch(function () {});
       return;
     }
     var i = chainNextIndex(1);
     if (i >= 0) playSong(playlist[i]);
-    else audio.pause();
+    else { if (window.BiliMusicNative && BiliMusicNative.playbackStopped) BiliMusicNative.playbackStopped(); audio.pause(); }
   }
   function onTimeUpdate(e) {
     if (e.target !== audio) return;
@@ -708,16 +753,27 @@
 
   function loadLyrics(meta) {
     // meta: {key, title, artist, cover, fetchUrl, fetchInit} — key 区分库内歌 / 试听歌
+    currentLyricsMeta = meta;
     lyricSongId = meta.key;
     lyricLines = []; lyricTimed = false; lyricIdx = -1;
     setLyricsText(meta.title, meta.artist);
+    var sourceEl = $("lyrics-source");
+    if (sourceEl) { sourceEl.hidden = true; sourceEl.textContent = ""; }
     setLyricsCover(meta.cover);
     $("lyrics-scroll").innerHTML = '<div class="l-empty">歌词加载中…</div>';
     fetch(meta.fetchUrl, meta.fetchInit)
-      .then(function (r) { return r.ok ? r.json() : { lyrics: null }; })
+      .then(function (r) {
+        if (!r.ok) throw new Error("lyrics-request-failed");
+        return r.json();
+      })
       .then(function (d) {
         if (lyricSongId !== meta.key) return; // 请求期间已切歌
         var parsed = parseLrc(d.lyrics);
+        if (sourceEl && d.source) {
+          var sourceNames = { cc: "B站字幕", ai: "B站AI字幕", lrclib: "LRCLIB", ncm: "网易云" };
+          sourceEl.textContent = "来源 · " + (sourceNames[d.source] || d.source);
+          sourceEl.hidden = false;
+        }
         lyricLines = parsed.lines;
         lyricTimed = parsed.timed;
         lyricIdx = -1;
@@ -727,9 +783,19 @@
       })
       .catch(function () {
         if (lyricSongId !== meta.key) return;
-        $("lyrics-scroll").innerHTML = '<div class="l-empty">暂无歌词</div>';
+        var action = String(meta.key).indexOf("lib:") === 0
+          ? ' <button type="button" class="ly-retry-inline">重试</button>' : "";
+        $("lyrics-scroll").innerHTML = '<div class="l-empty l-error">歌词加载失败' + action + '</div>';
+        var retry = $("lyrics-scroll").querySelector(".ly-retry-inline");
+        if (retry) retry.addEventListener("click", retryLyrics);
       });
   }
+  function retryLyrics() {
+    if (!lyricSongId || String(lyricSongId).indexOf("lib:") !== 0) return;
+    var id = String(lyricSongId).slice(4);
+    loadLyrics(Object.assign({}, currentLyricsMeta || {}, { key: lyricSongId, fetchUrl: "/api/songs/" + id + "/lyrics?force=1" }));
+  }
+  var currentLyricsMeta = null;
 
   // 跟随播放进度滚动高亮：线性指针小步推进，拖进度条大跳时重扫
   function updateLyricHighlight(now, force) {
@@ -811,6 +877,7 @@
     }
   };
   $("btn-lyrics").addEventListener("click", window.toggleLyrics);
+  $("ly-retry").addEventListener("click", retryLyrics);
   $("btn-lyrics-close").addEventListener("click", function () {
     if (window.__hidePanel) __hidePanel($("lyrics-panel"));
     else $("lyrics-panel").classList.add("hidden");
@@ -1078,7 +1145,13 @@
   // 登出处理见 export.js（账号相关杂项）
   // ---------- 供外部调用的播放器 API ----------
   window.BiliPlayer = {
+    playAlbum: playAlbum,
     playById: function (id) {
+      if (albumQueueId !== null) {
+        albumQueueId = null; ++queueGeneration;
+        return refreshPlaylist().then(function () { window.BiliPlayer.playById(id); });
+      }
+      ++queueGeneration;
       // data-play 传来的是字符串、数组里是数字：必须字符串化后再比（严格 === 会全部失配）
       var want = String(id);
       function lookup() {
@@ -1088,10 +1161,14 @@
         return null;
       }
       var song = lookup();
-      if (song) { playSongSmart(song); return; }
+      if (song) {
+        if (song.albumId) return playAlbum(song.albumId, song.id);
+        playSongSmart(song); return;
+      }
       // 曲目数组是异步装载的（页面刚开就点播放的竞态）：拉一次全量再重试，不再静默吞掉
       refreshPlaylist().then(function () {
         var again = lookup();
+        if (again && again.albumId) return playAlbum(again.albumId, again.id);
         if (again) playSongSmart(again);
       });
     },
@@ -1272,6 +1349,7 @@
 
   // 通用实时流试听：接管播放胶囊（meta: {title, artist, cover}）
   window.playStream = function (bvid, meta, btn) {
+    ++queueGeneration; // A new trial selection cancels any pending album preparation.
     if (recAudio && recAudio.dataset.bvid === bvid) {
       if (recAudio.paused || recAudio.ended) {
         recActive = true;

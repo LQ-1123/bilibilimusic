@@ -6,7 +6,8 @@
   "build": { "frontendDist": "../ui" },
   "app": {
     "windows": [],
-    "security": { "capabilities": [], "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'" }
+    "withGlobalTauri": true,
+    "security": { "capabilities": ["main"], "csp": "default-src 'self' http://127.0.0.1:*; connect-src 'self' http://127.0.0.1:*; img-src 'self' data: https: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'" }
   },
   "bundle": {
     "active": true,

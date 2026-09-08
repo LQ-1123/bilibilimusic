@@ -87,6 +87,14 @@ class VideoInfo:
     cover_url: str
     page: int
     part_title: str = ""
+    pages: list["VideoPage"] = field(default_factory=list)
+
+
+@dataclass
+class VideoPage:
+    cid: int
+    part: str
+    duration: int
 
 
 @dataclass
@@ -276,16 +284,18 @@ class BiliClient:
         if not pages:
             raise BiliApiError(-400, "视频没有可用的分 P")
         idx = min(max(ref.page, 1), len(pages)) - 1
+        page_rows = [VideoPage(int(p["cid"]), str(p.get("part", "") or "").strip(), int(p.get("duration") or data.get("duration") or 0)) for p in pages]
         return VideoInfo(
             bvid=data["bvid"],
             avid=int(data["aid"]),
             cid=int(pages[idx]["cid"]),
             title=str(data.get("title", "")).strip(),
             artist=str(data.get("owner", {}).get("name", "")).strip(),
-            duration=int(data.get("duration") or 0),
+            duration=int(pages[idx].get("duration") or data.get("duration") or 0),
             cover_url=https_media_url(str(data.get("pic") or "")),
             page=idx + 1,
             part_title=str(pages[idx].get("part", "") or "").strip(),
+            pages=page_rows,
         )
 
     async def video_page_cids(self, bvid: str) -> list[int]:

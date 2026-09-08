@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field, SQLModel, UniqueConstraint
 
 
 class Playlist(SQLModel, table=True):
@@ -18,9 +18,22 @@ class Playlist(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class Song(SQLModel, table=True):
+class Album(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    bvid: str = Field(index=True, unique=True)
+    kind: str = "paged"
+    source_bvid: str = Field(index=True)
+    title: str
+    artist: str = ""
+    cover_url: str = ""
+    total_pages: int = 0
+    materialized_pages: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Song(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("bvid", "cid", name="uq_song_bvid_cid"),)
+    id: int | None = Field(default=None, primary_key=True)
+    bvid: str
     aid: int = 0  # av 号：收藏夹导出（fav/deal）需要；旧数据在导出时懒补
     cid: int
     title: str
@@ -36,6 +49,8 @@ class Song(SQLModel, table=True):
     lyrics_checked: int = 0  # 已尝试取词标记：取不到也置 1，避免反复打外部接口
     fav_folder_id: int = 0  # 所在曲库夹（bilimusic 系）的 media_id；删歌取消收藏用
     playlist_id: int = 0  # 所属歌单；0 表示待归入默认歌单
+    album_id: int = Field(default=0, index=True)
+    track_no: int = 0
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

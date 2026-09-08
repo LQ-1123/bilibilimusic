@@ -12,6 +12,11 @@
          hx-get="/partials/rec-playlists" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
 
+  <div class="sec sec-albums">
+    <div class="sec-head"><h2>专辑</h2><span class="hint">按分 P 顺序播放</span></div>
+    <div class="rack" id="albums-rack" hx-get="/partials/albums" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
+  </div>
+
   <div class="sec sec-recent">
     <div class="sec-head"><h2>最近收藏</h2></div>
     <div class="rack" id="recent-rack"
@@ -61,6 +66,7 @@
       <div class="dt-acts">
         <button class="btn-play" type="button" onclick="playDetailFirst()">播放</button>
         <button class="btn-share" type="button" onclick="shareDetail()" title="分享该歌单（B 站收藏夹链接）">↗ 分享</button>
+        <button class="btn-share" id="dt-delete-album" type="button" onclick="deleteDetailAlbum()" hidden>删除专辑</button>
       </div>
     </div>
   </div>

@@ -70,6 +70,10 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 .tb-cir{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--stroke);
   display:grid;place-items:center;color:var(--txt2);transition:.2s;flex:none;font-size:15px}
 .tb-cir:hover{color:var(--txt);background:var(--card2)}
+.window-controls{display:none;gap:5px;align-items:center;position:absolute;right:12px;top:calc(16px + var(--inset-top, 0px))}
+.window-controls.available{display:flex}
+.window-controls .tb-cir{width:28px;height:28px;font-size:14px}
+.window-controls .window-close:hover{background:#e5484d;color:#fff}
 .tb-search{flex:0 1 480px;height:42px;border-radius:999px;border:1px solid var(--stroke);
   display:flex;align-items:center;gap:10px;padding:0 17px;color:var(--txt3);transition:.22s;min-width:0}
 .tb-search:focus-within{border-color:var(--pink);outline:3px solid var(--pink-tint);outline-offset:2px}
@@ -561,11 +565,13 @@ body.trial #seek,body.trial .p-time{visibility:hidden}
 #btn-lyrics-close{position:absolute;top:calc(24px + var(--inset-top, env(safe-area-inset-top, 0px)));left:calc(var(--side) + 28px);width:36px;height:36px;border-radius:50%;
   background:var(--card);border:1px solid var(--stroke);display:grid;place-items:center;color:var(--txt2);font-size:14px}
 #btn-lyrics-close:hover{color:var(--txt)}
+@media (min-width:901px){#btn-lyrics-close{left:auto;right:28px}}
 #lyrics-cover{width:min(300px,24vw);aspect-ratio:1;border-radius:16px;corner-shape:superellipse(2);object-fit:cover;box-shadow:0 26px 70px rgba(0,0,0,.5);background:var(--raise);cursor:pointer}
 .l-songrow{width:min(560px,100%);display:flex;align-items:flex-end;justify-content:space-between;gap:14px}
 .l-song{text-align:left;padding:0;flex:1;min-width:0;max-width:100%}
 .l-song b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:20px;font-weight:800;line-height:1.35}
 .l-song span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--txt2);margin-top:6px}
+.l-song small{display:block;color:var(--txt3);font-size:10px;margin-top:5px}
 /* 歌词页控制条（Apple Music 式：进度+时间+五键，锚在左列底部） */
 .l-bottom{grid-column:1;grid-row:2;display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 20px 34px}
 .ly-prog{width:min(560px,100%);padding:0}
@@ -608,6 +614,10 @@ body:not(.playing) .i-pause{display:none}
   -webkit-user-select:none;user-select:none}
 .l-line.on{color:var(--txt);opacity:1}
 #lyrics-scroll.timed .l-line:hover{color:var(--txt);opacity:.92}
+/* 歌词来源角标 + 重试（#10 前端部分） */
+#lyrics-source{display:block;margin-top:6px;font-size:10.5px;color:var(--txt3);letter-spacing:.5px}
+.ly-retry-inline{background:none;border:1px solid var(--stroke2);border-radius:999px;color:var(--txt2);font-size:12px;padding:4px 14px;cursor:pointer}
+.ly-retry-inline:hover{color:var(--txt);border-color:var(--txt3)}
 #lyrics-scroll.timed .l-line{cursor:pointer}
 .l-empty{color:var(--txt3);text-align:center;padding:40px 0;font-size:14px}
 /* 手机端大封面视图（Apple Music 式）：桌面不显示 */
@@ -734,6 +744,12 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   padding:calc(16px + var(--inset-top, env(safe-area-inset-top, 0px))) 2px 12px}
 .dt-top #dt-crumb{transition:opacity .28s}
 #mainEl.scrolled .dt-top #dt-crumb{opacity:0}
+.pull-refresh-indicator{display:none}
+@media (pointer:coarse){
+  .pull-refresh-indicator{display:block;height:0;overflow:hidden;text-align:center;color:var(--txt2);font-size:12px;line-height:32px;transform:translateY(calc(var(--pull-distance, 0px) - 32px));transition:transform .18s ease,height .18s ease}
+  .pull-refresh-indicator.ready,.pull-refresh-indicator.loading{height:32px}
+  .pull-refresh-indicator.loading{color:var(--pink)}
+}
 .dt-hero{position:relative;margin:4px -28px 26px calc(-1 * (var(--side) + 28px));padding:22px 28px 30px calc(var(--side) + 28px);
   display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap}
 .dt-hero::before{content:none} /* 歌单渐变已按需求移除：直接留白 */
@@ -1018,4 +1034,15 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   body:has(#lyrics-panel:not(.hidden)) .side-handle{display:none}
   body:has(#lyrics-panel:not(.hidden)) #lyrics-panel{padding-left:0}
   body:has(#lyrics-panel:not(.hidden)) #btn-lyrics-close{left:28px}
+  /* #22（hover 显现方案）：桌面端关闭钮平时隐藏，鼠标移到其位置或键盘聚焦时显现；触屏无 hover 保持常显 */
+  #btn-lyrics-close{opacity:0;transition:opacity .25s}
+  #btn-lyrics-close:hover,#btn-lyrics-close:focus-visible{opacity:1}
 }
+
+/* Albums reuse the library poster and detail surfaces. */
+.album-card .en{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dt-cvr.album-cover{overflow:hidden}
+.dt-cvr.album-cover>img{width:100%;height:100%;object-fit:cover}
+.album-more{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:24px 0}
+.album-more button:disabled{opacity:.6;cursor:wait}
+#dt-delete-album[hidden]{display:none}

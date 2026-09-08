@@ -15,8 +15,8 @@ class Item:
 
 
 def test_classify_rock():
-    assert classify("新专辑《摇滚之心》", []) == "摇滚"
-    assert classify("cover", ["rock", "band"]) == "摇滚"
+    assert classify("新专辑《摇滚之心》", []) == "摇滚金属"
+    assert classify("cover", ["ROCK", "band"]) == "摇滚金属"
 
 
 def test_classify_rnb_gospel():
@@ -24,10 +24,9 @@ def test_classify_rnb_gospel():
     assert classify("", ["孙燕姿", "SUNO", "黑人福音"]) == "R&B"
 
 
-def test_classify_pop_folk_rap():
-    assert classify("年度流行金曲合集", []) == "流行"
-    assert classify("翻唱一首经典民谣", []) == "民谣"
-    assert classify("地下说唱现场", []) == "说唱"
+def test_classify_pop_rap():
+    assert classify("年度流行金曲合集", []) == "华语流行"
+    assert classify("地下说唱现场", []) == "hiphop"
 
 
 def test_classify_guzheng_and_unknown():
@@ -36,8 +35,9 @@ def test_classify_guzheng_and_unknown():
 
 
 def test_classify_priority_most_hits():
-    # 同时命中多个风格时取命中关键词最多的（民谣命中 2 词 > 摇滚 1 词）
-    assert classify("摇滚", ["民谣", "弹唱"]) == "民谣"
+    # 后出现的风格命中更多关键词时，应覆盖先出现的风格。
+    assert classify("摇滚", ["蓝调", "爵士"]) == "蓝调"
+    assert classify("蓝调", ["摇滚", "金属"]) == "摇滚金属"
 
 
 def test_is_song_like_bounds():

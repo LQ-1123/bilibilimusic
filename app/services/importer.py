@@ -14,7 +14,7 @@ from sqlmodel import select
 from app import events
 from app.bili.client import BiliApiError, BiliClient
 from app.core.link_parser import resolve_share_text
-from app.db.models import ImportTask, Song
+from app.db.models import Album, ImportTask, Song
 from app.db.session import context_mid, new_session
 from app.services import library, playlists
 from app.storage.files import FileStore
@@ -123,9 +123,7 @@ class ImportService:
 
         # 已入库直接复用
         with new_session() as session:
-            existing = session.exec(
-                select(Song).where(Song.bvid == info.bvid)  # type: ignore[attr-defined]
-            ).first()
+            existing = session.exec(select(Song).where(Song.bvid == info.bvid, Song.cid == info.cid)).first()
             existing_id = existing.id if existing else None
         if existing_id:
             self._update(task_id, status="ready", progress=100, song_id=existing_id,
@@ -143,6 +141,10 @@ class ImportService:
         if not playlist_id:
             playlist_id = playlists.ensure_default().id or 0
 
+        is_album = ref.page == 1 and len(info.pages) > 1
+        album = Album(kind="paged", source_bvid=info.bvid, title=info.title,
+                      artist=info.artist, cover_url=info.cover_url,
+                      total_pages=len(info.pages), materialized_pages=len(info.pages)) if is_album else None
         song = Song(
             bvid=info.bvid,
             aid=info.avid,
@@ -156,13 +158,31 @@ class ImportService:
             cover_color="",
             source_url=raw_text,
             playlist_id=playlist_id,
+            album_id=0,
+            track_no=info.page,
         )
         with new_session() as session:
             try:
+                if album is not None:
+                    session.add(album)
+                    session.flush()
+                    song.album_id = album.id or 0
                 session.add(song)
                 session.commit()
                 session.refresh(song)
                 song_id = song.id
+                if album is not None:
+                    for page in info.pages:
+                        if page.cid == info.cid:
+                            continue
+                        part = page.part or f"P{page.cid}"
+                        child = Song(bvid=info.bvid, aid=info.avid, cid=page.cid,
+                                     title=f"{info.title} · {part}", artist=info.artist,
+                                     duration=page.duration, audio_path="", cover_path=info.cover_url,
+                                     source_url=raw_text, playlist_id=playlist_id,
+                                     album_id=album.id or 0, track_no=info.pages.index(page) + 1)
+                        session.add(child)
+                    session.commit()
             except Exception:  # noqa: BLE001  并发导入同一 bvid：复用已入库的那条
                 session.rollback()
                 existing = library.get_by_bvid(info.bvid)
@@ -172,8 +192,7 @@ class ImportService:
         if song_id is None:
             self._update(task_id, status="failed", error="入库冲突，请重试")
             return
-        if song_id != song.id:  # 复用了并发导入已入库的记录，重载权威数据
-            song = library.get_song(song_id) or song
+        song = library.get_song(song_id) or song  # 会话已关闭：换库里加载的干净实例
         self._update(task_id, status="ready", progress=100, song_id=song_id)
         events.publish(context_mid(), "libraryChanged")  # SSE：前端免刷新即见
 

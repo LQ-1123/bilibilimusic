@@ -26,6 +26,8 @@ android {
     sourceSets { main { assets.srcDir '../../app/web' } }
 }
 
+dependencies { implementation 'androidx.core:core:1.15.0' }
+
 chaquopy {
     defaultConfig {
         version '3.11'

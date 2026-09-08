@@ -62,7 +62,8 @@
 - **补充（2026-09-08 用户实测）**：手机端 Tab 的旧 CSS 映射（`body[data-mtab="home"]` 隐藏推荐歌单/最近收藏）导致「主页→曲库→主页后推荐歌单消失」，与验收标准「主页完整显示、与首次进入一致」矛盾——已删除该隐藏规则（style v150），现在主页始终完整，曲库 Tab 仅隐藏发现区（hero/流派货架）。
 - **验证**：浏览器（手机视口）全过：详情→曲库正确退出详情、主页推荐区/最近收藏/流派货架完整；真机路径 主页→推荐歌单→曲库→主页→推荐歌单 待截图对比。
 
-### #20 macOS 顶部白色系统标题栏 ｜ `[待修]` ｜ P1
+### #20 macOS 顶部白色系统标题栏 ｜ `[修中·代码就位待构建验证]` ｜ P1
+- **本轮落地（2026-09-08）**：Tauri 窗口关闭原生 decorations，启用 `main` capability 与 global Tauri API；Web 顶栏增加桌面端最小化/最大化/关闭和拖拽/双击最大化。已补齐资源目录占位，`cargo check` 通过；真正运行仍需先用 `packaging/build-backend.py` 生成 PyInstaller backend。
 - **现象**：桌面端顶部一条白系统标题栏 + 原生红黄绿；要求去除，窗口按钮直接在应用内渲染。
 - **根因**：`desktop/src-tauri/src/main.rs` 的 `WebviewWindowBuilder` 未设 `decorations(false)`；`tauri.conf.json` 无 capabilities 文件（`"capabilities": []` → IPC 全关）。
 - **修法**：方案 A（推荐，自绘）：
@@ -70,15 +71,17 @@
   2. 新增 `desktop/src-tauri/capabilities/main.json`：window 标识 `main`，permissions 含 `core:default` + `core:window:allow-minimize / allow-toggle-maximize / allow-close / allow-start-dragging`；**remote urls**（`http://127.0.0.1:*`，端口通配）——需 spike 验证动态端口 http 页面的 IPC 注入（`withGlobalTauri: true`）；
   3. 前端自绘三键（与深浅主题联动的玻璃圆钮；macOS 惯例放左上）+ 顶栏拖拽区 `data-tauri-drag-region`；按钮调 `window.__TAURI__.window.getCurrentWindow().minimize()/toggleMaximize()/close()`；
   4. 若 IPC 被 http origin 限制卡死 → 方案 B：`titleBarStyle: Overlay`（白条消失、保留系统交通灯浮层，零 IPC）。
+- **推进/补完（2026-09-08）**：main.rs 已 `decorations(false)`；capabilities/main.json 就位并补 `"remote": {"urls": ["http://127.0.0.1:*", "http://localhost:*"]}`——页面最终落在后端 http origin，无 remote 授权时 `__TAURI__` 不注入、三键失效（即台账预警的 spike 点）；base.html 顶栏自绘三键 + pointerdown 拖拽/双击最大化（v3.js，仅 `__TAURI__` 存在时显示）。
 - **验证**：macOS 构建；拖拽/三键/全屏/双主题；Windows 侧后续补右上布局。
 
 ---
 
 ## B. 原生音乐能力（P1，方向性）
 
-### #3 后台播放不稳、无系统媒体条/锁屏控制 ｜ `[待修]` ｜ P1（分水岭）
+### #3 后台播放不稳、无系统媒体条/锁屏控制 ｜ `[修中]` ｜ P1（分水岭）
+- **本轮推进（2026-09-08）**：Android Manifest 已加入媒体前台服务、通知权限与 `mediaPlayback` service；新增 `MediaPlaybackService` 通知渠道/持久在线通知，WebView 起播经 `BiliMusicNative.playbackStarted()` 启动服务。尚未接入原生音频引擎、媒体按钮和进度同步。Android Gradle 编译受本机 wrapper 锁文件权限阻塞；Python 回归 114 通过、2 跳过，前端脚本语法检查通过。
 - **现象**：切后台/锁屏后播放不稳定；通知栏没有媒体卡片；锁屏不可控；蓝牙耳机/线控无效。根因：Android 是裸 WebView——WebView **不支持** `navigator.mediaSession`，前端 mediaSession 代码（app.js:253 起）只在桌面浏览器生效。
-- **修法**（路线 B 渐进，四段式，总估 4–8 周）：
+- **第一段落地（2026-09-08）**：`MediaPlaybackService`（foreground，mediaPlayback 类型）+ 播放通知（标题/艺人/ongoing）；页面桥 `BiliMusicNative.playbackStarted/stopped` 起停服务；Manifest 声明服务与 FOREGROUND_SERVICE_MEDIA_PLAYBACK/POST_NOTIFICATIONS 权限；androidx.core 依赖已加。通知进度条/媒体按钮（Media3 Session）留后续段。**修法**（路线 B 渐进，四段式，总估 4–8 周）：
   1. **前台服务**：`MediaPlaybackService`（foreground，Android 14+ 声明 `android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK`；13+ 运行时申请 `POST_NOTIFICATIONS`）；MediaStyle 通知带封面/进度/收藏按钮；点击通知回对应页（需 #1 寻址）；
   2. **Media3 Session**：播放引擎迁原生，直接拉本地后端流（`/api/stream` 已支持 Range；务必先修 cid bug，见 §F0）；锁屏/蓝牙 AVRCP/线控/音频焦点全由 Session 提供；
   3. **JS Bridge**：接口先行设计（播放/暂停/切歌/进度/音量/封面歌词元数据双向同步），Web UI 保留现状，播放命令改走桥；
@@ -117,7 +120,7 @@
 - **落地（2026-09-08）**：CSS 四条滑条（#seek/#ly-seek/#vol/#ly-vol）track 改 `linear-gradient(90deg, var(--pink) var(--p), <track色> var(--p))`，Firefox 走 `::-moz-range-progress`；JS 侧 app.js `syncSeekFill()`（timeupdate/拖动/切歌重置/试听接管）+ v3.js 音量与 ly-seek 的初始化与 input/change 全量同步。注：歌词页 `--pink` 被面板 token 映射为白色（沉浸式设计），填充为白色可辨。
 - 验证：浏览器实测 ✅（播放中进度填充随时间增长、音量 40% 自下而上 40%、歌词页进度/音量填充可见）；真机待复点。
 
-### #12 长歌名省略号 ｜ `[已修·通用部分]` ｜ P1 快赢
+### #12 长歌名省略号 ｜ `[已修·保持现状]` ｜ P1 快赢
 - 现状：#player-title/#player-artist 及部分卡片已有 ellipsis（flex + min-width:0 正确写法）；**未截断的具体位置待用户截图指认**（列表行/迷你卡/歌词页头）。
 - **落地（2026-09-08）**：全部曲目行/卡片文本元素补齐 `title` 全文悬停（songs/rec_genre_tracks/daily_columns/rec_cards/recent_rack/search_detail 模板 + 队列 li + 播放条/歌词页标题由 JS 写 title）。省略号 CSS 各处本已齐备，未发现溢出容器的新增点位；用户后续截图指认到具体位置再定点补。
 - 验证：浏览器实测行 title ✅；超长歌名各视图单行省略不溢出待长名素材入库后目检。
@@ -156,6 +159,7 @@
 - 修法在真机 profile（WebView 远程调试 Performance）后按热点逐个做。
 
 ### #11 手机端下拉刷新 ｜ `[待修]` ｜ P1
+- **本轮落地（2026-09-08）**：`v3.js` 在移动粗指针设备的主页/曲库顶部加入自绘下拉刷新，64px 阈值触发 `refreshSongs`，详情、弹层、按钮和输入控件不抢占手势；添加加载/就绪状态样式。Node 交互回归 17 例通过，真机手势与网络刷新仍待抽查。
 - **修法**：前端自绘（不加 androidx 依赖）：
   1. 仅触摸设备 + 移动布局（matchMedia）且主滚动容器 `scrollTop<=0` + 当前为 feed 视图（主页/曲库）时启用；
   2. touch/pointer 手势：下拉超阈值（约 64px）显示品牌色 spinner，松手触发当前视图数据重取（重触发 htmx partial：genre-shelves / rec-playlists / playlists 等，按视图路由）；
@@ -167,7 +171,13 @@
 
 ## E. 内容与数据
 
-### #14 合集 → 专辑 ｜ `[待修]` ｜ P1（架构级，分两期）
+### #14 合集 → 专辑 ｜ `[修中·一期主体完成]` ｜ P1（架构级，分两期）
+- **本轮推进（2026-09-08）**：完成基础数据层与查询闭环：新增 `Album` 与 `Song.album_id/track_no`，Song 唯一键迁移为 `(bvid,cid)`（含旧 SQLite bvid 唯一索引/约束重建与数据保留），`get_video_info()` 暴露全部 pages 元数据并使用分 P 时长；新增专辑列表/详情/曲目/物化/删除 API、Web 货架/曲目片段，以及无 `p=` 多分 P 导入时一次创建 Album 和全部 Song。专项测试 9 通过；完整 Python 回归 114 通过、2 跳过。收藏语义、导入懒物化与 series 合集仍待完成。
+- **二次推进（2026-09-08 同日，接手补完）**：
+  1. **DetachedInstance 修复**：playAlbum 首次导入报「Instance not bound to a Session」——commit 后在会话外访问过期 ORM 属性；改为会话内取标量、会话外统一 `library.get_song()` 重载；
+  2. **albumRequest 端点对齐**：前端 `albumRequest(id,false)` 原拉专辑 meta（无 songs 数组），改为 `GET /api/albums/{id}/songs`；后端 GET songs 与 POST materialize 统一返回前端契约 `{songs, hasMore, materializedPages}`；
+  3. **Android 15 模拟器全链路实测 ✅**：导入 BV1amxrzXEnk（17P）→ 专辑+17 曲目（各自 cid 的 audioUrl）→ 详情 17 行 → 播 P2 = P2 的 cid 流 → P1/P2 歌词按各自 cid 取 CC（内容不同）→ 删除专辑 API + 重导入复测通过；
+  4. **待补**：删专辑的 B 站侧取消收藏（当前仅本地删除）、>300P 懒物化、分P标题清洗、series 二期。
 用户已拍板：范围=**多分P视频 + B 站跨视频合集都要**；同步=**保持 B 站收藏夹哲学**（收藏夹=整视频一次；本地=专辑+曲目；换设备专辑先恢复单行、曲目按需回填）。
 - 现状盘点（已查证）：`link_parser` 支持 `?p=n`；`get_video_info`/`get_audio_streams(bvid,cid)`/`get_subtitle_tracks(bvid,aid,cid)` 全按 cid 工作；importer 单 P 导入正确（存 `Song.cid`，标题拼「主标题 · 分P标题」）；缺 Album 实体与多 P 共存（Song.bvid 唯一）。
 - **第一期（paged，最短链路）**：
@@ -187,7 +197,10 @@
 
 - 风险：合集含非音乐内容（自决）；接口频控（拉 pages/列表限速）；超大合集懒加载；标题噪声清洗词表迭代。
 
-### #10 歌词源增强（替代 Shazam 思路） ｜ `[待修]` ｜ P1
+### #10 歌词源增强（替代 Shazam 思路） ｜ `[修中]` ｜ P1
+- **本轮部分修复（2026-09-08）**：发现 `fetch_for_song()` 命中 LRCLIB 纯文本后直接返回，跳过 AI 时间轴字幕，与既定优先级不符。已改为 CC → LRCLIB 带轴 → AI → LRCLIB 纯文本；LRCLIB 明确纯音乐标记维持直接返回。新增 4 例覆盖 AI 优于纯文本、纯文本兜底、带轴优于 AI、纯音乐标记。完整 Python 回归 111 通过、2 跳过（缺真实音频样本），前端现有 17 例通过。旧歌词缓存不自动重取；本条网易云源、手动重取与来源 UI 待办保持未完成。
+- **本轮继续（2026-09-08）**：歌曲歌词页新增重试按钮，调用 `/api/songs/{id}/lyrics?force=1` 清除缓存并重新执行取词链；试听歌词不显示重试入口。`tests/test_lyrics.py` 20 通过，前端脚本语法检查通过。网易云源、来源角标和错误反馈仍待完成。
+- **来源角标（2026-09-08）**：歌词页现在展示 CC / AI / LRCLIB / 网易云来源（后端已有来源值时），切歌或重试会清空并重新更新角标。歌词专项 20 通过，Node 前端回归 17 通过。
 - **判断**：不需要音频识别——每曲 bvid/标题/歌手/时长已知，识别引擎解决「未知音频」，且 Shazam/ACRCloud 曲库=主流商用音乐，对 B 站系内容覆盖不比现链路高（还有 SDK/费用/条款成本）。
 - 现状：`app/services/lyrics.py` 链 = B站人工 CC → LRCLIB → B站 AI 字幕 → LRCLIB 纯文本。短板=中文主流曲目与无人字幕搬运视频。
 - **修法**：
@@ -220,7 +233,10 @@
 - **落地（2026-09-08）**：非当前行提亮为 `color:var(--txt2)`（面板内=白 72%）+ `opacity:.75`；新增 hover 行高亮（`color:var(--txt)` / opacity .92）；手机端基础 opacity .38→.52。未再加浓 scrim（避免压暗封面氛围）。
 - 验证：浏览器截图 ✅ 暖色封面下非当前行清晰可读、当前行纯白突出；浅色主题与冷色封面待人工各截一张。
 
-### #22 歌词页关闭按钮（左下圆形 ✕）突兀 ｜ `[待修]` ｜ P2（视觉待定）
+### #22 歌词页关闭按钮（左下圆形 ✕）突兀 ｜ `[已修·hover 显现]` ｜ P2
+- **落地（2026-09-08，用户拍板 hover 显现方案）**：桌面端（≥901px）歌词页关闭钮平时 `opacity:0`，鼠标移到其位置或键盘聚焦时 0.25s 淡入；移动端触屏无 hover，保持常显（style v153）。
+- **验证**：桌面浏览器实测 ✅（默认 opacity 0 → hover 1）；移动端媒体查询隔离 ✅。
+- **本轮落地（2026-09-08）**：桌面端关闭按钮移至歌词面板右上角，移动端保留顶栏左侧常显入口以保持单手可达和发现性；现有歌词页重试按钮与关闭入口分离。
 - 现象（mac 截图）：左下角半透明圆形 ✕ 在主界面显得孤立。
 - **候选修法**（择一，用户定）：移到歌词面板右上角成对布局（与滚动条留白协调）；或 hover 才显现（桌面）/保持常显但换描边弱化样式（移动）；与 #btn-lyrics-close 现有 36px 圆钮一致的前提下调整归属区。
 - 验证：桌面+手机歌词页关闭入口可发现性测试。
@@ -229,22 +245,28 @@
 
 ## G. 建议执行批次
 
-| 批次 | 内容 | 预估 |
+| 批次 | 内容 | 状态 |
 |---|---|---|
-| B0 快赢批 | #8 #15 #19 #12 #13 #16 #7 + F0(cid) | 1~2 天 |
-| B1 壳与导航 | #1(back-stack) #2(e2e) #17(路由收口) #9(品牌启动) | 3~5 天 |
-| B2 原生播放 | #3/#4(服务+Session+Bridge) #18(浏览器登录) #5 #11 | 分阶段 3~6 周 |
-| B3 内容 | #14 一期(paged) → 二期(series) #10(歌词源) | 各 1~2 周 |
-| B4 桌面/视觉 | #20(无边框) #21 #22 #6(性能) | 穿插 |
+| B0 快赢批 | #8 #15 #19 #12 #13 #16 #7 + F0(cid) | ✅ 2026-09-08 完成（浏览器 + 模拟器验收） |
+| B1 壳与导航 | #1(back-stack) #2(方案A+B e2e) #17(路由收口) #9(品牌启动) | ✅ 2026-09-08 完成（真机抽查待做） |
+| B1.5 补充 | #18(浏览器登录兜底) #5(轮询) #21(歌词对比度) | ✅ 2026-09-08 完成 |
+| B2 原生播放 | #3/#4 第一段(前台服务+MediaStyle 通知) → 二段(Session/锁屏/蓝牙) → 三段(JS Bridge) | ⏳ 下一大项（分阶段 3~6 周） |
+| B3 内容 | #14 一期(paged 专辑) → 二期(series)；#10(歌词源) | ⏳ #14 一期建议紧接当前批次启动（F0 已就绪） |
+| B4 桌面/视觉 | #20(无边框·先spike) #22(关闭钮·已修) #6(性能·待真机profile) | ⏳ 穿插 |
+| B5 补充 | #11(下拉刷新) | ⏳ 独立小项 |
+
+> 已提交：`3eb2ad0..dc44bc1` 六笔（upic 头像 / F0 cid / 前端体验批 / Android 壳 / 桌面启动页 / 文档）。
+> #14 一期推进（用户开工 + 会话补完）：专辑数据层/导入/播放/歌词/详情 UI 模拟器全链路 ✅；会话内修复 DetachedInstance、albumRequest 端点对齐、MediaPlaybackService 包名错位。
+> 后续计划详见 `docs/next-steps.md`。
 
 ## H. 修复进度勾选
 
-- [x] #1 返回语义（Web 层 + Android 壳桥接，模拟器全过）｜ [x] #2 系统栏（方案 A+B 沉浸全落地）｜ [x] #17 路由 ｜ [ ] #20 无边框
-- [ ] #3 后台/媒体条 ｜ #4 音频焦点 ｜ [x] #18 浏览器登录兜底（真机浏览器完整登录待抽查）
+- [x] #1 返回语义（Web 层 + Android 壳桥接，模拟器全过）｜ [x] #2 系统栏（方案 A+B 沉浸全落地）｜ [x] #17 路由 ｜ [ ] #20 无边框（代码就位待构建验证）
+- [x] #3 第一段（前台服务+通知；Session/锁屏/蓝牙待做）｜ [ ] #4 全量音频焦点 ｜ [x] #18 浏览器登录兜底（真机浏览器完整登录待抽查）
 - [x] #8 空格 ｜ [x] #15 按钮序 ｜ [x] #19 音量填充 ｜ [x] #12 省略（title 全文）｜ [x] #13 滚动 ｜ [x] #16 蓝框 ｜ [x] #7 建歌单
 - [x] #9 品牌启动（双端） ｜ [x] #5 轮询 ｜ [ ] #6 性能 ｜ [ ] #11 下拉刷新
-- [ ] #14 专辑一期/二期 ｜ [ ] #10 歌词源
-- [x] #21 歌词对比度 ｜ [ ] #22 关闭钮
+- [x] #14 专辑一期（主体；B 站取消收藏/懒物化/series 待做） ｜ [x] #10 歌词源·重试换源部分（网易云源待做）
+- [x] #21 歌词对比度 ｜ [x] #22 关闭钮（hover 显现）
 - [x] F0 cid 流路由
 
 > 批次记录：**B0 快赢批 + #1 + #5 + #17 + #21 + #9(桌面) 已于 2026-09-08 完成编码，浏览器 + Android 15 模拟器（BM35 AVD）双端验收**（详见 acceptance-manual §9）；#2 为下一个 P0，实体真机抽查建议随 #2 一起做。

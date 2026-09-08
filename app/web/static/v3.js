@@ -3,6 +3,37 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
 
+  // Tauri 桌面端的自绘窗口控制；浏览器/Android 没有桥时保持隐藏。
+  (function () {
+    var controls = document.querySelector(".window-controls");
+    var api = window.__TAURI__ && window.__TAURI__.window;
+    if (!controls || !api || !api.getCurrentWindow) return;
+    controls.classList.add("available");
+    var win = api.getCurrentWindow();
+    controls.addEventListener("click", function (event) {
+      var button = event.target.closest("[data-window-action]");
+      if (!button) return;
+      var action = button.dataset.windowAction;
+      var call = action === "minimize" ? win.minimize() : action === "maximize" ? win.toggleMaximize() : win.close();
+      if (call && call.catch) call.catch(function () {});
+    });
+    controls.addEventListener("pointerdown", function (event) {
+      if (event.target.closest("button")) return;
+      if (win.startDragging) win.startDragging().catch(function () {});
+    });
+    var topbar = document.getElementById("topbar");
+    if (topbar) {
+      topbar.addEventListener("pointerdown", function (event) {
+        if (event.target.closest("input,button")) return;
+        if (win.startDragging) win.startDragging().catch(function () {});
+      });
+      topbar.addEventListener("dblclick", function (event) {
+        if (event.target.closest("input,button")) return;
+        win.toggleMaximize().catch(function () {});
+      });
+    }
+  }());
+
   // ---------- 主题（深/浅切换：顶栏圆钮 / 侧栏设置弹层 / 手机账号 Tab 三处入口共享） ----------
   var setTheme = function (t) {
     document.documentElement.dataset.theme = t;
@@ -162,6 +193,46 @@
     mainEl.addEventListener("scroll", function () {
       mainEl.classList.toggle("scrolled", mainEl.scrollTop > 64);
     }, { passive: true });
+
+    // 移动端主页/曲库顶部下拉刷新；详情、弹层和输入控件不抢占手势。
+    var pullStartY = 0, pullDistance = 0, pulling = false, refreshing = false;
+    var pullIndicator = document.createElement("div");
+    pullIndicator.className = "pull-refresh-indicator";
+    pullIndicator.setAttribute("aria-live", "polite");
+    pullIndicator.textContent = "下拉刷新";
+    mainEl.prepend(pullIndicator);
+    function pullEnabled(target) {
+      var view = $("app").dataset.view;
+      return window.matchMedia("(pointer: coarse)").matches &&
+        (view === "home" || view === "library") && !document.body.classList.contains("in-detail") &&
+        !target.closest("input,textarea,select,button,[contenteditable=true]");
+    }
+    mainEl.addEventListener("touchstart", function (e) {
+      if (mainEl.scrollTop !== 0 || !e.touches[0] || !pullEnabled(e.target)) return;
+      pullStartY = e.touches[0].clientY; pullDistance = 0; pulling = true;
+    }, { passive: true });
+    mainEl.addEventListener("touchmove", function (e) {
+      if (!pulling || !e.touches[0]) return;
+      pullDistance = Math.max(0, Math.min(96, e.touches[0].clientY - pullStartY));
+      pullIndicator.style.setProperty("--pull-distance", pullDistance + "px");
+      pullIndicator.classList.toggle("ready", pullDistance >= 64);
+      if (pullDistance > 8 && e.cancelable) e.preventDefault();
+    }, { passive: false });
+    mainEl.addEventListener("touchend", function () {
+      if (!pulling) return;
+      pulling = false;
+      if (pullDistance >= 64 && !refreshing) {
+        refreshing = true; pullIndicator.classList.add("loading"); pullIndicator.textContent = "正在刷新…";
+        if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+        setTimeout(function () {
+          refreshing = false; pullIndicator.classList.remove("loading", "ready");
+          pullIndicator.style.removeProperty("--pull-distance"); pullIndicator.textContent = "下拉刷新";
+        }, 900);
+      } else {
+        pullIndicator.classList.remove("ready"); pullIndicator.style.removeProperty("--pull-distance");
+      }
+      pullDistance = 0;
+    }, { passive: true });
   }
 
   // ---------- 侧栏拖宽（仅桌面有意义；范围 200–420） ----------
@@ -271,7 +342,86 @@
   // ---------- 歌单详情（user = 曲库歌单 / rec = 线上推荐歌单） ----------
   var dtState = { kind: "user", id: "0", name: "全部歌曲", hue: 340 };
 
+  var albumDetailGeneration = 0;
+  document.body.addEventListener("htmx:beforeSwap", function (event) {
+    if (!event.detail || !event.detail.target || event.detail.target.id !== "dt-songs") return;
+    var path = event.detail.requestConfig && event.detail.requestConfig.path || "";
+    if ($("app").dataset.view !== "detail" || dtState.kind === "album") event.detail.shouldSwap = false;
+    else if (path.indexOf("/partials/songs?") === 0 && (dtState.kind !== "user" || new URL(path, location.origin).searchParams.get("playlist_id") !== String(dtState.id))) event.detail.shouldSwap = false;
+    else if (path.indexOf("/partials/rec-genre-tracks?") === 0 && dtState.kind !== "rec") event.detail.shouldSwap = false;
+  });
+  function isAlbumDetail(id, generation) {
+    return $("app").dataset.view === "detail" && dtState.kind === "album" && dtState.id === String(id) && generation === albumDetailGeneration;
+  }
+  async function loadAlbumTracks(id, generation) {
+    var response = await fetch("/partials/album-tracks?album_id=" + encodeURIComponent(id), { cache: "no-store" });
+    if (!response.ok) throw new Error("专辑曲目加载失败，请重试");
+    var html = await response.text();
+    if (!isAlbumDetail(id, generation)) return;
+    $("dt-songs").innerHTML = html;
+    if (window.htmx) htmx.process($("dt-songs"));
+  }
+  async function fillAlbumDetail(el) {
+    var id = String(el.dataset.album), generation = ++albumDetailGeneration;
+    dtState = { kind: "album", id: id, name: el.dataset.name || "专辑" };
+    $("app").dataset.view = "detail";
+    document.body.classList.add("in-detail");
+    $("dt-delete-album").hidden = false;
+    $("dt-eyebrow").textContent = "专辑";
+    $("dt-title").textContent = dtState.name;
+    $("dt-crumb").textContent = "主页 / " + dtState.name;
+    $("dt-meta").textContent = "正在加载专辑…";
+    var cover = document.querySelector("#dt-hero .dt-cvr");
+    cover.classList.remove("mosaic-host"); cover.replaceChildren();
+    $("dt-songs").innerHTML = '<div class="empty" role="status">正在加载曲目…</div>';
+    if (mainEl) mainEl.scrollTop = 0;
+    try {
+      var response = await fetch("/api/albums/" + encodeURIComponent(id), { cache: "no-store" });
+      if (!response.ok) throw new Error("专辑加载失败，请重试");
+      var album = await response.json();
+      if (!isAlbumDetail(id, generation)) return;
+      dtState.name = album.title; dtState.bvid = album.sourceBvid || album.bvid;
+      $("dt-title").textContent = album.title;
+      $("dt-crumb").textContent = "主页 / " + album.title;
+      $("dt-meta").textContent = album.artist + " · " + album.totalPages + " 首 · 按分 P 顺序";
+      var img = document.createElement("img"); img.src = album.coverUrl; img.alt = ""; img.referrerPolicy = "no-referrer";
+      cover.classList.add("album-cover"); cover.replaceChildren(img);
+      await loadAlbumTracks(id, generation);
+    } catch (error) {
+      if (!isAlbumDetail(id, generation)) return;
+      $("dt-meta").textContent = "专辑暂时无法加载";
+      $("dt-songs").innerHTML = '<div class="empty" role="alert">专辑加载失败。<button class="btn-share" type="button" onclick="retryAlbumDetail()">重试</button></div>';
+    }
+  }
+  window.retryAlbumDetail = function () { if (dtState.kind === "album") fillAlbumDetail({ dataset: { album: dtState.id, name: dtState.name } }); };
+  window.loadMoreAlbum = async function (button) {
+    if (dtState.kind !== "album") return;
+    var id = dtState.id, generation = albumDetailGeneration;
+    button.disabled = true; button.textContent = "正在加载…";
+    try {
+      var response = await fetch("/api/albums/" + encodeURIComponent(id) + "/materialize", { method: "POST" });
+      if (!response.ok) throw new Error("加载失败");
+      await loadAlbumTracks(id, generation);
+    } catch (error) {
+      if (isAlbumDetail(id, generation)) { button.disabled = false; button.textContent = "加载失败，点击重试"; }
+    }
+  };
+  window.deleteDetailAlbum = async function () {
+    if (dtState.kind !== "album") return;
+    var id = dtState.id, generation = albumDetailGeneration;
+    var confirmed = await window.__confirmModal("删除专辑「" + dtState.name + "」？", "将取消这个视频的 B 站收藏，并删除整张专辑及其本地曲目。仅移除一首歌请使用曲目行的隐藏按钮。");
+    if (!confirmed) return;
+    try {
+      var response = await fetch("/api/albums/" + encodeURIComponent(id), { method: "DELETE" });
+      if (!response.ok) throw new Error("删除失败，专辑仍保留，请重试");
+      if (isAlbumDetail(id, generation)) goHome();
+      if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+    } catch (error) { window.__toast(error.message); }
+  };
+
   function fillUserDetail(el) {
+    $("dt-delete-album").hidden = true;
+    document.querySelector("#dt-hero .dt-cvr").classList.remove("album-cover");
     var d = el.dataset;
     dtState = { kind: "user", id: d.pl, name: d.name, hue: d.hue || 340 };
     $("app").dataset.view = "detail";
@@ -292,7 +442,7 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data || !Array.isArray(data.covers) || !data.covers.length) return;
-        if ($("app").dataset.view !== "detail" || dtState.id !== d.pl) return; // 请求期间已切走
+        if ($("app").dataset.view !== "detail" || dtState.kind !== "user" || dtState.id !== d.pl) return; // 请求期间已切走
         var c = document.querySelector("#dt-hero .dt-cvr");
         var mos = mosaicHtml(data.covers.join("|"));
         if (c && mos) { c.classList.add("mosaic-host"); c.innerHTML = mos; }
@@ -325,6 +475,8 @@
   }
 
   function fillRecDetail(el, autoplay) {
+    $("dt-delete-album").hidden = true;
+    document.querySelector("#dt-hero .dt-cvr").classList.remove("album-cover");
     var d = el.dataset;
     dtState = { kind: "rec", id: "rec:" + d.rgenre, name: d.name, hue: d.hue || 340 };
     $("app").dataset.view = "detail";
@@ -355,6 +507,7 @@
 
   window.openDetailFrom = function (el, autoplay) {
     collapseOverlays(); // 侧栏常驻后：进详情前收起全屏覆盖层（艺术家页/歌词页）
+    if (el.dataset.album !== undefined) { fillAlbumDetail(el); return; }
     // 先选中歌单（决定收藏目标 + 主页列表联动），再进详情
     if (el.dataset.rgenre === undefined && window.selectPlaylist) selectPlaylist(el.dataset.pl, el);
     if (el.dataset.rgenre !== undefined) fillRecDetail(el, autoplay);
@@ -374,6 +527,7 @@
   }
 
   window.playDetailFirst = function () {
+    if (dtState.kind === "album") { window.__toast("正在准备整张专辑播放队列…"); BiliPlayer.playAlbum(dtState.id); return; }
     whenDetailRows(function () {
       if (dtState.kind === "rec") {
         var r = firstRecRow();
@@ -386,6 +540,13 @@
   };
   // 分享该歌单：取对应 B 站收藏夹链接（自动复制 + 弹窗展示可手动复制）
   window.shareDetail = function () {
+    if (dtState.kind === "album") {
+      if (!dtState.bvid) { window.__toast("专辑还在加载，请稍后再试"); return; }
+      var link = "https://www.bilibili.com/video/" + encodeURIComponent(dtState.bvid);
+      if (navigator.clipboard) navigator.clipboard.writeText(link).catch(function () {});
+      window.__promptModal("分享专辑「" + dtState.name + "」", { value: link });
+      return;
+    }
     if (dtState.kind === "rec") { window.__toast("线上推荐歌单不支持分享"); return; }
     fetch("/api/playlists/" + String(dtState.id) + "/share-link")
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
@@ -437,7 +598,7 @@
 
   // 歌单增删改后：刷新侧栏；正在看的用户歌单没了就回主页（推荐歌单详情不受影响）
   document.body.addEventListener("playlistsChanged", function () {
-    if ($("app").dataset.view !== "detail" || dtState.kind === "rec") return;
+    if ($("app").dataset.view !== "detail" || dtState.kind !== "user") return;
     var el = document.querySelector('.side-pl[data-pl="' + dtState.id + '"]');
     if (el) fillUserDetail(el);
     else goHome();

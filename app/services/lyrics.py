@@ -4,7 +4,9 @@
 1. B 站人工 CC 字幕（UP 主上传的歌词字幕，带时间轴）；
 2. LRCLIB 正式歌词（开源歌词库，syncedLyrics 即标准 LRC，免 key）；
 3. B 站 AI 字幕（语音识别兜底，唱歌部分准确率一般）；
-4. LRCLIB 纯文本歌词 / instrumental 标记（无轴，前端静态展示）。
+4. LRCLIB 纯文本歌词（无轴，前端静态展示）。
+
+LRCLIB 明确标为 instrumental 的曲目保留纯音乐提示，不用 AI 字幕覆盖。
 
 LRCLIB 请求走独立的 httpx 客户端（不带 B 站 cookie，登录态不外泄）。
 取词结果统一为文本存库：带时间轴的 LRC，或无轴纯文本（前端降级静态展示）。
@@ -126,10 +128,10 @@ class LyricsService:
 
     # ---- 取词 ----
 
-    async def ensure_for_song(self, song_id: int) -> None:
+    async def ensure_for_song(self, song_id: int, *, force: bool = False) -> None:
         """确保歌曲尝试过取词并落库（含失败标记 checked，避免反复打外部接口）。"""
         song = library.get_song(song_id)
-        if song is None or song.lyrics_checked:
+        if song is None or (song.lyrics_checked and not force):
             return
         result = None
         try:
@@ -148,11 +150,14 @@ class LyricsService:
             return subtitle_body_to_lrc(body), "cc"
         from_lrclib = await self._from_lrclib(song.title, song.artist, song.duration)
         if from_lrclib:
-            text, _synced = from_lrclib
-            return text, "lrclib"
+            text, synced = from_lrclib
+            if synced or text == _INSTRUMENTAL_TEXT:
+                return text, "lrclib"
         body = await self._subtitle_body(song, ai_only=True)
         if body:
             return subtitle_body_to_lrc(body), "ai"
+        if from_lrclib:
+            return from_lrclib[0], "lrclib"
         return None
 
     # ---- 试听预览取词（不落库；曲库外 bvid 也能看歌词） ----

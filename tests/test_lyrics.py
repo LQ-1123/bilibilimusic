@@ -214,3 +214,36 @@ async def test_fetch_returns_none_when_all_sources_empty():
         FakeBili([], []), http=httpx.AsyncClient(transport=httpx.MockTransport(empty_handler))
     )
     assert await svc.fetch_for_song(_song()) is None
+
+
+async def test_fetch_ai_beats_lrclib_plain_text():
+    async with _lrclib_http([], results=[{
+        "duration": 299, "plainLyrics": "只有纯文本",
+    }]) as http:
+        svc = LyricsService(FakeBili([_AI_TRACK], _BODY), http=http)
+        assert await svc.fetch_for_song(_song()) == ("[00:01.00]故事的小黄花", "ai")
+
+
+async def test_fetch_lrclib_plain_text_when_no_ai_subtitle():
+    async with _lrclib_http([], results=[{
+        "duration": 299, "plainLyrics": "只有纯文本",
+    }]) as http:
+        svc = LyricsService(FakeBili([], []), http=http)
+        assert await svc.fetch_for_song(_song()) == ("只有纯文本", "lrclib")
+
+
+async def test_fetch_lrclib_synced_beats_ai():
+    async with _lrclib_http([]) as http:
+        svc = LyricsService(FakeBili([_AI_TRACK], _BODY), http=http)
+        result = await svc.fetch_for_song(_song())
+        assert result == (
+            "[00:29.36]故事的小黄花\n[00:33.10]从出生那年就飘着", "lrclib",
+        )
+
+
+async def test_fetch_instrumental_marker_beats_ai():
+    async with _lrclib_http([], results=[{
+        "duration": 299, "instrumental": True,
+    }]) as http:
+        svc = LyricsService(FakeBili([_AI_TRACK], _BODY), http=http)
+        assert await svc.fetch_for_song(_song()) == ("纯音乐，请欣赏", "lrclib")

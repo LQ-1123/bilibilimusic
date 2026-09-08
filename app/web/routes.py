@@ -14,7 +14,7 @@ from sqlmodel import func, select
 from app.bili.client import BiliApiError, https_media_url
 from app.core.link_parser import BV_RE, parse_video_url
 from app.core.url_guard import validate_bilibili_url
-from app.db.models import ImportTask, Song
+from app.db.models import Album, ImportTask, Song
 from app.db.session import new_session
 from app.services import library, playlists, recs, zone
 from app.services.importer import ImportService
@@ -619,6 +619,29 @@ def recent_partial(request: Request):
         return gate
     recent = [_song_ctx(s) for s in library.list_songs()[:8]]
     return templates.TemplateResponse(request, "partials/recent_rack.html", {"recent": recent})
+
+
+@router.get("/partials/albums", response_class=HTMLResponse)
+def albums_partial(request: Request):
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    with new_session() as session:
+        albums = session.exec(select(Album).order_by(Album.created_at.desc())).all()
+    cards = [{"id": a.id, "title": a.title, "artist": a.artist, "totalPages": a.total_pages,
+              "coverUrl": https_media_url(a.cover_url)} for a in albums]
+    return templates.TemplateResponse(request, "partials/albums.html", {"albums": cards})
+
+
+@router.get("/partials/album-tracks", response_class=HTMLResponse)
+def album_tracks_partial(request: Request, album_id: int):
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        songs = session.exec(select(Song).where(Song.album_id == album_id).order_by(Song.track_no)).all() if album else []
+    return templates.TemplateResponse(request, "partials/album_tracks.html", {"album": album, "songs": [_song_ctx(s) for s in songs], "has_more": False})
 
 
 async def _web_search_all(bili, q: str) -> tuple[list[dict], list[dict]]:

@@ -152,6 +152,14 @@ public class MainActivity extends Activity {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
                 });
             }
+            @JavascriptInterface public void playbackStarted(String title, String artist) {
+                Intent intent = new Intent(MainActivity.this, MediaPlaybackService.class)
+                    .putExtra("title", title).putExtra("artist", artist);
+                if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(intent); else startService(intent);
+            }
+            @JavascriptInterface public void playbackStopped() {
+                stopService(new Intent(MainActivity.this, MediaPlaybackService.class));
+            }
         };
     }
 

@@ -14,6 +14,7 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from sqlmodel import select
 
 from app import events
 from app.bili.client import (
@@ -26,7 +27,8 @@ from app.bili.quality import pick_best_audio, quality_label
 from app.config import settings
 from app.core.cookies import CookieStore
 from app.core.url_guard import UnsafeUrlError, validate_bilibili_url
-from app.db.models import ImportTask, Song
+from app.db.models import Album, ImportTask, Song
+from app.db.session import new_session
 from app.services import library, playlists, recs
 from app.services.importer import ImportService
 from app.storage.files import FileStore
@@ -182,6 +184,68 @@ def get_import(task_id: str) -> dict:
 def list_songs(q: str = "", playlist_id: int = 0) -> dict:
     return {"songs": [song_out(s) for s in library.list_songs(q, playlist_id=playlist_id)]}
 
+
+def _album_out(album: Album) -> dict:
+    return {"id": album.id, "kind": album.kind, "sourceBvid": album.source_bvid,
+            "title": album.title, "artist": album.artist, "coverUrl": https_media_url(album.cover_url),
+            "totalPages": album.total_pages, "materializedPages": album.materialized_pages}
+
+
+@router.get("/albums")
+def list_albums() -> dict:
+    with new_session() as session:
+        return {"albums": [_album_out(a) for a in session.exec(select(Album).order_by(Album.created_at.desc())).all()]}
+
+
+@router.get("/albums/{album_id}")
+def get_album(album_id: int) -> dict:
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        if album is None:
+            raise HTTPException(status_code=404, detail="专辑不存在")
+        return _album_out(album)
+
+
+@router.get("/albums/{album_id}/songs")
+def list_album_songs(album_id: int) -> dict:
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        if album is None:
+            raise HTTPException(status_code=404, detail="专辑不存在")
+        return _album_songs_payload(album, session)
+
+
+@router.post("/albums/{album_id}/materialize")
+def materialize_album(album_id: int) -> dict:
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        if album is None:
+            raise HTTPException(status_code=404, detail="专辑不存在")
+        album.materialized_pages = album.total_pages
+        session.add(album); session.commit(); session.refresh(album)
+        return _album_songs_payload(album, session)
+
+
+def _album_songs_payload(album: Album, session) -> dict:
+    """前端契约（playAlbum）：{songs, hasMore, materializedPages}，按需物化超大合集。"""
+    songs = session.exec(
+        select(Song).where(Song.album_id == album.id).order_by(Song.track_no)  # type: ignore[attr-defined]
+    ).all()
+    return {"songs": [song_out(s) for s in songs], "hasMore": False,
+            "materializedPages": album.materialized_pages}
+
+
+@router.delete("/albums/{album_id}")
+def delete_album(album_id: int) -> dict:
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        if album is None:
+            raise HTTPException(status_code=404, detail="专辑不存在")
+        for song in session.exec(select(Song).where(Song.album_id == album_id)).all():
+            session.delete(song)
+        session.delete(album); session.commit()
+        return {"ok": True}
+
 def playlist_out(p) -> dict:
     from app.services.playlists import folder_ids
 
@@ -244,7 +308,7 @@ def song_cover(song_id: int, files: FileStore = Depends(_files)):
 
 
 @router.get("/songs/{song_id}/lyrics")
-async def song_lyrics(song_id: int, request: Request) -> dict:
+async def song_lyrics(song_id: int, request: Request, force: int = 0) -> dict:
     """歌词（带轴 LRC 或无轴纯文本）；未抓取过则现场懒抓（B站字幕+LRCLIB）并缓存。
 
     存量歌曲无需回填脚本：首次打开歌词面板时由此端点自动补齐。
@@ -253,8 +317,11 @@ async def song_lyrics(song_id: int, request: Request) -> dict:
     song = library.get_song(song_id)
     if song is None:
         raise HTTPException(status_code=404, detail="歌曲不存在")
+    if force:
+        song.lyrics_checked = 0
+        library.update_lyrics(song_id, "", "")
     if not song.lyrics_checked:
-        await request.state.lyrics.ensure_for_song(song_id)
+        await request.state.lyrics.ensure_for_song(song_id, force=bool(force))
         song = library.get_song(song_id) or song
     return {"lyrics": song.lyrics or None, "source": song.lyrics_source or None}
 
