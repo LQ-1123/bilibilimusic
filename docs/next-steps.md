@@ -1,80 +1,76 @@
 # BiliMusic 下一步计划（Next Steps）
 
-> 维护日期：2026-09-08 ｜ 配套：`docs/issue-ledger.md`（问题台账）、`docs/acceptance-manual.md`（验收手册）
-> 当前基线：台账 25 组验收项 **通过 18 组**；代码已提交至 `dc44bc1`（六笔：upic 头像 / F0 cid 流路由 / 前端体验批 / Android 壳 / 桌面启动页 / 文档）。
+> 维护日期：2026-09-08 晚 ｜ 配套：`docs/issue-ledger.md`（问题台账）、`docs/acceptance-manual.md`（验收手册）
+> 当前基线：**台账 25 组验收，代码侧全部完成**（模拟器 + 桌面 + 浏览器实测）；本地 3 笔提交待推送（GitHub 网络恢复后 `git push`）。
 
 ---
 
-## 0. 已完成速览（本日两个批次）
+## 0. 今日全景（2026-09-08）
 
-| 范围 | 内容 |
+| 类别 | 完成项 |
 |---|---|
-| 后端 | F0 cid 流路由（`?cid=` 校验 + audioUrl 携带 cid）；建歌单 307 重定向根因修复 |
-| Web 前端 | 滑条粉色填充、移动三键顺序、空格播放、走马灯标题、歌词蓝框/对比度、返回语义 back-stack、移动路由收口、前台轮询、建歌单加固 |
-| Android 壳 | 系统栏沉浸（方案 A+B）、品牌启动页（图标 + 淡入）、返回键桥、浏览器登录兜底、onJsPrompt/Confirm、debug WebView 调试、缺失图标资源补齐 |
-| 桌面 | 深色品牌启动页 |
+| 快赢批 | F0 cid 流路由、#8 空格、#15 三键顺序、#19 滑条填充、#12 收尾、#13 走马灯、#16 蓝框、#7 建歌单 |
+| 壳与导航 | #1 返回语义（含 WebView pushState 桥）、#2 系统栏沉浸（方案 A+B + insets 单位修复）、#5 后台零轮询、#17 移动路由、#9 双端品牌启动 |
+| 原生播放 | #3 第一段+升级（前台服务 + MediaSession 系统媒体卡片：封面/进度/三键/线控）、#4 音频焦点 + 耳机拔出 |
+| 内容 | #10 网易云源 + 重试换源 + 来源角标、#14 专辑一期全量（迁移/导入/播放/歌词/删除语义/懒物化/标题清洗）、#18 浏览器登录兜底、#21 对比度、#22 hover 关闭钮、#11 下拉刷新 |
+| 桌面 | #20 Overlay 原生窗框（三版迭代定稿：自绘→透明否决→Overlay） |
 
-验收方式与结果明细见 `acceptance-manual.md` §9；模拟器环境配方见该文件末尾。
+## 1. 立即可做：真机抽查（唯一挡在"全部验收"前的环节）
 
----
+按 `acceptance-manual.md` §9 清单，用实体手机装 debug APK 过一遍：
 
-## 1. 下一批（建议立即开工）：#14 专辑一期（多分P paged）
+1. **拔耳机自动暂停**（#4 终验）——播放中拔有线/蓝牙耳机
+2. **来电暂停**（#4）——播放中来电话，挂断后按规范停暂停态
+3. **手势导航返回手感**（#1）——全面屏手势逐层返回，与三键行为一致
+4. **锁屏 30 分钟不断播**（#3）——锁屏挂后台半小时
+5. **蓝牙耳机按键**（#3）——播放/暂停/上下曲（MediaSession 回调）
+6. **逐 P 听音对照**（F0/#14）——播放多分 P 专辑第 3 首，与 B 站 App 第 3 分 P 对照
+7. **专辑收藏粒度核对**（#14）——删专辑后 B 站收藏夹该视频应消失（网页端核对）
+8. **横向刘海**（#2）——横屏内容不被挖孔遮挡
+9. **性能手感**（#6 预筛）——曲库长列表滚动；如卡顿用 chrome://inspect Performance 录制回填台账
 
-进度：**全链路已通（2026-09-08 会话内实测，Android 15 模拟器）**——导入 17P 视频→专辑+17 曲目（各自 cid）→详情→按分 P 播放（P2 = 对应 cid 流）→分 P 歌词（P1/P2 的 CC 内容不同）→删除+重导入复测 ✅；含下拉刷新。会话内修复：导入 DetachedInstance（会话外访问过期 ORM 属性）、`albumRequest` 端点对齐（原拉 meta 无 songs）、`MediaPlaybackService` 包名/目录错位（编译断点）。
-剩余：删专辑的 B 站侧取消收藏 ✅、>300P 懒物化 ✅（materialize 端点 + playAlbum 循环）、分 P 标题清洗 ✅、series 二期（独立开工）。
+## 2. 下一大项（推荐）：#14 series 二期（跨视频合集）
 
-**目标**：粘贴多分 P 视频链接（≥2P）导入为「专辑」，按分 P 播放/看词/收藏，行为符合台账 #14 语义矩阵。F0 的 cid 流路由已就绪，这是它的价值兑现。
+**目标**：B 站"合集/系列"（多个视频组成的歌单型合集）导入为一张专辑，语义按台账 #14 语义矩阵 series 列。
 
 **拆解（按依赖顺序）**：
-1. **数据层**：新增 `Album(kind="paged", source_bvid, title, artist, cover_url, total_pages)`；`Song` 加 `album_id/track_no`，`bvid` 唯一约束迁移为 `(bvid, cid)`（写 Alembic 式启动迁移，注意旧库 `bvid` 唯一索引重建）。
-2. **导入**：importer 检测 `?p=` 或 pages>1 → 一次 wbi/view 拉全部分 P（`video_page_cids` 已有，需扩展成 pages 元数据：cid/part 标题/时长），批量建 Song 行 + Album 行；>300P 懒物化保护；分 P 标题清洗（去「01 ·」序号噪声，复用 lyrics 的 title_candidates 思路）。
-3. **播放**：audioUrl 已带 cid（F0 完成），队列按 track_no 排序。
-4. **歌词**：各 P 按自己 cid 取 CC/AI；LRCLIB 用分 P 标题匹配（`fetch_preview` 需支持传 cid）。
-5. **UI**：曲库「专辑」区（卡=封面/标题/艺人/曲数）→ 专辑详情页（编号/曲名/时长 + 整张播放）；收藏/删除为专辑级（B 站夹整视频一次，语义矩阵见台账）。
-6. **验收**：`acceptance-manual` §6 #14 一期清单逐条；重点回归普通单视频导入零回归。
+1. **链接解析**：`link_parser` 识别 `space.bilibili.com/{mid}/channel/collectiondetail?sid=` 与分享文本；产出 `SeriesRef(sid)`。
+2. **数据**：复用 Album 表（`kind="series"`，`source_bvid` 存 `sid:<id>` 或加列）；曲目行 = 各视频（每个视频可再是多分 P，递归 paged）。
+3. **拉取**：合集视频列表接口（`/x/polymer/web-space/seasons_archives_list`，注意风控限速）；>100 视频分页。
+4. **导入**：逐视频建 Song（复用现有多分 P 路径）；频控（合集可能几百个视频，串行 + 间隔）。
+5. **语义**（与 paged 不同点）：收藏=逐视频各收藏一次；删专辑=批量取消收藏（失败后台自愈）；换设备恢复=sid 重建 + 与收藏夹合并，sid 失效退化为散曲不丢歌。
+6. **UI**：专辑卡复用；详情页标注「合集」；导入进度按视频数展示。
+7. **验收**：手册 §6 #14 二期清单。
 
-**预估**：数据层+导入 2~3 天，UI 2~3 天，语义与回归 2 天。
+**预估**：1~2 周（频控和 sid 失效恢复是主要工作量）。
 
-## 2. #3+#4 原生播放第一段——已落地（前台服务 + 播放通知），余媒体卡片升级
+## 3. 可选跟进（按需）
 
-- `MediaPlaybackService`（foreground）+ MediaStyle 通知（封面/进度/上一首/下一首，点击回 App）；
-- Android 14+ `FOREGROUND_SERVICE_MEDIA_PLAYBACK` 权限、13+ 运行时 `POST_NOTIFICATIONS`；
-- JS 播放命令暂不走桥，先做「原生侧镜像播放状态」的最小闭环（Web 起播时把曲元数据推给壳，壳起前台服务托管音频焦点）；
-- 锁屏/蓝牙 AVRCP/Smart Transition 迁移留二、三段。
-- 实测：播放中 dumpsys 可见前台通知（标题/艺人）；`playbackStopped` 已接队尾/边界停。
-- 三键按钮已用系统 Notification Action 实现 ✅（通知栏实测：暂停/上下曲回控 WebView 生效）；封面大图 + 进度条 + Media3 Session 留升级。
-- **验收**：手册 §3 #3 基础项已过；媒体卡片交互（进度/按钮）待 Media3 Session 升级后验。
-
-## 3. 穿插小项（每项 ≤1~2 天，可任意插队）
-
-| 项 | 内容 | 备注 |
+| 项 | 说明 | 触发条件 |
 |---|---|---|
-| #10 歌词源 | 网易云源（限频+静默降级+来源角标）+ 歌词页「重试/换源」（`?force=1`） | 中文覆盖率主提升 |
-| #11 下拉刷新 | 前端自绘 PTR，仅移动端 feed 视图顶部 | 纯前端 |
-| #20 原生窗框 | `TitleBarStyle::Overlay`（系统圆角 + 真·红绿灯）+ 侧栏让位/拖拽 | ✅ 定稿：自绘与透明方案均已迭代并否决（过程见台账 #20）；手感确认后关闭 |
-| ~~#22 关闭按钮~~ | 已按「hover 显现」落地（style v153） | ✅ 完成 |
-| #12 截断点位 | 等你截图指认具体位置 | title 全文已全员兜底 |
-| #6 性能 | 真机 profile 后定点（封面缩略/backdrop-filter 审计） | 需实体真机 |
+| #3 Media3 迁移 | androidx.media → Media3（现方案已满足锁屏/通知/线控） | 需要 seekbar 联动/后台播放平滑迁移时 |
+| #10 QQ 音乐源 | 网易云覆盖不足时的第二外部源 | 真机用一段时间看命中率 |
+| #6 性能定点 | 封面缩略、backdrop-filter 审计 | 真机 profile 出热点后 |
+| 通知点击深链 | contentIntent 目前只回 Activity，可带"展开歌词页" | 产品需要 |
 
----
+## 4. 发版建议（功能已齐，值得切版本）
 
-## 4. 待用户输入
-
-- [x] #22 关闭按钮：已按「hover 显现」落地（2026-09-08）。
-- [x] #12：用户确认保持现状，关闭。
-- [ ] 实体真机抽查排期：手势导航返回手感、锁屏 30 分钟、横向刘海、性能手感（模拟器已覆盖其余验收）。
-- [ ] 桌面 #20 手感确认：Overlay 红绿灯三钮点击、顶栏/侧栏拖动、双击最大化。
-- [ ] 桌面改动未提交：Overlay 标题栏（main.rs/Cargo.toml/tauri.conf.json/base.html/style v156/v3 v59/启动页）。
+真机抽查完成后建议发 **v0.3.0**（变更量大，值得 minor 版）：
+1. `android/app/build.gradle`：versionCode 3→4、versionName 0.1.2→0.3.0
+2. `desktop/src-tauri/tauri.conf.json` 与 `desktop/package.json`：0.2.1→0.3.0
+3. 跑 `packaging/` 打包脚本出双端产物（smoke 脚本已具备）
+4. release notes 汇总台账 ✅ 项（用户可见口径）
 
 ## 5. 工程事项
 
-- [x] `tests/test_recs.py` 3 个预存失败（2026-09-08）：核对 `c74e725` 的十类体系调整后更新旧分类断言；命中数优先测试改用现有蓝调/摇滚金属分类，保留双向比较覆盖。
-- [x] #10 现有歌词链路优先级修复（2026-09-08）：LRCLIB 纯文本不再抢占 AI 时间轴字幕；没有 AI 时仍回退纯文本，保留纯音乐标记。新增 4 个测试。完整 Python 回归 **111 passed / 2 skipped**（缺真实音频样本），前端 Node 回归 **17 passed**。现有 `datetime.utcnow()` 弃用警告仍在；旧歌词缓存不自动重取，网易云源与重试入口仍待实现。
-- [ ] 提交已完成（`3eb2ad0..dc44bc1` 六笔）；`out/`、`.dsh-paste/`、`android/out/`、`.DS_Store` 为会话草稿，未入库。
-- [ ] 桌面端 `npm run dev` 冷启目检 #9 启动页（代码已就位，未目检）。
+- [ ] **push 3 笔待推提交**（GitHub 网络恢复后）
+- [ ] 真机抽查结果回填 acceptance-manual §9
+- [ ] 台账 §H 与本文档同步收尾
+- [ ] 会话结束前按需关闭：模拟器 / 桌面 App / dev server
 
-## 6. 验收环境速查
+## 6. 环境速查（验收配方）
 
-- 模拟器：AVD `BM35`（API 35 arm64，Pixel 6，三键导航），配方与 CDP 驱动见 `acceptance-manual.md` 末尾。
-- 构建：`cd android && JAVA_HOME=… PATH=python3.11:$PATH PIP_INDEX_URL=阿里云 ./gradlew assembleDebug`（详见 acceptance-manual 环境节）。
-- 种子数据：`adb push` DB/cookies/active_mid → `run-as` 拷入 `files/data/`。
+- 模拟器：AVD `BM35`（API 35 arm64，三键导航）；构建需 `python@3.11`（Chaquopy buildPython）+ 阿里云 pip 镜像 + JAVA_HOME=homebrew openjdk；`cd android && ./gradlew assembleDebug`
+- WebView 调试：`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`，websocket 需 `suppress_origin=True`；驱动脚本 `.dsh-paste/cdp_eval.py`
+- 桌面端：改 Web 资源后必须 `python packaging/build-backend.py` 重打 bundle 再启动（PyInstaller 内嵌静态资源）
+- 种子数据：`adb push` DB/cookies → `run-as io.github.lq1123.bilimusic` 拷入 `files/data/`
