@@ -7,6 +7,8 @@
   var setTheme = function (t) {
     document.documentElement.dataset.theme = t;
     try { localStorage.setItem("bmTheme", t); } catch (e) {}
+    // 原生壳跟随：系统栏图标明暗（#2 方案 B；桌面/浏览器无此桥自动跳过）
+    try { if (window.BiliMusicNative && BiliMusicNative.setTheme) BiliMusicNative.setTheme(t); } catch (e) {}
     var lt = $("light-toggle");
     if (lt) lt.checked = t === "light";
     var meta = document.querySelector('meta[name="theme-color"]');
@@ -219,11 +221,35 @@
     if (up) window.__hidePanel(up);
     if (ly) { window.__hidePanel(ly); ly.classList.remove("showlyrics"); var bl = $("btn-lyrics"); if (bl) bl.classList.remove("on"); }
   }
-  window.goHome = function () {
-    collapseOverlays();
+
+  // 主页 htmx 区段兜底重拉（幂等：仅容器空时拉，#17——隐藏期间 load/revealed 触发器可能没跑过）
+  function rehydrateHome() {
+    if (!window.htmx) return;
+    [
+      ["recpl-rack", "/partials/rec-playlists"],
+      ["recent-rack", "/partials/recent"],
+      ["genre-shelves", "/partials/genre-shelves"],
+    ].forEach(function (it) {
+      var box = $(it[0]);
+      if (box && !box.children.length) {
+        htmx.ajax("GET", it[1], { target: "#" + it[0], swap: "innerHTML" });
+      }
+    });
+  }
+
+  // 详情态统一出口（#17）：view 还原 home、清 detail 标记；Tab 切换共用（未在详情态时空操作）
+  function closeDetail() {
+    if ($("app").dataset.view !== "detail") return;
     $("app").dataset.view = "home";
     document.body.classList.remove("in-detail");
     if (window.switchView) switchView("home");
+  }
+  window.goHome = function () {
+    collapseOverlays();
+    $("app").dataset.view = "home"; // 无条件回主页：详情/搜索/推荐视图都由此退出
+    document.body.classList.remove("in-detail");
+    if (window.switchView) switchView("home");
+    rehydrateHome();
     var nav = $("navHome");
     if (nav) nav.classList.add("on");
   };
@@ -802,16 +828,23 @@
       if (!lyVol) return;
       lyVol.value = Math.round(v * 100);
     };
+    // #19 音量条粉色填充：--p 由 JS 同步（CSS 渐变消费；#vol 旋转后自下而上填充）
+    var syncFill = function (el) {
+      if (el) el.style.setProperty("--p", el.value + "%");
+    };
+    syncFill(vol); syncFill(lyVol);
     if (lyVol) syncLy(vol.value / 100);
     vol.addEventListener("input", function () {
       var v = vol.value / 100;
       apply(v);
       syncLy(v);
+      syncFill(vol); syncFill(lyVol);
     });
     if (lyVol) lyVol.addEventListener("input", function () {
       var v = lyVol.value / 100;
       apply(v);
       syncLy(v);
+      syncFill(vol); syncFill(lyVol);
       vol.value = lyVol.value;
     });
   })();
@@ -847,6 +880,8 @@
     if (!seekEl || !window.BiliPlayer) return;
     var dragging = false;
     var panelOpen = function () { return !$("lyrics-panel").classList.contains("hidden"); };
+    var syncFill = function () { seekEl.style.setProperty("--p", (seekEl.value / 10) + "%"); };
+    syncFill();
 
     setInterval(function () {
       if (!panelOpen()) return;
@@ -854,6 +889,7 @@
       if (!m || !m.duration || !isFinite(m.duration)) return;
       if (!dragging) {
         seekEl.value = Math.round((m.currentTime / m.duration) * 1000);
+        syncFill();
       }
       $("ly-cur").textContent = fmtTime(m.currentTime);
       $("ly-rem").textContent = "-" + fmtTime(Math.max(0, m.duration - m.currentTime));
@@ -864,6 +900,7 @@
     }
     seekEl.addEventListener("input", function () {
       dragging = true;
+      syncFill();
       var m = BiliPlayer.activeMedia();
       if (m && m.duration) $("ly-cur").textContent = fmtTime((seekEl.value / 1000) * m.duration);
     });
@@ -872,6 +909,7 @@
       if (m && m.duration) {
         try { m.currentTime = (seekEl.value / 1000) * m.duration; } catch (e) {}
       }
+      syncFill();
       dragging = false;
     });
     var lt = $("ly-toggle");
@@ -1041,6 +1079,39 @@
     if ($("app").dataset.view === "detail") goHome();
   });
 
+  // ---------- 空格 = 全局播放/暂停（#8） ----------
+  // 输入场景（输入框/可编辑区）与弹窗打开时不接管；capture + preventDefault：
+  // 页面不滚动，聚焦按钮也不会被空格误触（统一走播放开关，含试听态）
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== " " || e.isComposing || !window.BiliPlayer) return;
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+    var login = $("login-modal"), modal = $("mini-modal");
+    if ((login && !login.classList.contains("hidden")) || (modal && !modal.classList.contains("hidden"))) return;
+    e.preventDefault();
+    BiliPlayer.toggle();
+  }, true);
+
+  // ---------- 任务轮询：仅前台每 2s 拉一次（后台/锁屏零请求，#5） ----------
+  // base.html 只保留 load 首拉；后续轮询在这里按可见性驱动
+  (function () {
+    var box = $("task-list");
+    if (!box || !box.hasAttribute("hx-get")) return; // 未登录：任务区不轮询
+    var busy = false;
+    function poll() {
+      if (document.hidden || busy || !window.htmx) return;
+      var r = htmx.ajax("GET", "/partials/tasks", { target: "#task-list", swap: "innerHTML" });
+      if (r && r.then) {
+        busy = true;
+        r.then(function () { busy = false; }, function () { busy = false; });
+      }
+    }
+    setInterval(poll, 2000);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) poll(); // 回前台立即补一次
+    });
+  })();
+
   // ---------- 轻量弹窗（in-app 浏览器常拦截 prompt/confirm，改用页面内弹窗） ----------
   window.__promptModal = function (title, opts) {
     opts = opts || {};
@@ -1209,7 +1280,10 @@
     document.querySelectorAll(".m-tab").forEach(function (b) {
       b.classList.toggle("on", b === btn);
     });
-    if (name === "home" && $("app").dataset.view === "detail") goHome();
+    // Tab 切换不压栈且清空已压栈（#1）；任何 Tab 都先退出详情态（#17：原来到不了曲库的根因）
+    if (window.__backStackReset) __backStackReset();
+    closeDetail();
+    rehydrateHome();
     if (mainEl) mainEl.scrollTop = 0;
   };
   window.orbSearch = function (e) {

@@ -6,6 +6,44 @@
   function accountKey(name) {
     return name + ":" + (document.body.dataset.mid || "guest");
   }
+
+  // ---------- 轻量弹窗兜底（v3.js 加载后会被带样式的同名实现覆盖） ----------
+  // Android WebView 的 prompt()/confirm() 返回 null（壳内未实现对应回调），且
+  // v3.js 一旦整体失效 __promptModal 即缺失 → 建歌单等路径静默失败（#7）。这里先垫底。
+  if (!window.__promptModal) {
+    window.__promptModal = function (title, opts) {
+      opts = opts || {};
+      return new Promise(function (resolve) {
+        var wrap = $("mini-modal"), box = $("mini-modal-box");
+        if (!wrap || !box) { resolve(window.prompt(title) || null); return; }
+        box.innerHTML = '<h3 style="margin-bottom:12px">' + title + "</h3>" +
+          '<input id="mm-input" type="text" style="width:100%;height:42px;padding:0 14px" value="' +
+          String(opts.value || "").replace(/"/g, "&quot;") + '" placeholder="' + (opts.placeholder || "") + '">' +
+          '<div class="modal-actions"><button id="mm-cancel">取消</button><button id="mm-ok">确定</button></div>';
+        wrap.classList.remove("hidden");
+        var input = $("mm-input");
+        input.focus();
+        var done = function (v) { wrap.classList.add("hidden"); resolve(v); };
+        $("mm-ok").onclick = function () { done(input.value.trim() || null); };
+        $("mm-cancel").onclick = function () { done(null); };
+      });
+    };
+  }
+  if (!window.__confirmModal) {
+    window.__confirmModal = function (title, text) {
+      return new Promise(function (resolve) {
+        var wrap = $("mini-modal"), box = $("mini-modal-box");
+        if (!wrap || !box) { resolve(window.confirm(title + "\n" + text)); return; }
+        box.innerHTML = '<h3 style="margin-bottom:10px">' + title + "</h3>" +
+          '<p style="font-size:12.5px;line-height:1.8;opacity:.75">' + text + "</p>" +
+          '<div class="modal-actions"><button id="mm-cancel">取消</button><button id="mm-ok">确定</button></div>';
+        wrap.classList.remove("hidden");
+        var done = function (v) { wrap.classList.add("hidden"); resolve(v); };
+        $("mm-ok").onclick = function () { done(true); };
+        $("mm-cancel").onclick = function () { done(false); };
+      });
+    };
+  }
   // 双轨播放器：audio 始终指向「当前承载播放」的元素（active 指针），过渡时轮换
   var audioA = $("audio");
   var audioB = $("audio2");
@@ -47,7 +85,7 @@
     queueDisplayItems = display;
     list.innerHTML = display.map(function (s, i) {
       var cls = s.id === playingId ? ' class="active"' : "";
-      return "<li" + cls + ' data-idx="' + i + '">' +
+      return "<li" + cls + ' data-idx="' + i + '" title="' + escapeHtml(s.title) + '">' +
         '<span class="q-name">' + escapeHtml(s.title) + "</span>" +
         '<span class="q-artist">' + escapeHtml(s.artist) + "</span>" +
         '<span class="q-dur">' + fmt(s.duration) + "</span></li>";
@@ -241,12 +279,16 @@
   function updateNowPlaying(song) {
     $("player-bar").classList.remove("hidden");
     $("player-cover").src = song.coverUrl;
-    $("player-title").textContent = song.title;
+    var pt = $("player-title");
+    pt.textContent = song.title;
+    pt.title = song.title; // 截断时悬停看全文（#12）
+    if (window.BiliTicker) BiliTicker.set(pt); // 超宽标题窗口内滚动（#13）
     $("player-artist").textContent = song.artist + " · " + (song.qualityLabel || "");
     // 切歌即重置进度显示（否则上一首的粉色填充/时间码会遗留到新歌开头）
     var seekEl = $("seek");
     if (seekEl) {
       seekEl.value = 0;
+      syncSeekFill();
     }
     $("t-cur").textContent = "0:00";
     $("t-dur").textContent = "0:00";
@@ -383,6 +425,7 @@
     if (e.target !== audio) return;
     if (audio.duration && !seekDragging) {
       seek.value = Math.round((audio.currentTime / audio.duration) * 1000);
+      syncSeekFill();
       $("t-cur").textContent = fmt(audio.currentTime);
       $("t-dur").textContent = fmt(audio.duration);
     }
@@ -403,14 +446,21 @@
 
   var seekDragging = false;
   var seek = $("seek");
+  // #19 进度条粉色填充：--p 由这里同步（CSS 渐变消费）
+  function syncSeekFill() {
+    seek.style.setProperty("--p", (seek.value / 10) + "%");
+  }
+  syncSeekFill();
   seek.addEventListener("input", function () {
     seekDragging = true;
+    syncSeekFill();
     if (audio.duration) {
       $("t-cur").textContent = fmt((seek.value / 1000) * audio.duration);
     }
   });
   seek.addEventListener("change", function () {
     if (audio.duration) audio.currentTime = (seek.value / 1000) * audio.duration;
+    syncSeekFill();
     seekDragging = false;
   });
 
@@ -644,10 +694,15 @@
     if (b) b.src = src;
   }
   function setLyricsText(title, artist) {
-    $("lyrics-title").textContent = title;
+    var t1 = $("lyrics-title"), t2 = $("ly-title-big");
+    if (t1) {
+      t1.textContent = title;
+      t1.title = title;
+      if (window.BiliTicker) BiliTicker.set(t1); // 歌词页大标题同走马灯（#13）
+    }
+    if (t2) { t2.textContent = title; t2.title = title; }
     $("lyrics-artist").textContent = artist;
-    var bt = $("ly-title-big"), ba = $("ly-artist-big");
-    if (bt) bt.textContent = title;
+    var ba = $("ly-artist-big");
     if (ba) ba.textContent = artist;
   }
 
@@ -942,6 +997,36 @@
   }
   var smsSendBtn = $("sms-send");
   if (smsSendBtn) smsSendBtn.addEventListener("click", smsSend);
+
+  // ---------- 浏览器登录兜底（#18）：WebView 里极验滑块可能起不来 ----------
+  // 点击 → 桥/新窗口打开系统浏览器登录页（同一后端，Cookie 存服务端互通）→
+  // 按钮变「我已完成登录」→ 再点探测登录态，成功即整页刷新。
+  var blBrowserBtn = $("bl-open-browser");
+  if (blBrowserBtn) {
+    var blOpened = false;
+    blBrowserBtn.addEventListener("click", function () {
+      if (!blOpened) {
+        blOpened = true;
+        if (window.BiliMusicNative && window.BiliMusicNative.openExternalLogin) {
+          BiliMusicNative.openExternalLogin();
+        } else {
+          window.open(location.origin + "/?login=1", "_blank");
+        }
+        blBrowserBtn.textContent = "在浏览器完成登录后，点此继续 →";
+        return;
+      }
+      fetch("/api/auth/status", { cache: "no-store" })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("status " + r.status)); })
+        .then(function (d) {
+          if (d && d.loggedIn) location.reload();
+          else {
+            window.__toast && window.__toast("还未检测到登录，请先在浏览器完成");
+            blBrowserBtn.textContent = "还没检测到？完成登录后再点一次";
+          }
+        })
+        .catch(function () { window.__toast && window.__toast("暂时连不上 B 站，稍后再试"); });
+    });
+  }
   var smsGo = $("sms-go");
   if (smsGo) smsGo.addEventListener("click", function () {
     var tel = ($("sms-tel").value || "").trim();
@@ -1066,21 +1151,47 @@
     }
   };
 
+  // web 表单路径统一带 htmx 头：未登录时服务端回 401 JSON（不带会被 307 重定向吞掉，
+  // fetch 跟随拿到 HTML 却"成功"，歌单实际没建——#7 根因之一）
+  async function webFormPost(url, body) {
+    try {
+      return await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "HX-Request": "true" },
+        body: body,
+      });
+    } catch (e) {
+      return null; // 网络异常：调用方统一提示
+    }
+  }
+
+  // 统一错误出口：网络失败 → toast；401 → 弹登录；其余 → 展示服务端人类可读信息
+  async function formFailed(resp, fallback) {
+    if (!resp) { window.__toast && window.__toast("网络错误，请重试"); return true; }
+    if (resp.status === 401) {
+      if (window.openLogin) openLogin();
+      else window.__toast && window.__toast("请先登录 B 站账号");
+      return true;
+    }
+    if (!resp.ok) {
+      var msg = fallback;
+      try {
+        var data = await resp.json();
+        if (data && data.detail) msg = data.detail;
+      } catch (e) {}
+      window.__toast && window.__toast(msg);
+      return true;
+    }
+    return false;
+  }
+
   window.createPlaylist = async function () {
     var name = window.__promptModal
       ? await window.__promptModal("新建歌单", { placeholder: "歌单名" })
       : prompt("歌单名：");
     if (!name || !name.trim()) return;
-    var body = new URLSearchParams({ name: name.trim() });
-    var resp = await fetch("/web/playlists/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body,
-    });
-    if (!resp.ok) {
-      window.__toast ? window.__toast((await resp.text()) || "创建失败") : alert((await resp.text()) || "创建失败");
-      return;
-    }
+    var resp = await webFormPost("/web/playlists/create", new URLSearchParams({ name: name.trim() }));
+    if (await formFailed(resp, "创建失败")) return;
     window.__toast && window.__toast("歌单已创建 · B 站收藏夹已同步");
     htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
@@ -1091,16 +1202,8 @@
       ? await window.__promptModal("重命名歌单", { value: oldName })
       : prompt("新的歌单名（B 站收藏夹将同步改名）：", oldName);
     if (!name || !name.trim() || name === oldName) return;
-    var body = new URLSearchParams({ id: id, name: name.trim() });
-    var resp = await fetch("/web/playlists/rename", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body,
-    });
-    if (!resp.ok) {
-      window.__toast ? window.__toast((await resp.text()) || "改名失败") : alert((await resp.text()) || "改名失败");
-      return;
-    }
+    var resp = await webFormPost("/web/playlists/rename", new URLSearchParams({ id: id, name: name.trim() }));
+    if (await formFailed(resp, "改名失败")) return;
     window.__toast && window.__toast("已改名 · B 站收藏夹同步更新");
     htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
@@ -1112,16 +1215,8 @@
           "歌单内的歌曲会移入「我的曲库」（不会丢失）；对应的 B 站收藏夹 bilimusic- " + name + " 将一并删除；歌曲的 B 站收藏会后台转移到主夹。")
       : confirm("删除歌单「" + name + "」？\n\n· 歌单内的歌曲会移入「我的曲库」（不会丢失）\n· 对应的 B 站收藏夹 bilimusic- " + name + " 将一并删除\n· 歌曲的 B 站收藏会转移到主夹（后台进行）");
     if (!ok) return;
-    var body = new URLSearchParams({ id: id });
-    var resp = await fetch("/web/playlists/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body,
-    });
-    if (!resp.ok) {
-      window.__toast ? window.__toast((await resp.text()) || "删除失败") : alert((await resp.text()) || "删除失败");
-      return;
-    }
+    var resp = await webFormPost("/web/playlists/delete", new URLSearchParams({ id: id }));
+    if (await formFailed(resp, "删除失败")) return;
     if (activePlaylistId() === String(id)) selectPlaylist(0);
     htmx.trigger(document.body, "playlistsChanged");
     htmx.ajax("GET", "/partials/playlists", { target: "#playlists-bar", swap: "innerHTML" });
@@ -1147,13 +1242,17 @@
   function syncTrialUI() {
     if (!recActive || !recAudio) return;
     $("player-bar").classList.remove("hidden");
-    $("player-title").textContent = recAudio.dataset.title || "实时流试听";
+    var pt = $("player-title");
+    pt.textContent = recAudio.dataset.title || "实时流试听";
+    pt.title = pt.textContent;
+    if (window.BiliTicker) BiliTicker.set(pt);
     $("player-artist").textContent = recAudio.dataset.artist || "";
     if (recAudio.dataset.cover) $("player-cover").src = recAudio.dataset.cover;
     // 试听接管即重置进度显示（清掉曲库歌遗留的填充/时间码）
     var seekEl = $("seek");
     if (seekEl) {
       seekEl.value = 0;
+      syncSeekFill();
     }
     $("t-cur").textContent = "0:00";
     $("t-dur").textContent = "0:00";

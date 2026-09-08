@@ -29,6 +29,8 @@ html[data-theme="light"]{
 }
 
 *{margin:0;padding:0;box-sizing:border-box}
+/* 触屏点按不出现蓝色高亮框（歌词行 seek 等自绘点击语义，#16） */
+html{-webkit-tap-highlight-color:transparent}
 /* iOS 连续曲率圆角（squircle，参考 Kyant0/Shapes）：仅用于矩形圆角元素；
    胶囊(999px)与正圆(50%)元素保持原状。不支持的浏览器自动回退普通圆角。 */
 html,body{height:100%}
@@ -41,6 +43,8 @@ button{font-family:inherit;border:none;background:none;color:inherit;cursor:poin
 input{font-family:inherit;border:none;outline:none;background:none;color:inherit}
 img{display:block}
 .hidden{display:none !important}
+/* 走马灯激活态（#13）：关省略号——裁切缘的省略号不随平移走，会钉在右缘 */
+.ticker-on{text-overflow:clip !important}
 ::-webkit-scrollbar{width:9px;height:9px}
 ::-webkit-scrollbar-thumb{background:rgba(140,140,160,.28);border-radius:8px;border:2px solid transparent;background-clip:content-box}
 ::-webkit-scrollbar-track{background:transparent}
@@ -60,8 +64,9 @@ body.playing .eq i:nth-child(3){animation-delay:.55s}
 @keyframes eq{0%,100%{height:26%}38%{height:100%}68%{height:52%}}
 
 /* ---------- 顶栏 ---------- */
+/* --inset-* 由 Android 壳注入（边到边，#2 方案 B）；浏览器/桌面走 env() 兜底（iOS PWA 生效） */
 .topbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;justify-content:center;gap:14px;
-  padding:16px 2px 13px;margin-bottom:4px}
+  padding:calc(16px + var(--inset-top, env(safe-area-inset-top, 0px))) 2px 13px;margin-bottom:4px}
 .tb-cir{width:34px;height:34px;border-radius:50%;background:var(--card);border:1px solid var(--stroke);
   display:grid;place-items:center;color:var(--txt2);transition:.2s;flex:none;font-size:15px}
 .tb-cir:hover{color:var(--txt);background:var(--card2)}
@@ -362,7 +367,7 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
 #seek,#ly-seek{--p:0%;width:100%;height:12px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
 #seek::-webkit-slider-runnable-track,#ly-seek::-webkit-slider-runnable-track{
   height:3.5px;border-radius:3px;
-  background-color:var(--stroke2);
+  background:linear-gradient(90deg,var(--pink) var(--p,0%),var(--stroke2) var(--p,0%));
 }
 #seek::-webkit-slider-thumb,#ly-seek::-webkit-slider-thumb{
   -webkit-appearance:none;width:0;height:0;border:none;box-shadow:none;
@@ -370,6 +375,7 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
 #seek:hover::-webkit-slider-runnable-track,#seek:active::-webkit-slider-runnable-track,
 #ly-seek:hover::-webkit-slider-runnable-track,#ly-seek:active::-webkit-slider-runnable-track{height:7px}
 #seek::-moz-range-track,#ly-seek::-moz-range-track{height:3.5px;border-radius:3px;background:var(--stroke2)}
+#seek::-moz-range-progress,#ly-seek::-moz-range-progress{height:3.5px;border-radius:3px;background:var(--pink)}
 #seek:hover::-moz-range-track,#seek:active::-moz-range-track,
 #ly-seek:hover::-moz-range-track,#ly-seek:active::-moz-range-track{height:7px}
 #seek::-moz-range-thumb,#ly-seek::-moz-range-thumb{width:0;height:0;border:none}
@@ -394,10 +400,11 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
 #vol{--p:100%;width:112px;height:26px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer;
   transform:rotate(-90deg)}
 #vol::-webkit-slider-runnable-track{height:3.5px;border-radius:3px;
-  background-color:var(--stroke2)}
+  background:linear-gradient(90deg,var(--pink) var(--p,100%),var(--stroke2) var(--p,100%))}
 #vol::-webkit-slider-thumb{-webkit-appearance:none;width:0;height:0;border:none;box-shadow:none}
 #vol:hover::-webkit-slider-runnable-track,#vol:active::-webkit-slider-runnable-track{height:7px}
 #vol::-moz-range-track{height:3.5px;border-radius:3px;background:var(--stroke2)}
+#vol::-moz-range-progress{height:3.5px;border-radius:3px;background:var(--pink)}
 #vol:hover::-moz-range-track,#vol:active::-moz-range-track{height:7px}
 #vol::-moz-range-thumb{width:0;height:0;border:none}
 
@@ -551,7 +558,7 @@ body.trial #seek,body.trial .p-time{visibility:hidden}
 @media (prefers-reduced-motion:reduce){#lyrics-backdrop{transition:none}}
 .l-left{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:24px;padding:0 20px 30px;position:relative;min-width:0}
 
-#btn-lyrics-close{position:absolute;top:24px;left:calc(var(--side) + 28px);width:36px;height:36px;border-radius:50%;
+#btn-lyrics-close{position:absolute;top:calc(24px + var(--inset-top, env(safe-area-inset-top, 0px)));left:calc(var(--side) + 28px);width:36px;height:36px;border-radius:50%;
   background:var(--card);border:1px solid var(--stroke);display:grid;place-items:center;color:var(--txt2);font-size:14px}
 #btn-lyrics-close:hover{color:var(--txt)}
 #lyrics-cover{width:min(300px,24vw);aspect-ratio:1;border-radius:16px;corner-shape:superellipse(2);object-fit:cover;box-shadow:0 26px 70px rgba(0,0,0,.5);background:var(--raise);cursor:pointer}
@@ -579,14 +586,15 @@ body:not(.playing) .i-pause{display:none}
 #ly-star:hover{color:var(--pink-txt);background:var(--pink-tint)}
 #ly-star.on{color:var(--pink)}
 #ly-more{width:34px;height:30px;border-radius:999px;color:var(--txt2);letter-spacing:2px;font-weight:800;transition:.15s}
-.ly-volhost{position:absolute;top:20px;right:26px;z-index:5;display:flex;align-items:center;gap:8px;color:var(--txt2)}
+.ly-volhost{position:absolute;top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)));right:26px;z-index:5;display:flex;align-items:center;gap:8px;color:var(--txt2)}
 .ly-volhost svg{width:17px;height:17px;display:block}
 #ly-vol{--p:100%;width:104px;height:26px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
 #ly-vol::-webkit-slider-runnable-track{height:3.5px;border-radius:3px;
-  background-color:rgba(255,255,255,.28)}
+  background:linear-gradient(90deg,var(--pink) var(--p,100%),rgba(255,255,255,.28) var(--p,100%))}
 #ly-vol::-webkit-slider-thumb{-webkit-appearance:none;width:0;height:0;border:none;box-shadow:none}
 #ly-vol:hover::-webkit-slider-runnable-track,#ly-vol:active::-webkit-slider-runnable-track{height:7px}
 #ly-vol::-moz-range-track{height:3.5px;border-radius:3px;background:rgba(255,255,255,.28)}
+#ly-vol::-moz-range-progress{height:3.5px;border-radius:3px;background:var(--pink)}
 #ly-vol::-moz-range-thumb{width:0;height:0;border:none}
 #ly-more:hover{color:var(--txt);background:var(--card2)}
 #song-menu{position:fixed;z-index:150;min-width:170px;border-radius:14px;
@@ -595,8 +603,11 @@ body:not(.playing) .i-pause{display:none}
 #lyrics-scroll{grid-column:2;grid-row:1 / span 2;position:relative;overflow-y:auto;padding:90px min(76px,7vw) 90px 48px;
   -webkit-mask-image:linear-gradient(transparent, #000 12%, #000 84%, transparent);
   mask-image:linear-gradient(transparent, #000 12%, #000 84%, transparent)}
-.l-line{font-size:30px;font-weight:800;line-height:1.5;padding:13px 0;color:var(--txt3);opacity:.55;transition:.35s;letter-spacing:.3px}
+/* 非当前行提亮保证暖色封面下可读（#21）；点击行=seek 语义，禁文本选中防蓝框（#16） */
+.l-line{font-size:30px;font-weight:800;line-height:1.5;padding:13px 0;color:var(--txt2);opacity:.75;transition:.35s;letter-spacing:.3px;
+  -webkit-user-select:none;user-select:none}
 .l-line.on{color:var(--txt);opacity:1}
+#lyrics-scroll.timed .l-line:hover{color:var(--txt);opacity:.92}
 #lyrics-scroll.timed .l-line{cursor:pointer}
 .l-empty{color:var(--txt3);text-align:center;padding:40px 0;font-size:14px}
 /* 手机端大封面视图（Apple Music 式）：桌面不显示 */
@@ -634,7 +645,7 @@ body:not(.playing) .i-pause{display:none}
   filter:drop-shadow(0 34px 80px rgba(0,0,0,.62)) blur(calc(var(--upfog,0)*22px));
   opacity:calc(1 - var(--upfog,0)*.88);
   transition:opacity .3s}
-#up-close{position:absolute;top:20px;left:calc(var(--side) + 20px);z-index:5;width:36px;height:36px;border-radius:50%;
+#up-close{position:absolute;top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)));left:calc(var(--side) + 20px);z-index:5;width:36px;height:36px;border-radius:50%;
   background:rgba(255,255,255,.09);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
   border:1px solid rgba(255,255,255,.13);display:grid;place-items:center;color:rgba(255,255,255,.75);font-size:13px;transition:.15s}
 #up-close:hover{color:#fff;background:rgba(255,255,255,.16)}
@@ -719,7 +730,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .app[data-view="recommend"] #view-recommend{display:block}
 .app[data-view="up"] #view-up{display:block}
 .app[data-view="detail"] .topbar{display:none}
-.dt-top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;padding:16px 2px 12px}
+.dt-top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;
+  padding:calc(16px + var(--inset-top, env(safe-area-inset-top, 0px))) 2px 12px}
 .dt-top #dt-crumb{transition:opacity .28s}
 #mainEl.scrolled .dt-top #dt-crumb{opacity:0}
 .dt-hero{position:relative;margin:4px -28px 26px calc(-1 * (var(--side) + 28px));padding:22px 28px 30px calc(var(--side) + 28px);
@@ -831,6 +843,9 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   transition:.15s;box-shadow:none}
 #login-modal .bl-go:hover{background:#ff8fad}
 #login-modal #sms-msg{min-height:18px;font-size:12.5px;color:#9499a0;text-align:center}
+/* 浏览器登录兜底（#18）：SMS 栏底部的品牌色文字钮 */
+#login-modal #bl-open-browser{margin-top:2px;font-size:12px;font-weight:600;color:#fb7299;background:none;border:none;cursor:pointer;padding:6px 0;width:100%}
+#login-modal #bl-open-browser:hover{text-decoration:underline}
 #login-modal #sms-msg.err{color:#f25d8e}
 #login-modal .bl-foot{margin-top:auto;padding-top:26px;text-align:center}
 #login-modal .bl-foot p{font-size:11.5px;color:#9499a0;line-height:2}
@@ -855,7 +870,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .hero::before{inset:-30px -16px -70px -16px}
   .topbar{display:none}
   /* 手机端：点底部搜索圆钮 → 搜索胶囊从圆钮位置向左展开（与底部 Dock 同一水平线） */
-  .topbar.searching{display:flex;position:absolute;left:12px;right:86px;bottom:14px;top:auto;z-index:110;
+  .topbar.searching{display:flex;position:absolute;left:12px;right:86px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));top:auto;z-index:110;
     border-width:1px;border-style:solid;border-radius:999px;padding:8px 10px;gap:8px;
     transform-origin:100% 50%;animation:msExpand .32s cubic-bezier(.3,.85,.3,1)}
   @keyframes msExpand{from{transform:scaleX(.18);opacity:.3}to{transform:none;opacity:1}}
@@ -869,7 +884,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   body.msearching .m-orb{opacity:0;transform:scale(.6);pointer-events:none}
   .m-tabs,.m-orb{transition:opacity .3s,transform .3s cubic-bezier(.3,.85,.3,1)}
   /* 结果面板从胶囊上方展开 */
-  .search-drop{top:auto;bottom:86px;left:12px;right:12px;width:auto;max-height:calc(100% - 260px)}
+  .search-drop{top:auto;bottom:calc(86px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));left:12px;right:12px;width:auto;max-height:calc(100% - 260px)}
   .tb-search{flex:1}
   .tb-right .tb-chip{padding:0 11px}
   .tb-chip .lbl{display:none}
@@ -879,10 +894,10 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .trk .no,.trk.playing .eqbox,.trk .pl-pill,.trk .q,.trk .du{display:none}
   .trk .row-acts .del{display:grid;opacity:1}
   .trk .addto{display:grid;opacity:1}  /* 触屏无 hover：加入歌单常显 */
-  #player-bar{left:12px;right:12px;bottom:86px;max-width:none;grid-template-columns:auto minmax(0,1fr) auto;
+  #player-bar{left:12px;right:12px;bottom:calc(86px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));max-width:none;grid-template-columns:auto minmax(0,1fr) auto;
     grid-template-areas:"ctl meta acts";min-height:56px;padding:6px 10px;gap:6px}
   #player-bar .p-time{display:none}
-  #player-bar .p-ctl{grid-area:ctl;flex-direction:row-reverse}
+  #player-bar .p-ctl{grid-area:ctl}
   #player-bar .p-ctl button{width:30px;height:30px;font-size:13px}
   #player-bar .p-ctl .big{width:36px;height:36px;font-size:13px}
   #player-bar .p-meta{grid-area:meta}
@@ -893,7 +908,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #player-bar .p-acts button{width:32px;height:32px;font-size:13px}
   .volhost{display:none}
   #task-list{left:12px;bottom:150px;max-width:calc(100vw - 24px)}
-  #queue-panel{top:10px;bottom:150px}
+  #queue-panel{top:10px;bottom:calc(150px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)))}
   /* 手机端歌词全屏（Apple Music 式）：顶栏=小封面+左对齐歌名+···，歌词居中作主体，底部=进度+三键 */
   #lyrics-panel{display:flex;flex-direction:column}
   .ly-volhost{display:none} /* 手机端不需要音量条 */
@@ -901,7 +916,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #lyrics-panel:not(.showlyrics) .l-left{display:block;padding:12px 12px 4px}
   #lyrics-panel:not(.showlyrics) .l-left #lyrics-cover,
   #lyrics-panel:not(.showlyrics) .l-songrow{display:none}
-  .l-left{flex:none;display:grid;grid-template-columns:36px 52px minmax(0,1fr) auto;align-items:center;column-gap:11px;padding:12px 12px 4px}
+  .l-left{flex:none;display:grid;grid-template-columns:36px 52px minmax(0,1fr) auto;align-items:center;column-gap:11px;
+    padding:calc(12px + var(--inset-top, env(safe-area-inset-top, 0px))) 12px 4px}
   .l-songrow{display:contents} /* 子元素直接参与顶部 grid 行 */
   #btn-lyrics-close{position:static}
   #lyrics-cover{width:52px;height:52px;border-radius:8px;corner-shape:superellipse(2);box-shadow:0 10px 26px rgba(0,0,0,.35)}
@@ -915,9 +931,9 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #lyrics-scroll .l-line:first-child{margin-top:auto}
   #lyrics-scroll .l-line:last-child{margin-bottom:auto}
   #lyrics-scroll .l-empty{margin:auto}
-  .l-line{font-size:23px;padding:15px 0;text-align:center;opacity:.38;filter:blur(.6px)}
+  .l-line{font-size:23px;padding:15px 0;text-align:center;opacity:.52;filter:blur(.6px)}
   .l-line.on{opacity:1;filter:none}
-  .l-bottom{flex:none;gap:2px;padding:4px 22px calc(22px + env(safe-area-inset-bottom, 0px))}
+  .l-bottom{flex:none;gap:2px;padding:4px 22px calc(22px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)))}
   .ly-prog{width:100%}
   .ly-ctl{gap:36px;padding-top:10px}
   .ly-ctl .big svg{width:48px;height:48px}
@@ -941,7 +957,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   /* 手机端 UP 主作品页：沉浸 hero + 单列内容 + 全宽 mini player */
   #up-panel{padding-left:0}
   .up-hero{min-height:min(74vh,600px);padding-bottom:26px}
-  #up-close{top:14px;left:14px}
+  #up-close{top:calc(14px + var(--inset-top, env(safe-area-inset-top, 0px)));left:14px}
   #up-bg{width:min(66vw,300px);padding-top:min(15vh,84px)}
   .up-meta b{font-size:25px}
   #up-play{width:58px;height:58px}
@@ -957,7 +973,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .dt-hero .dt-cvr{width:130px;height:130px}
   .dt-title{font-size:24px}
   .dt-info{flex-basis:100%}
-  #m-dock{display:flex;align-items:center;gap:10px;position:absolute;left:12px;right:12px;bottom:14px;z-index:65}
+  #m-dock{display:flex;align-items:center;gap:10px;position:absolute;left:12px;right:12px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));z-index:65}
   .m-tabs{flex:1;height:58px;border-radius:999px;display:flex;align-items:center;position:relative;isolation:isolate;
     border-width:1px;border-style:solid}
   .m-tabs::before{content:"";position:absolute;inset:5px auto 5px 5px;width:calc((100% - 10px)/3);
@@ -990,8 +1006,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .m-orb svg{width:21px;height:21px}
   /* 搜索下拉跟随悬浮胶囊定位 */
   .search-drop{top:76px;left:12px;right:12px;width:auto;max-height:calc(100% - 200px)}
-  /* Tab 视图切换（仅手机）：主页 Tab=发现类（最近播放+流派货架）；曲库 Tab=我的内容（推荐歌单+最近收藏）；最近播放两栏都显示 */
-  body[data-mtab="home"] .sec-recpl,body[data-mtab="home"] .sec-recent{display:none}
+  /* Tab 视图切换（仅手机）：主页=完整首页（推荐歌单不随 Tab 切换消失）；曲库=我的内容（藏发现区，留最近播放） */
   body[data-mtab="library"] .sec-hero,body[data-mtab="library"] #genre-shelves{display:none}
   body[data-mtab="account"] #view-home{display:none !important}
   body[data-mtab="account"] #view-account{display:block}

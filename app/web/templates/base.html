@@ -12,11 +12,13 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=148">
+  <link rel="stylesheet" href="/static/style.css?v=151">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/app.js?v=52" defer></script>
+  <script src="/static/ticker.js?v=3" defer></script>
+  <script src="/static/app.js?v=55" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=54" defer></script>
+  <script src="/static/v3.js?v=56" defer></script>
+  <script src="/static/back-stack.js?v=3" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -138,8 +140,8 @@
     <div id="sd-web"></div>
   </div>
 
-  <!-- 任务轮询仅登录后开启（未登录时每 2s 的 401 会反复弹登录窗） -->
-  <div id="task-list" {% if logged_in %}hx-get="/partials/tasks" hx-trigger="load, every 2s"{% endif %}></div>
+  <!-- 任务区首拉在登录后开启；每 2s 轮询改由 v3.js 按页面可见性驱动（后台零请求，#5） -->
+  <div id="task-list" {% if logged_in %}hx-get="/partials/tasks" hx-trigger="load"{% endif %}></div>
 
   <div id="queue-panel" class="hidden">
     <div class="q-head">
@@ -295,6 +297,7 @@
             <input id="sms-code" type="text" inputmode="numeric" maxlength="6" placeholder="请输入验证码"></label>
           <button id="sms-go" type="button" class="bl-go">登录 / 注册</button>
           <div id="sms-msg"></div>
+          <button id="bl-open-browser" type="button" title="系统浏览器里滑块/验证码功能完整">验证页打不开？在系统浏览器完成登录</button>
         </div>
         <div class="bl-foot">
           <p>未注册过哔哩哔哩的手机号，我们将自动帮你注册账号</p>
