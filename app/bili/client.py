@@ -432,13 +432,14 @@ class BiliClient:
             mid = int(item.get("mid") or 0)
             if not mid:
                 continue
+            face = item.get("upic") or item.get("face") or ""
             out.append(
                 {
                     "mid": mid,
                     "name": strip_highlight(str(item.get("uname") or "")).strip(),
                     "sign": str(item.get("usign") or "").strip(),
                     "fans": int(item.get("fans") or 0),
-                    "face": https_media_url(str(item.get("face") or "")),
+                    "face": https_media_url(str(face)),
                 }
             )
         return out
