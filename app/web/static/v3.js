@@ -3,13 +3,14 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
 
-  // Tauri 桌面端（#20）：Overlay 标题栏——红绿灯由系统画；顶栏/侧栏顶部空白可拖动、双击最大化。
+  // Tauri 桌面端（#20）：macOS Overlay 标题栏——红绿灯由系统画；顶栏/侧栏顶部空白可拖动、双击最大化。
   (function () {
     var api = window.__TAURI__ && window.__TAURI__.window;
-    if (api && api.getCurrentWindow) {
+    if (!api || !api.getCurrentWindow) return;
+    // 侧栏顶部 40px 让位只对 macOS Overlay 标题栏有意义；Windows/Linux 保留系统装饰，不额外留白。
+    if (/Mac OS X|Macintosh/.test(navigator.userAgent || "")) {
       document.documentElement.classList.add("tauri");
     }
-    if (!api || !api.getCurrentWindow) return;
     var win = api.getCurrentWindow();
     function draggable(el) {
       if (!el) return;

@@ -164,12 +164,16 @@ fn main() {
         .setup(move |app| {
             let navigation_runtime = setup_runtime.clone();
             let load_runtime = setup_runtime.clone();
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("BiliMusic")
-                // 原生窗框（macOS 圆角 + 真·红绿灯），内容延伸到标题栏下（仿原生 App）
-                .title_bar_style(tauri::TitleBarStyle::Overlay)
-                .inner_size(1280.0, 850.0)
-                .min_inner_size(800.0, 600.0)
+            let window_builder =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+                    .title("BiliMusic")
+                    .inner_size(1280.0, 850.0)
+                    .min_inner_size(800.0, 600.0);
+            // 原生窗框（macOS 圆角 + 真·红绿灯），内容延伸到标题栏下（仿原生 App）。
+            // title_bar_style 是 macOS 专属 API：Windows/Linux 保持系统装饰，避免跨平台编译失败。
+            #[cfg(target_os = "macos")]
+            let window_builder = window_builder.title_bar_style(tauri::TitleBarStyle::Overlay);
+            window_builder
                 .on_navigation(move |url| {
                     let allowed = navigation_runtime.origin.lock().unwrap().clone();
                     if let Some(origin) = allowed {
