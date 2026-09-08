@@ -42,7 +42,7 @@ def _start(directory: str) -> str:
     _url = f"http://127.0.0.1:{sock.getsockname()[1]}"
     _server = uvicorn.Server(uvicorn.Config(
         app, host="127.0.0.1", loop="asyncio", http="h11", ws="none",
-        access_log=False, log_level="warning", timeout_graceful_shutdown=3,
+        access_log=False, log_level="warning", timeout_graceful_shutdown=1,
     ))
     server = _server
 
@@ -61,7 +61,10 @@ def stop():
     if _server:
         _server.should_exit = True
     if _thread:
-        _thread.join(timeout=5)
+        # #25：等 1.5s 让 uvicorn 收尾（含在飞请求）；超时直接硬退，避免 main() 里空转
+        _thread.join(timeout=1.5)
+        if _thread.is_alive():
+            os._exit(0)
 
 
 def watch_parent(stream):

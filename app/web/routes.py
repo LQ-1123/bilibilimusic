@@ -67,6 +67,10 @@ def _song_ctx(s) -> dict:
         "duration_text": _fmt_duration(d["duration"]),
         "cover_url": d["coverUrl"],
         "audio_url": d["audioUrl"],
+        # #36：多分 P 曲目在曲库列表里给一个「进专辑」入口
+        "album_id": getattr(s, "album_id", None),
+        # #37：合集容器里据此显示「收藏 / 移出曲库」
+        "collected": bool(getattr(s, "collected", True)),
     }
 
 
@@ -701,23 +705,95 @@ async def web_search(request: Request, q: str = ""):
     )
 
 
+# #37：搜索接口不返回「是否多 P」，只能逐条查 view 接口。带进程级缓存 + 并发上限。
+_MULTIP_CACHE: dict[str, int] = {}
+_PAGE_PROBE_LIMIT = 20
+
+
+async def _probe_collections(bili, results: list[dict]) -> None:
+    """给搜索结果标注 pages / is_collection（只探前 N 条，失败按单曲处理）。"""
+    todo = [r for r in results[:_PAGE_PROBE_LIMIT] if r["bvid"] not in _MULTIP_CACHE]
+    if todo:
+        sem = asyncio.Semaphore(6)
+
+        async def one(bvid: str) -> None:
+            async with sem:
+                count = await bili.video_page_count(bvid)
+            if count:  # 失败（None）不缓存，下次再试
+                _MULTIP_CACHE[bvid] = count
+
+        await asyncio.gather(*(one(r["bvid"]) for r in todo))
+    for r in results:
+        pages = _MULTIP_CACHE.get(r["bvid"], 0)
+        r["pages"] = pages
+        r["is_collection"] = pages > 1
+
+
+def _album_ids_for(bvids: list[str]) -> dict[str, int]:
+    """#37：搜索结果里已收藏为容器的，直接给出 album_id（点击即打开，不再重复导入）。"""
+    if not bvids:
+        return {}
+    with new_session() as session:
+        rows = session.exec(
+            select(Album).where(Album.source_bvid.in_(bvids))  # type: ignore[attr-defined]
+        ).all()
+    return {a.source_bvid: (a.id or 0) for a in rows}
+
+
 @router.get("/partials/search-detail", response_class=HTMLResponse)
 async def search_detail(request: Request, q: str = ""):
-    """搜索详情页（回车进入）：上排 UP 主圆形卡、下方视频方形封面网格。"""
+    """搜索详情页（回车进入）：UP 主 / 合集 / 歌曲 三类分区（#37）。"""
     gate = _login_redirect(request)
     if gate:
         return gate
     q = (q or "").strip()
     results, ups, error = [], [], None
+    collections, songs = [], []
     if q and not (q.lower().startswith("http") or BV_RE.search(q) or parse_video_url(q)):
         try:
             results, ups = await _web_search_all(request.state.bili, q)
+            await _probe_collections(request.state.bili, results)
+            known = _album_ids_for([r["bvid"] for r in results if r.get("is_collection")])
+            for r in results:
+                r["album_id"] = known.get(r["bvid"], 0)
+                (collections if r.get("is_collection") else songs).append(r)
         except BiliApiError as exc:
             error = str(exc)
     return templates.TemplateResponse(
         request, "partials/search_detail.html",
-        {"q": q, "results": results, "ups": ups, "error": error},
+        {"q": q, "results": results, "collections": collections, "songs": songs,
+         "ups": ups, "error": error},
     )
+
+
+@router.post("/web/collect-album")
+async def web_collect_album(request: Request, bvid: str = Form(default="")) -> JSONResponse:
+    """#37：把搜索里的「合集」（多 P 视频）收藏为容器——只建合集，不把子作品塞进曲库。"""
+    gate = _login_redirect(request)
+    if gate:
+        return JSONResponse({"ok": False, "error": "请先登录"}, status_code=401)
+    bvid = (bvid or "").strip()
+    if not bvid:
+        return JSONResponse({"ok": False, "error": "缺少 bvid"}, status_code=400)
+    album = library.get_album_by_source(bvid)
+    if album is None:
+        try:
+            request.state.importer.submit(f"https://www.bilibili.com/video/{bvid}", playlist_id=0)
+        except (ValueError, BiliApiError) as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=502)
+        for _ in range(40):  # 导入是异步任务：等容器出现，最多 ~20s
+            album = library.get_album_by_source(bvid)
+            if album is not None:
+                break
+            await asyncio.sleep(0.5)
+    if album is None:
+        return JSONResponse({"ok": False, "error": "收藏失败，请稍后重试"}, status_code=502)
+    return JSONResponse({
+        "ok": True,
+        "albumId": album.id,
+        "title": album.title,
+        "totalPages": album.total_pages,
+    })
 
 
 @router.post("/web/sync", response_class=HTMLResponse)

@@ -1,8 +1,12 @@
 {% if error %}
+<div class="sr-back"><button type="button" onclick="goHome()">‹ 返回</button></div>
 <div class="empty">B 站搜索失败：{{ error }}</div>
-{% elif not ups and not results %}
-<div class="empty">没有找到「{{ q }}」相关的 UP 主或音乐。</div>
+{% elif not ups and not collections and not songs %}
+<div class="sr-back"><button type="button" onclick="goHome()">‹ 返回</button></div>
+<div class="empty">没有找到「{{ q }}」相关的 UP 主、合集或音乐。</div>
 {% else %}
+<div class="sr-back"><button type="button" onclick="goHome()">‹ 返回</button></div>
+
 {% if ups %}
 <div class="sec">
   <div class="sec-head"><h2>UP 主</h2></div>
@@ -17,11 +21,30 @@
   </div>
 </div>
 {% endif %}
-{% if results %}
+
+{# #37：多 P 视频 = 合集，单独成区；点开进容器，子作品逐个收藏 #}
+{% if collections %}
+<div class="sec">
+  <div class="sec-head"><h2>合集</h2><span class="hint">多分 P 视频 · 点开逐个收藏</span></div>
+  <div class="sr-grid">
+    {% for r in collections %}
+    <div class="sr-song sr-coll" data-bvid="{{ r.bvid }}" data-album-id="{{ r.album_id or '' }}"
+         data-album-name="{{ r.title }}" title="{{ r.title }}">
+      <span class="im"><img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        <span class="cbadge">合集 · {{ r.pages }} 首</span></span>
+      <span class="t1" title="{{ r.title }}">{{ r.title }}</span>
+      <span class="t2">{{ r.artist }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if songs %}
 <div class="sec">
   <div class="sec-head"><h2>歌曲</h2></div>
   <div class="sr-grid">
-    {% for r in results %}
+    {% for r in songs %}
     <div class="sr-song" data-bvid="{{ r.bvid }}" data-artist="{{ r.artist }}" onclick="playRecRow(this)" title="{{ r.title }}">
       <span class="im"><img src="{{ r.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
       <span class="t1" title="{{ r.title }}">{{ r.title }}</span>

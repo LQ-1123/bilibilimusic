@@ -13,8 +13,12 @@
     <span class="q{{ '' if s.quality_label == '192K' else ' dim' }}">{{ s.quality_label }}</span>
     <span class="du">{{ s.duration_text }}</span>
     <span class="row-acts">
-      <button class="addto" type="button" data-add="{{ s.id }}" title="加入歌单">＋</button>
-      <button class="del" type="button" data-del="{{ s.id }}" aria-label="从专辑隐藏曲目（保留 B 站收藏）">✕</button>
+      {% if s.collected %}<button class="addto" type="button" data-add="{{ s.id }}" title="收藏到歌单">＋</button>{% endif %}
+      <button class="star{{ ' on' if s.collected else '' }}" type="button"
+              {% if s.collected %}data-uncollect="{{ s.id }}" title="移出曲库（仍留在合集里，不影响 B 站收藏）" aria-label="移出曲库"
+              {% else %}data-collect="{{ s.id }}" title="收藏这首到曲库" aria-label="收藏到曲库"{% endif %}>
+        <svg aria-hidden="true"><use href="#i-star"/></svg>
+      </button>
     </span>
   </div>
   {% endfor %}

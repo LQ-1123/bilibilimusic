@@ -51,6 +51,8 @@ class Song(SQLModel, table=True):
     playlist_id: int = 0  # 所属歌单；0 表示待归入默认歌单
     album_id: int = Field(default=0, index=True)
     track_no: int = 0
+    # #37：多 P「合集」的子作品默认不入曲库（collected=False），在合集容器里逐个收藏才置 1
+    collected: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

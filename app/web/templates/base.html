@@ -12,13 +12,13 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=156">
+  <link rel="stylesheet" href="/static/style.css?v=160">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
-  <script src="/static/app.js?v=60" defer></script>
+  <script src="/static/app.js?v=63" defer></script>
   <script src="/static/export.js?v=7" defer></script>
-  <script src="/static/v3.js?v=59" defer></script>
-  <script src="/static/back-stack.js?v=3" defer></script>
+  <script src="/static/v3.js?v=63" defer></script>
+  <script src="/static/back-stack.js?v=4" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -42,6 +42,7 @@
     <symbol id="i-queue" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h10M4 18h7"/></g><path fill="currentColor" d="M17 11.5l5 3.2c.6.4.6 1.4 0 1.8l-5 3.2c-.7.4-1.5-.1-1.5-.9v-6.4c0-.8.8-1.3 1.5-.9z"/></symbol>
     <symbol id="i-rep" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 12V9.5A3.5 3.5 0 016.5 6H21"/><path d="M7 22l-4-4 4-4"/><path d="M21 12v2.5a3.5 3.5 0 01-3.5 3.5H3"/></g></symbol>
     <symbol id="i-shuf" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></g></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.6l2.9 5.9 6.5.95-4.7 4.6 1.1 6.45L12 17.45 6.2 20.5l1.1-6.45L2.6 9.45l6.5-.95z"/></symbol>
   </defs>
 </svg>
 
@@ -49,10 +50,11 @@
 
   <main class="main" id="mainEl">
 
-    <div class="topbar" id="topbar">
+    <!-- #24：Tauri 桌面端拖动由 data-tauri-drag-region 处理（drag.js 会跳过 input/button/a） -->
+    <div class="topbar" id="topbar" data-tauri-drag-region="deep">
       <div class="tb-search" id="tbSearch">
         <svg><use href="#i-search"/></svg>
-        <input id="search" type="search" name="q" placeholder="搜索曲库 / B 站" autocomplete="off">
+        <input id="search" type="text" name="q" placeholder="搜索曲库 / B 站" autocomplete="off" inputmode="search" enterkeyhint="search">
         <button id="search-close" type="button" class="tb-cir" title="关闭搜索">✕</button>
       </div>
       <button id="theme-toggle" class="tb-cir" type="button" onclick="toggleTheme()" title="切换深色 / 浅色">
@@ -71,6 +73,8 @@
   </main>
 
   <aside class="sidebar">
+    <!-- #24：macOS Overlay 标题栏下的 40px 让位区兼作拖拽带（CSS 只在 html.tauri 下显示） -->
+    <div class="tb-drag" data-tauri-drag-region="deep"></div>
     <!-- 主导航（Tauri 壳用 macOS Overlay 标题栏：系统画原生红绿灯，CSS 侧栏顶部让位） -->
     <nav class="side-nav" aria-label="主导航">
       <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
@@ -118,13 +122,13 @@
       <div class="mtx">
         <div class="trow">
           <div id="player-title">—</div>
-          <button id="btn-star" type="button" title="收藏到我的曲库（同步 B 站收藏夹）">★</button>
         </div>
         <div id="player-artist"></div>
         <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="进度">
       </div>
     </div>
     <div class="p-acts">
+      <button id="btn-star" type="button" title="收藏到我的曲库（同步 B 站收藏夹）" aria-label="收藏"><svg aria-hidden="true"><use href="#i-star"/></svg></button>
       <button id="btn-lyrics" type="button" title="歌词" aria-label="歌词"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-7l-5 3v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 8h4v4l-2 3H7l2-3H7zm6 0h4v4l-2 3h-2l2-3h-2z" fill="currentColor"/></svg></button>
       <button id="btn-queue" type="button" title="播放队列" aria-label="播放队列"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h12M9 12h12M9 19h12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g fill="currentColor"><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="12" r="1.5"/><circle cx="3" cy="19" r="1.5"/></g></svg></button>
       <span class="volhost">
@@ -184,6 +188,7 @@
           <b id="ly-title-big">—</b>
           <span id="ly-artist-big"></span>
         </div>
+        <button id="ly-star-big" type="button" title="收藏到我的曲库（同步 B 站收藏夹）" aria-label="收藏">★</button>
       </div>
     </div>
     <div id="lyrics-scroll"></div>
@@ -259,7 +264,7 @@
   <div id="m-dock">
     <div class="m-tabs">
       <button type="button" class="m-tab on" data-mtab="home" onclick="mTab('home',this)"><svg><use href="#i-home"/></svg>主页</button>
-      <button type="button" class="m-tab" data-mtab="library" onclick="mTab('library',this)"><svg><use href="#i-note"/></svg>曲库</button>
+      <button type="button" class="m-tab" data-mtab="library" onclick="mTab('library',this)"><svg><use href="#i-note"/></svg>资料库</button>
       <button type="button" class="m-tab" data-mtab="account" onclick="mTab('account',this)"><svg><use href="#i-user"/></svg>账号</button>
     </div>
     <button type="button" class="m-orb" onclick="orbSearch(event)" title="搜索"><svg><use href="#i-search"/></svg></button>

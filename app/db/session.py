@@ -103,7 +103,8 @@ def _migrate(engine) -> None:
             old_cols = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info('song_legacy_migration')").fetchall()}
             new_cols = [c.name for c in Song.__table__.columns]
             defaults = {"aid": "0", "cover_color": "''", "fav_folder_id": "0", "playlist_id": "0",
-                        "lyrics": "''", "lyrics_source": "''", "lyrics_checked": "0", "album_id": "0", "track_no": "0"}
+                        "lyrics": "''", "lyrics_source": "''", "lyrics_checked": "0", "album_id": "0",
+                        "track_no": "0", "collected": "1"}
             source = [f'"{c}"' if c in old_cols else defaults.get(c, "NULL") for c in new_cols]
             quoted = ", ".join(f'"{c}"' for c in new_cols)
             conn.exec_driver_sql(f'INSERT INTO song ({quoted}) SELECT {", ".join(source)} FROM song_legacy_migration')
@@ -137,6 +138,16 @@ def _migrate(engine) -> None:
     if "track_no" not in cols:
         with engine.begin() as conn:
             conn.exec_driver_sql("ALTER TABLE song ADD COLUMN track_no INTEGER DEFAULT 0")
+    if "collected" not in cols:
+        # #37：新增「是否已收藏」列。存量数据按新语义一次性归位——多 P 合集的子作品
+        # 改为「未收藏」（合集=容器，子作品要在容器里逐个收藏），单视频歌曲保持已收藏。
+        with engine.begin() as conn:
+            conn.exec_driver_sql("ALTER TABLE song ADD COLUMN collected INTEGER DEFAULT 1")
+            if "album" in insp.get_table_names():
+                conn.exec_driver_sql(
+                    "UPDATE song SET collected = 0 WHERE album_id > 0 AND album_id IN "
+                    "(SELECT id FROM album WHERE kind = 'paged')"
+                )
     # Replace the legacy bvid-only uniqueness with the paged-video key.
     with engine.begin() as conn:
         conn.exec_driver_sql(

@@ -29,7 +29,8 @@ impl Runtime {
         if let Some(mut child) = self.child.lock().unwrap().take() {
             // EOF asks Python to close its database and network sessions first.
             drop(child.stdin.take());
-            for _ in 0..30 {
+            // #25：宽限 0.5s 即可（实测后端 stdin EOF 后 0.33s 退出）；原来 30×100ms 会让退出卡满 3s
+            for _ in 0..5 {
                 if matches!(child.try_wait(), Ok(Some(_))) {
                     return;
                 }
@@ -48,7 +49,7 @@ fn report_error(app: &tauri::AppHandle, error: &str) {
         let _ = window.eval(format!(
             "document.getElementById('status')?.replaceChildren({text})"
         ));
-        let _ = window.set_title("BiliMusic - Startup failed");
+        let _ = window.set_title("启动失败");
     }
     if std::env::var_os("BM_DESKTOP_SMOKE").is_some() {
         app.exit(1);
@@ -164,11 +165,14 @@ fn main() {
         .setup(move |app| {
             let navigation_runtime = setup_runtime.clone();
             let load_runtime = setup_runtime.clone();
+            // #23：Overlay 标题栏会把窗口标题画在顶部正中 → 置空去掉那行文字
             let window_builder =
                 WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                    .title("BiliMusic")
+                    .title("")
                     .inner_size(1280.0, 850.0)
-                    .min_inner_size(800.0, 600.0);
+                    // #26：最小尺寸必须让宽度 > 900px（style.css 的响应式断点），否则会滑进手机布局
+                    // 410 = 370（用户要求）+ 40（Overlay 下 .sidebar 的 padding-top 让位区）
+                    .min_inner_size(1260.0, 410.0);
             // 原生窗框（macOS 圆角 + 真·红绿灯），内容延伸到标题栏下（仿原生 App）。
             // title_bar_style 是 macOS 专属 API：Windows/Linux 保持系统装饰，避免跨平台编译失败。
             #[cfg(target_os = "macos")]

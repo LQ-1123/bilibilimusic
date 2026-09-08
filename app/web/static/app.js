@@ -308,7 +308,6 @@
     setGain(audioB, audioB === audio ? 1 : 0);
     audio.src = song.audioUrl;
     audio.play().catch(function () {});
-    try { if (window.BiliMusicNative && BiliMusicNative.playbackStarted) BiliMusicNative.playbackStarted(song.title, song.artist, song.coverUrl || ""); } catch (e) {}
     updateNowPlaying(song);
     pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
     if (smartEnabled()) prefetchAnalyses();
@@ -331,20 +330,31 @@
     }
     $("t-cur").textContent = "0:00";
     $("t-dur").textContent = "0:00";
-    if ("mediaSession" in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: song.title,
-        artist: song.artist,
-        album: "BiliMusic",
-        artwork: [{ src: song.coverUrl, sizes: "512x512", type: "image/jpeg" }]
-      });
-      try { navigator.mediaSession.setActionHandler("previoustrack", function () { skip(-1); }); } catch (e) {}
-      try { navigator.mediaSession.setActionHandler("nexttrack", function () { skip(1); }); } catch (e) {}
-    }
+    syncMediaMetadata(song.title, song.artist, song.coverUrl);
     markPlayingCard(song.id);
     saveSession();
     renderQueue();
     if (!$("lyrics-panel").classList.contains("hidden")) loadLyrics(libLyricsMeta(song)); // 面板开着：切歌即刷新
+  }
+
+  function syncMediaMetadata(title, artist, cover) {
+    // 后端 song_out 在本地封面时返回相对路径（/api/songs/{id}/cover?...），
+    // 原生 new URL(相对路径) 会抛 MalformedURLException 被吞掉 —— 先转绝对地址再传桥。
+    var abs = cover || "";
+    try { if (cover) abs = new URL(cover, location.origin).href; } catch (e) {}
+    try { if (window.BiliMusicNative && BiliMusicNative.playbackStarted) BiliMusicNative.playbackStarted(title || "", artist || "", abs); } catch (e) {}
+    if ("mediaSession" in navigator) {
+      try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: title,
+        artist: artist,
+        album: "BiliMusic",
+        artwork: abs ? [{ src: abs }] : []
+      });
+      } catch (e) {}
+      try { navigator.mediaSession.setActionHandler("previoustrack", function () { skip(-1); }); } catch (e) {}
+      try { navigator.mediaSession.setActionHandler("nexttrack", function () { skip(1); }); } catch (e) {}
+    }
   }
 
   // 点选歌曲 = 经算法平滑切入该歌（找当前歌最佳 Exit × 目标歌最佳 Entry），
@@ -399,6 +409,47 @@
   }
 
   document.addEventListener("click", function (e) {
+    // #37：合集容器里的「收藏 / 移出曲库」——只动本地 collected 标记，不动 B 站收藏（视频级）
+    var collectEl = e.target.closest("[data-collect]");
+    if (collectEl) {
+      var collectRow = collectEl.closest("[data-play]");
+      collectEl.disabled = true;
+      fetch("/api/songs/" + collectEl.dataset.collect + "/collect", { method: "POST" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("collect failed");
+          if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+          htmx.trigger(document.body, "playlistsChanged"); // 侧栏歌单计数/最近收藏刷新（#37）
+          refreshPlaylist();
+          var albumId = collectRow && collectRow.dataset && collectRow.dataset.album;
+          if (albumId) {
+            return fetch("/partials/album-tracks?album_id=" + albumId, { cache: "no-store" })
+              .then(function (resp) { return resp.text(); })
+              .then(function (html) { document.getElementById("dt-songs").innerHTML = html; });
+          }
+        })
+        .catch(function () { collectEl.disabled = false; if (window.__toast) window.__toast("收藏失败，请重试"); });
+      return; // 不穿透到整行播放
+    }
+    var uncollectEl = e.target.closest("[data-uncollect]");
+    if (uncollectEl) {
+      uncollectEl.disabled = true;
+      fetch("/api/songs/" + uncollectEl.dataset.uncollect + "/uncollect", { method: "POST" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("uncollect failed");
+          if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+          htmx.trigger(document.body, "playlistsChanged"); // 侧栏歌单计数刷新（#37）
+          refreshPlaylist();
+          var albumId2 = (uncollectEl.closest("[data-play]") || {}).dataset;
+          albumId2 = albumId2 && albumId2.album;
+          if (albumId2) {
+            return fetch("/partials/album-tracks?album_id=" + albumId2, { cache: "no-store" })
+              .then(function (resp) { return resp.text(); })
+              .then(function (html) { document.getElementById("dt-songs").innerHTML = html; });
+          }
+        })
+        .catch(function () { uncollectEl.disabled = false; if (window.__toast) window.__toast("移出失败，请重试"); });
+      return;
+    }
     var delEl = e.target.closest("[data-del]");
     if (delEl) {
       var deletedRow = delEl.closest("[data-play]");
@@ -1346,6 +1397,7 @@
 
   function syncTrialUI() {
     if (!recActive || !recAudio) return;
+    syncMediaMetadata(recAudio.dataset.title, recAudio.dataset.artist, recAudio.dataset.cover);
     $("player-bar").classList.remove("hidden");
     var pt = $("player-title");
     pt.textContent = recAudio.dataset.title || "实时流试听";
@@ -1431,6 +1483,11 @@
     });
     recAudio.addEventListener("timeupdate", function () {
       if (recActive) updateLyricHighlight(recAudio.currentTime); // 歌词跟随试听进度
+      if (recActive && window.BiliMusicNative && BiliMusicNative.playbackProgress &&
+          (!recAudio.lastNativePush || Date.now() - recAudio.lastNativePush >= 1000)) {
+        recAudio.lastNativePush = Date.now();
+        BiliMusicNative.playbackProgress(recAudio.currentTime || 0, Number.isFinite(recAudio.duration) ? recAudio.duration : 0);
+      }
     });
     recAudio.addEventListener("pause", function () {
       setPlayerToggle(true);

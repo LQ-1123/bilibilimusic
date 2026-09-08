@@ -52,9 +52,24 @@
   <div style="height:26px"></div>
 </section>
 
+<!-- 资料库（手机端「资料库」Tab，#34）：列出所有歌单（含「全部歌曲」），点击进入歌单曲目（复用 #view-detail） -->
+<section class="view" id="view-library">
+  <div class="dt-top">
+    <div style="font-size:13px;color:var(--txt2);font-weight:600">资料库</div>
+  </div>
+  <div class="sec-head"><h2>合集</h2><span class="hint">多分 P 视频 · 点开逐个收藏</span></div>
+  <div class="rack" id="mlib-albums" hx-get="/partials/albums" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
+  <div class="sec-head"><h2>歌单</h2><span class="hint">点击查看歌单里的全部歌曲</span></div>
+  <nav class="side-pls mlib-pls" id="mlib-pls"
+       hx-get="/partials/playlists"
+       hx-trigger="load, playlistsChanged from:body, refreshSongs from:body"
+       hx-swap="innerHTML"></nav>
+  <div style="height:26px"></div>
+</section>
+
 <section class="view" id="view-detail">
   <div class="dt-top">
-    <button class="tb-cir" type="button" onclick="goHome()" title="返回主页">‹</button>
+    <button class="tb-cir" type="button" onclick="closeDetailTo()" title="返回">‹</button>
     <div style="font-size:13px;color:var(--txt2);font-weight:600" id="dt-crumb">主页 / 我的曲库</div>
   </div>
   <div class="dt-hero" id="dt-hero">

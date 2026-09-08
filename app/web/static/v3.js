@@ -3,7 +3,9 @@
   "use strict";
   var $ = function (id) { return document.getElementById(id); };
 
-  // Tauri 桌面端（#20）：macOS Overlay 标题栏——红绿灯由系统画；顶栏/侧栏顶部空白可拖动、双击最大化。
+  // Tauri 桌面端（#20/#24）：macOS Overlay 标题栏——红绿灯由系统画。
+  // 拖动改由 Tauri 内置的 data-tauri-drag-region 处理（见 base.html 的 #topbar 与 .tb-drag），
+  // 这里只负责给 macOS 加 html.tauri —— CSS 侧栏顶部 40px 让位依赖它。
   (function () {
     var api = window.__TAURI__ && window.__TAURI__.window;
     if (!api || !api.getCurrentWindow) return;
@@ -11,20 +13,6 @@
     if (/Mac OS X|Macintosh/.test(navigator.userAgent || "")) {
       document.documentElement.classList.add("tauri");
     }
-    var win = api.getCurrentWindow();
-    function draggable(el) {
-      if (!el) return;
-      el.addEventListener("pointerdown", function (event) {
-        if (event.target.closest("input,button,a")) return;
-        if (win.startDragging) win.startDragging().catch(function () {});
-      });
-      el.addEventListener("dblclick", function (event) {
-        if (event.target.closest("input,button,a")) return;
-        win.toggleMaximize().catch(function () {});
-      });
-    }
-    draggable(document.getElementById("topbar"));
-    draggable(document.querySelector(".sidebar .side-nav")); // 侧栏顶部（红绿灯下方）
   }());
 
   // ---------- 主题（深/浅切换：顶栏圆钮 / 侧栏设置弹层 / 手机账号 Tab 三处入口共享） ----------
@@ -302,8 +290,37 @@
   }
 
   // 详情态统一出口（#17）：view 还原 home、清 detail 标记；Tab 切换共用（未在详情态时空操作）
+  // #34：关闭详情页时按来源回到原视图（从「资料库」进的歌单详情，返回应回资料库而不是主页）
+  window.closeDetailTo = function () {
+    if ($("app").dataset.view === "detail" && detailOrigin === "library") {
+      $("app").dataset.view = "library";
+      document.body.classList.remove("in-detail");
+      if (window.switchView) switchView("library");
+      var nav = document.querySelector('.m-tab[data-mtab="library"]');
+      if (nav) {
+        document.querySelectorAll(".m-tab").forEach(function (b) { b.classList.toggle("on", b === nav); });
+      }
+      return;
+    }
+    if (window.goHome) goHome();
+  };
+
+  // #34：手机端「资料库」Tab —— 列出所有歌单（复用 /partials/playlists 片段）
+  window.openLibraryTab = function () {
+    collapseOverlays();
+    $("app").dataset.view = "library";
+    document.body.classList.remove("in-detail");
+    if (window.switchView) switchView("library");
+    var box = $("mlib-pls");
+    if (box && !box.children.length && window.htmx) {
+      htmx.ajax("GET", "/partials/playlists", { target: "#mlib-pls", swap: "innerHTML" });
+    }
+    if (mainEl) mainEl.scrollTop = 0;
+  };
+
   function closeDetail() {
-    if ($("app").dataset.view !== "detail") return;
+    // #32：原来只认 "detail"，搜索详情态（data-view="search"）会被整段跳过 → 泛化为「非 home 即退」
+    if ($("app").dataset.view === "home") return;
     $("app").dataset.view = "home";
     document.body.classList.remove("in-detail");
     if (window.switchView) switchView("home");
@@ -312,6 +329,8 @@
     collapseOverlays();
     $("app").dataset.view = "home"; // 无条件回主页：详情/搜索/推荐视图都由此退出
     document.body.classList.remove("in-detail");
+    var sr = $("sr-body"); // #32：清掉搜索详情结果，避免退回主页后残留
+    if (sr) sr.innerHTML = "";
     if (window.switchView) switchView("home");
     rehydrateHome();
     var nav = $("navHome");
@@ -334,6 +353,7 @@
 
   // ---------- 歌单详情（user = 曲库歌单 / rec = 线上推荐歌单） ----------
   var dtState = { kind: "user", id: "0", name: "全部歌曲", hue: 340 };
+  var detailOrigin = "home"; // #34：详情页从哪来（home/library），返回时回到原处而不是一律回主页
 
   var albumDetailGeneration = 0;
   document.body.addEventListener("htmx:beforeSwap", function (event) {
@@ -427,7 +447,7 @@
     document.getElementById("dt-title").textContent = d.name;
     document.getElementById("dt-meta").innerHTML =
       "<b>" + d.count + " 首</b><span>·</span><span>已同步 B 站收藏夹</span>";
-    document.getElementById("dt-crumb").textContent = "主页 / " + d.name;
+    document.getElementById("dt-crumb").textContent = (detailOrigin === "library" ? "资料库 / " : "主页 / ") + d.name;
     // 封面：取歌单内真实视频封面做艺术化拼贴（无封面/请求失败回退渐变底）
     var cvr0 = document.querySelector("#dt-hero .dt-cvr");
     if (cvr0) { cvr0.classList.remove("mosaic-host"); cvr0.innerHTML = ""; }
@@ -500,6 +520,7 @@
 
   window.openDetailFrom = function (el, autoplay) {
     collapseOverlays(); // 侧栏常驻后：进详情前收起全屏覆盖层（艺术家页/歌词页）
+    detailOrigin = $("app").dataset.view === "library" ? "library" : "home"; // #34：记来源
     if (el.dataset.album !== undefined) { fillAlbumDetail(el); return; }
     // 先选中歌单（决定收藏目标 + 主页列表联动），再进详情
     if (el.dataset.rgenre === undefined && window.selectPlaylist) selectPlaylist(el.dataset.pl, el);
@@ -609,10 +630,17 @@
   };
 
   // ---------- 界面切换过渡：覆盖层开（淡入上浮）/ 关（淡出后隐藏） ----------
+  // #30：UP 详情页全屏不透明层会盖住底部 dock；`:has()` 在 minSdk 26 的老 WebView 里整条被丢弃，
+  //      所以用 body.up-open 这个显式 class 兜底（CSS 里两套规则都写）。
+  function syncUpOpen() {
+    var up = $("up-panel");
+    document.body.classList.toggle("up-open", !!up && !up.classList.contains("hidden"));
+  }
   window.__showPanel = function (el) {
     if (!el) return;
     el.classList.remove("hidden", "closing");
     el.classList.add("opening");
+    if (el.id === "up-panel") syncUpOpen();
     requestAnimationFrame(function () {
       requestAnimationFrame(function () { el.classList.remove("opening"); });
     });
@@ -621,7 +649,11 @@
     if (!el || el.classList.contains("hidden")) return;
     el.classList.add("closing");
     var ms = el.id === "lyrics-panel" ? 420 : 300; // 歌词页推拉动画更长，等它播完再隐藏
-    setTimeout(function () { el.classList.add("hidden"); el.classList.remove("closing"); }, ms);
+    setTimeout(function () {
+      el.classList.add("hidden");
+      el.classList.remove("closing");
+      if (el.id === "up-panel") syncUpOpen(); // 动画结束再降回 dock
+    }, ms);
   };
 
   // ---------- UP 主作品页（Apple Music 沉浸式艺术家页） ----------
@@ -751,8 +783,8 @@
     if (pa) pa.addEventListener("click", upFromPlayer);
   })();
 
-  // ---------- 已收藏状态：播放条星星（灰=未收藏，粉=已在曲库） ----------
-  var collected = {};
+  // ---------- 已收藏状态：播放条星星（灰=未收藏，粉=已在曲库）；#33 点已收藏 = 取消收藏 ----------
+  var collected = {}, collectedIds = {};
   function currentBvid() {
     var t = window.BiliPlayer && BiliPlayer.trialInfo ? BiliPlayer.trialInfo() : null;
     var s = window.BiliPlayer && BiliPlayer.currentSong ? BiliPlayer.currentSong() : null;
@@ -761,7 +793,7 @@
   function markStar() {
     var cur = currentBvid();
     var on = !!cur && !!collected[cur];
-    document.querySelectorAll("#btn-star, #ly-star").forEach(function (star) {
+    document.querySelectorAll("#btn-star, #ly-star, #ly-star-big").forEach(function (star) {
       star.classList.toggle("on", on);
     });
   }
@@ -769,22 +801,72 @@
     if (!window.BiliPlayer || !BiliPlayer.songs) return;
     BiliPlayer.songs("").then(function (songs) {
       collected = {};
-      (songs || []).forEach(function (s) { collected[s.bvid] = 1; });
+      collectedIds = {};
+      (songs || []).forEach(function (s) {
+        collected[s.bvid] = 1;
+        if (s.id) collectedIds[s.bvid] = s.id; // #33：取消收藏要按 song.id 调 DELETE
+      });
       markStar();
     }).catch(function () {});
   }
-  window.__markCollected = function (bvid) {
+  window.__markCollected = function (bvid, id) {
     collected[bvid] = 1;
+    if (id) collectedIds[bvid] = id;
     markStar();
   };
   document.body.addEventListener("refreshSongs", loadCollected);
   loadCollected();
 
-  // 星星点击：收藏当前播放的歌（曲库歌已收藏则提示；试听流收藏进「我的曲库」并同步 B 站夹）
+  // 视频 → 分P专辑 映射（#33：取消收藏时，若当前曲目属于多分 P 专辑，整张一起处理）
+  var albumByBvid = null;
+  function albumForBvid(bvid) {
+    if (albumByBvid) return Promise.resolve(albumByBvid[bvid] || null);
+    return fetch("/api/albums", { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : { albums: [] }; })
+      .then(function (data) {
+        albumByBvid = {};
+        (data.albums || []).forEach(function (a) {
+          if (a.kind === "paged" && a.sourceBvid) albumByBvid[a.sourceBvid] = a;
+        });
+        return albumByBvid[bvid] || null;
+      })
+      .catch(function () { albumByBvid = {}; return null; });
+  }
+
+  // 取消收藏（#33）：单曲 → DELETE /api/songs/{id}；多分 P 专辑 → 确认后 DELETE /api/albums/{id}
+  function uncollectCurrent(bvid) {
+    albumForBvid(bvid).then(function (album) {
+      if (album) {
+        return window.__confirmModal(
+          "取消收藏「" + (album.title || "该专辑") + "」？",
+          "这个视频是多分 P 专辑（共 " + (album.totalPages || "?") + " 首）。\n\n" +
+            "· 会取消 B 站收藏夹里的这条收藏（B 站按视频收藏，无法只取消某一首）\n" +
+            "· 专辑内的全部曲目会一并移除\n\n确定继续？"
+        ).then(function (ok) {
+          if (!ok) return false;
+          return fetch("/api/albums/" + album.id, { method: "DELETE" })
+            .then(function (r) { if (!r.ok) throw new Error("uncollect"); return true; });
+        });
+      }
+      var id = collectedIds[bvid];
+      if (!id) { window.__toast("这首还没入库"); return false; }
+      return fetch("/api/songs/" + id, { method: "DELETE" })
+        .then(function (r) { if (!r.ok) throw new Error("uncollect"); return true; });
+    }).then(function (done) {
+      if (!done) return;
+      delete collected[bvid];
+      delete collectedIds[bvid];
+      markStar();
+      window.__toast("已取消收藏 · 已从 B 站收藏夹移除");
+      if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+    }).catch(function () { window.__toast("取消收藏失败，请稍后重试"); });
+  }
+
+  // 星星点击：未收藏 → 收藏当前播放的歌；已收藏 → 取消收藏（#33）
   function collectCurrent() {
     var cur = currentBvid();
     if (!cur) { window.__toast("当前没有播放的歌"); return; }
-    if (collected[cur]) { window.__toast("这首已在曲库中"); return; }
+    if (collected[cur]) { uncollectCurrent(cur); return; }
     fetch("/web/import", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -798,7 +880,7 @@
       })
       .catch(function () { window.__toast("网络错误，请重试"); });
   }
-  ["btn-star", "ly-star"].forEach(function (id) {
+  ["btn-star", "ly-star", "ly-star-big"].forEach(function (id) {
     var el = $(id);
     if (el) el.addEventListener("click", collectCurrent);
   });
@@ -809,6 +891,41 @@
       new MutationObserver(markStar).observe(titleEl, { childList: true, characterData: true, subtree: true });
     }
   })();
+
+  // ---------- #37：搜索结果里的「合集」卡 → 收藏为容器并打开 ----------
+  // 已是容器（data-album-id）直接进；否则先 POST /web/collect-album 建容器再进
+  document.addEventListener("click", function (e) {
+    var card = e.target.closest(".sr-coll");
+    if (!card) return;
+    e.preventDefault();
+    var open = function (albumId, name) {
+      window.openDetailFrom({ dataset: { album: String(albumId), name: name || "合集" } });
+    };
+    if (card.dataset.albumId) { open(card.dataset.albumId, card.dataset.albumName); return; }
+    if (card.dataset.busy) return;
+    card.dataset.busy = "1";
+    card.style.opacity = ".55";
+    fetch("/web/collect-album", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "HX-Request": "true" },
+      body: new URLSearchParams({ bvid: card.dataset.bvid }),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (!res.ok || !res.d.ok) throw new Error((res.d && res.d.error) || "收藏失败");
+        card.dataset.albumId = String(res.d.albumId);
+        window.__toast && window.__toast("已收藏为合集 · 点开逐个收藏");
+        if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+        open(res.d.albumId, res.d.title);
+      })
+      .catch(function (err) {
+        window.__toast && window.__toast((err && err.message) || "收藏失败，请稍后重试");
+      })
+      .then(function () {
+        delete card.dataset.busy;
+        card.style.opacity = "";
+      });
+  }, true);
 
   // ---------- 搜索下拉：曲库命中（点击即播）+ B 站结果（♥ 收藏） ----------
   (function () {
@@ -905,12 +1022,20 @@
     var syncClose = function () { // 桌面端：有输入才显示 ✕（点击清空）；手机端搜索态由 CSS 接管
       if (closeBtn) closeBtn.style.display = (input.value.trim() && !drop.hidden) ? "grid" : "";
     };
-    input.addEventListener("input", function () {
+    // #27 关键：中文输入法组合期间**绝不重渲染下拉**。
+    // 旧代码每次 input 都排一个 350ms 的 AJAX；拼音打字间隙一超过 350ms 就会在组合中途
+    // 换掉 #sd-lib/#sd-web 的内容，输入法候选随之被打断。改为：组合中只清定时器，组合结束再搜。
+    function scheduleSearch() {
       clearTimeout(timer);
       var q = input.value.trim();
       if (!q) { close(); lastQ = null; } else { open(); timer = setTimeout(function () { run(q); }, 350); }
       syncClose();
+    }
+    input.addEventListener("input", function (e) {
+      if (e.isComposing || imeActive) { clearTimeout(timer); return; }
+      scheduleSearch();
     });
+    input.addEventListener("compositionend", function () { scheduleSearch(); });
     // 回车 → 搜索详情页（上排 UP 主圆形卡、下方歌曲方形网格）
     input.addEventListener("keydown", function (e) {
       if (e.key !== "Enter") return;
@@ -1233,13 +1358,30 @@
     if ($("app").dataset.view === "detail") goHome();
   });
 
-  // ---------- 空格 = 全局播放/暂停（#8） ----------
+  // ---------- 空格 = 全局播放/暂停（#8；#27 修 IME 劫持） ----------
   // 输入场景（输入框/可编辑区）与弹窗打开时不接管；capture + preventDefault：
   // 页面不滚动，聚焦按钮也不会被空格误触（统一走播放开关，含试听态）
+  // #27：macOS WKWebView 组合态下 isComposing 常为 false、target 也未必是输入框，
+  //      只靠这两道判断会吞掉输入法的空格选词 → 再补三重防线（组合标志 / keyCode 229 / activeElement）
+  var imeActive = false;
+  document.addEventListener("compositionstart", function () { imeActive = true; }, true);
+  document.addEventListener("compositionend", function () {
+    // 组合结束后仍可能补发一个 keydown（keyCode 229 / 空格选词），延迟一小段再复位
+    setTimeout(function () { imeActive = false; }, 60);
+  }, true);
+  function inEditable(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable === true;
+  }
   document.addEventListener("keydown", function (e) {
-    if (e.key !== " " || e.isComposing || !window.BiliPlayer) return;
-    var t = e.target;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+    if (e.key !== " " || !window.BiliPlayer) return;
+    if (e.isComposing || e.keyCode === 229 || imeActive) return;
+    if (inEditable(e.target) || inEditable(document.activeElement)) return;
+    if (e.target && e.target.closest && e.target.closest("#tbSearch, #search-drop")) return;
+    // #27 硬保险：搜索下拉开着 = 用户正在搜索（含 WKWebView 组合态下 activeElement 变 body 的情况），不抢空格
+    var sd = $("search-drop");
+    if (sd && !sd.hidden) return;
     var login = $("login-modal"), modal = $("mini-modal");
     if ((login && !login.classList.contains("hidden")) || (modal && !modal.classList.contains("hidden"))) return;
     e.preventDefault();
@@ -1435,9 +1577,8 @@
       b.classList.toggle("on", b === btn);
     });
     // Tab 切换不压栈且清空已压栈（#1）；任何 Tab 都先退出详情态（#17：原来到不了曲库的根因）
-    if (window.__backStackReset) __backStackReset();
-    closeDetail();
-    rehydrateHome();
+    if (name === "library") { window.openLibraryTab(); return; } // #34：资料库有自己的视图
+    goHome();
     if (mainEl) mainEl.scrollTop = 0;
   };
   window.orbSearch = function (e) {

@@ -306,6 +306,15 @@ class BiliClient:
             raise BiliApiError(-400, "视频没有可用的分 P")
         return [int(p["cid"]) for p in pages]
 
+    async def video_page_count(self, bvid: str) -> int | None:
+        """#37：判断视频是否多 P（= 用户说的「合集」）。失败返回 None，调用方按单曲处理。"""
+        try:
+            data = await self._get_json_signed("/x/web-interface/wbi/view", {"bvid": bvid})
+        except Exception:  # noqa: BLE001  风控/超时/失效都按「未知」处理，不阻塞搜索
+            return None
+        pages = data.get("pages") or []
+        return len(pages) or None
+
     async def get_video_owner(self, bvid: str) -> dict:
         """视频 UP 主信息 {mid, name, face}（wbi view 同族；点 UP 名进作品页用）。"""
         data = await self._get_json_signed("/x/web-interface/wbi/view", {"bvid": bvid})

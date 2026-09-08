@@ -122,6 +122,8 @@ def song_out(s: Song) -> dict:
         "aid": s.aid,
         "playlistId": s.playlist_id,
         "favFolderId": s.fav_folder_id,
+        "albumId": s.album_id,  # #37：前端据此给曲库行加「进专辑」入口
+        "collected": bool(s.collected),  # #37：合集子作品默认未收藏
         "createdAt": s.created_at.isoformat(),
     }
 
@@ -244,7 +246,7 @@ async def materialize_album(album_id: int, request: Request) -> dict:
                              artist=info.artist, duration=page.duration,
                              audio_path="", cover_path=info.cover_url,
                              source_url="", playlist_id=0,
-                             album_id=album_id, track_no=index))
+                             album_id=album_id, track_no=index, collected=False))
         album.materialized_pages = min(album.total_pages, len(info.pages))
         session.add(album)
         session.commit()
@@ -397,6 +399,23 @@ async def lyrics_preview(request: Request, payload: dict) -> dict:
         duration=max(0, int(payload.get("duration") or 0)),
     )
     return {"lyrics": result[0] if result else None, "source": result[1] if result else None}
+
+
+@router.post("/songs/{song_id}/collect")
+def collect_song_api(song_id: int, playlist_id: int = 0) -> dict:
+    """#37：把合集里的某个子作品收藏进曲库（可指定歌单）。B 站收藏是视频级的，这里只动本地。"""
+    song = library.collect_song(song_id, playlist_id)
+    if song is None:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    return {"ok": True, "song": song_out(song)}
+
+
+@router.post("/songs/{song_id}/uncollect")
+def uncollect_song_api(song_id: int) -> dict:
+    """#37：把子作品移出曲库（仍留在合集里，不取消 B 站收藏）。"""
+    if not library.uncollect_song(song_id):
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    return {"ok": True}
 
 
 @router.delete("/songs/{song_id}")

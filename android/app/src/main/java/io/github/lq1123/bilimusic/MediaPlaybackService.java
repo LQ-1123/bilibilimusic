@@ -16,6 +16,7 @@ import android.support.v4.media.session.PlaybackStateCompat;
 import androidx.core.app.NotificationCompat;
 
 import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
 
 /** Owns the Android foreground media notification while WebView audio is playing (#3 第一段). */
@@ -51,6 +52,14 @@ public final class MediaPlaybackService extends Service {
             @Override public void onSkipToNext() { MainActivity.evalInPage("BiliPlayer.skip(1)"); }
             @Override public void onSkipToPrevious() { MainActivity.evalInPage("BiliPlayer.skip(-1)"); }
         });
+        // 媒体按钮/传输控件要显式打开，否则媒体卡上的按钮与点按无响应（#29）
+        session.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS
+            | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
+        // 点通知栏/锁屏媒体卡回到 App（此前点不动）
+        Intent activityIntent = new Intent(this, MainActivity.class);
+        activityIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        session.setSessionActivity(PendingIntent.getActivity(this, 0, activityIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         session.setActive(true);
     }
 
@@ -106,6 +115,9 @@ public final class MediaPlaybackService extends Service {
         session.setMetadata(new MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, lastTitle)
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, lastArtist)
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "BiliMusic")
+            // ART 是系统媒体卡/锁屏最常读的封面键；ALBUM_ART 保留兼容（#29）
+            .putBitmap(MediaMetadataCompat.METADATA_KEY_ART, lastCover)
             .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, lastCover)
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, lastDuration * 1000L)
             .build());
@@ -116,7 +128,7 @@ public final class MediaPlaybackService extends Service {
                 | PlaybackStateCompat.ACTION_PLAY_PAUSE | PlaybackStateCompat.ACTION_SKIP_TO_NEXT
                 | PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
             .setState(paused ? PlaybackStateCompat.STATE_PAUSED : PlaybackStateCompat.STATE_PLAYING,
-                positionMs * 1000L, speed)
+                positionMs, speed)
             .build());
     }
 
@@ -141,11 +153,20 @@ public final class MediaPlaybackService extends Service {
     private void loadCover(String url) {
         new Thread(() -> {
             try {
-                InputStream in = (InputStream) new URL(url).getContent();
+                // 裸 URL.getContent() 无 UA/Referer，B 站图床可能 403 —— 显式补头（#29）
+                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(5000);
+                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13)");
+                conn.setRequestProperty("Referer", "https://www.bilibili.com/");
+                InputStream in = conn.getInputStream();
                 Bitmap bitmap = BitmapFactory.decodeStream(in);
+                try { in.close(); } catch (Exception closeErr) {}
+                conn.disconnect();
+                // 竞态保护：解码期间可能已切歌，url 不再是当前封面就丢弃
                 if (bitmap != null && url.equals(lastCoverUrl)) {
                     lastCover = bitmap;
-                    mainHandler.post(() -> { if (running) startForeground(NOTIFICATION_ID, buildNotification()); });
+                    mainHandler.post(() -> { if (running) { updateSessionState(); startForeground(NOTIFICATION_ID, buildNotification()); } });
                 }
             } catch (Exception ignored) {
             }

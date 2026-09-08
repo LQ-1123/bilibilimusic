@@ -27,6 +27,7 @@
 
   function sync() {
     var backs = 0;
+    var added = [];
     layers.forEach(function (l) {
       var now;
       try { now = l.isOpen(); } catch (e) { return; }
@@ -36,13 +37,19 @@
         // DOM 还开着也不能再推历史，否则一次返回会凭空多出一条记录
         if (!tracked && !silent[l.id]) {
           open.push(l.id);
-          try { history.pushState({ bm: "layer", id: l.id, depth: open.length }, ""); } catch (e) {}
+          added.push(l.id);
         }
       } else if (tracked) {
         open.splice(open.indexOf(l.id), 1);
         if (silent[l.id]) delete silent[l.id]; // popstate 已出栈：不再回退
         else backs++;                          // UI 关闭：历史同步出栈
       }
+    });
+    added.forEach(function (id) {
+      var state = { bm: "layer", id: id, depth: open.indexOf(id) + 1 };
+      // Closing a dropdown while opening its result page replaces the same entry.
+      if (backs) { history.replaceState(state, ""); backs--; }
+      else history.pushState(state, "");
     });
     for (var i = 0; i < backs; i++) history.back();
   }
@@ -95,9 +102,17 @@
       function () { return !$("up-panel").classList.contains("hidden"); },
       function () { var c = $("up-close"); if (c) c.click(); });
     if (app) {
+      // #32：不只认 "detail"——搜索详情（search）也是同一层语义；推荐/UP 视图同样可返回。
+      // 但 Tab 拥有的视图（library，见 #34）不算层：Tab 切换按 #1 设计不压栈。
       reg("detail", app,
-        function () { return app.dataset.view === "detail"; },
-        function () { if (window.goHome) goHome(); });
+        function () {
+          var v = app.dataset.view;
+          return !!v && v !== "home" && v !== "library";
+        },
+        function () {
+          if (window.closeDetailTo) closeDetailTo();
+          else if (window.goHome) goHome();
+        });
       new MutationObserver(sync).observe(app, {
         attributes: true, attributeFilter: ["data-view"],
       });

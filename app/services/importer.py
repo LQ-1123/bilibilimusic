@@ -163,10 +163,17 @@ class ImportService:
 
         is_album = ref.page == 1 and len(info.pages) > 1
         lazy_pages = is_album and len(info.pages) > _ALBUM_LAZY_PAGES
-        album = Album(kind="paged", source_bvid=info.bvid, title=info.title,
-                      artist=info.artist, cover_url=info.cover_url,
-                      total_pages=len(info.pages),
-                      materialized_pages=1 if lazy_pages else len(info.pages)) if is_album else None
+        existing_album = library.get_album_by_source(info.bvid) if is_album else None
+        album = (
+            Album(kind="paged", source_bvid=info.bvid, title=info.title,
+                  artist=info.artist, cover_url=info.cover_url,
+                  total_pages=len(info.pages),
+                  materialized_pages=1 if lazy_pages else len(info.pages))
+            if is_album and existing_album is None
+            else None
+        )
+        # #37：多 P「合集」的子作品默认不入曲库（collected=False、不归任何歌单），
+        # 用户在合集容器里逐个收藏才置 1；单视频仍按原语义直接入库。
         song = Song(
             bvid=info.bvid,
             aid=info.avid,
@@ -179,9 +186,10 @@ class ImportService:
             cover_path=info.cover_url or "",  # 直接存 B 站 CDN 封面地址
             cover_color="",
             source_url=raw_text,
-            playlist_id=playlist_id,
+            playlist_id=0 if is_album else playlist_id,
             album_id=0,
             track_no=info.page,
+            collected=not is_album,
         )
         with new_session() as session:
             try:
@@ -189,6 +197,8 @@ class ImportService:
                     session.add(album)
                     session.flush()
                     song.album_id = album.id or 0
+                elif existing_album is not None:
+                    song.album_id = existing_album.id or 0  # 容器已存在：复用，不重复建
                 session.add(song)
                 session.commit()
                 session.refresh(song)
@@ -201,8 +211,8 @@ class ImportService:
                                      title=part_display_title(info.title, page.part),
                                      artist=info.artist,
                                      duration=page.duration, audio_path="", cover_path=info.cover_url,
-                                     source_url=raw_text, playlist_id=playlist_id,
-                                     album_id=album.id or 0, track_no=index)
+                                     source_url=raw_text, playlist_id=0,
+                                     album_id=album.id or 0, track_no=index, collected=False)
                         session.add(child)
                     session.commit()
             except Exception:  # noqa: BLE001  并发导入同一 bvid：复用已入库的那条
