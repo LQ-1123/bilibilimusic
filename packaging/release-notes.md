@@ -1,52 +1,35 @@
-## BiliMusic v0.3.0: standalone applications / 独立客户端
+## BiliMusic v0.4.0: 合集与体验精修 / collections and polish
 
-Desktop v0.3.0 and Android v0.3.0 deliver the largest experience update so far: background playback with a system media card, per-layer back navigation, immersive system bars, a branded startup screen, and multi-part Bilibili videos imported as albums.
+Desktop v0.4.0 and Android v0.4.0 refine the desktop shell and fix a stack of interaction bugs reported on the v0.3.0 release.
 
-桌面与 Android 同步升级 v0.3.0，这是迄今幅度最大的一次体验更新：后台播放与系统媒体卡片、逐层返回、系统栏沉浸、品牌启动页，以及「多分 P 视频导入为专辑」。
+桌面与 Android v0.4.0 修整桌面壳，并修复一批用户实测问题。
 
-### Playback / 播放
+### Shell / 桌面壳
 
-- Background playback through a foreground service, with a system media card (artwork, progress, play/pause, skip) plus lock-screen and wired/Bluetooth headset controls. Playback pauses automatically when headphones are unplugged. / 通过前台服务实现后台播放，配套系统媒体卡片（封面、进度、播放/暂停、上下曲）与锁屏、有线/蓝牙耳机控制；拔出耳机自动暂停。
-- Audio streams are routed by part id: songs imported from a later part of a multi-part video now play that part instead of the first one. / 音轨按分 P 路由：从多分 P 视频后段导入的歌曲现在播放对应分 P，而不是第一分 P。
-- Space toggles playback on desktop; mobile transport buttons follow the standard previous / play / next order. / 桌面空格键播放/暂停；移动端播放键恢复标准「上一首 / 播放 / 下一首」顺序。
-- Progress and volume sliders show the pink fill again; very long titles scroll inside the player bar. / 进度与音量滑条恢复粉色填充；超长歌名在播放条内滚动显示。
+- Removed the window title text and restored window dragging via the native `data-tauri-drag-region` (the old Chromium-only `-webkit-app-region` had no effect in WKWebView). / 去掉窗口标题文字，改用 Tauri 原生拖拽区（旧的 `-webkit-app-region` 在 WKWebView 里无效）。
+- Window now closes almost instantly instead of a multi-second wait; the minimum window size is raised so the desktop layout never collapses into the mobile one. / 关窗改为秒退；最小窗口尺寸抬到 1260×410，桌面布局不再塌成手机版。
+- Chinese IME input in the search box no longer breaks: the dropdown no longer re-renders mid-composition, and the field is a plain text input (keeps the mobile "search" key). / 搜索框中文输入不再被打断：组合期间不再重渲染下拉，输入框改为文本类型（保留手机「搜索」键）。
 
-### Albums / 专辑
+### Search / 搜索
 
-- Multi-part Bilibili videos import as albums: track list, per-track streaming and lyrics, album-level favorite and delete semantics, lazy materialization for very large collections, and cleaned part titles. / 多分 P 视频导入为专辑：曲目列表、逐曲播放与歌词、专辑级收藏与删除语义、超大合集懒物化、分 P 标题清洗。
+- Search results now split into three sections — UP 主 / 合集 / 歌曲 — and multi-part "collections" are detected by probing the top matches. / 搜索结果分三区——UP主 / 合集 / 歌曲，并对命中的多分 P「合集」做预探测。
+- A collection behaves like a playlist container: clicking it opens all child works, and each child is collected with a star toggle (hollow → filled) instead of the whole playlist being dumped into your library. / 合集=歌单式容器：点开列全部子作品，子作品用星标逐个收藏（空心→实心），不再把整串一次性塞进曲库。
 
-### Lyrics / 歌词
+### Library / 曲库
 
-- NetEase Cloud Music joins the lyrics chain as an additional synced source, with retry / switch source in the lyrics view, a source badge, and better contrast for inactive lines. / 网易云音乐作为新增带轴歌词源接入取词链，歌词页支持「重试 / 换源」、显示来源角标，并提升非当前行对比度。
+- Collecting a song now lands it in your default playlist ("我的曲库") and the sidebar counts refresh immediately. / 收藏的歌曲落入默认歌单「我的曲库」，侧栏计数立即刷新。
+- The mobile "曲库" tab became "资料库": it lists every playlist and the collections, each opening its own track list / container page. / 手机「曲库」Tab 改名「资料库」，列出所有歌单与合集，点开各自曲目/容器页。
+- Removed the per-row "专辑" badge that collided with the row actions. / 移除每行与操作按钮打架的「专辑」角标。
 
-### Shell and navigation / 壳与导航
+### Player / 播放器
 
-- Immersive system bars (edge-to-edge) with insets injected into the page; a branded dark splash with the app icon. / 系统栏沉浸（edge-to-edge，insets 注入页面）；品牌深色启动页与图标。
-- The back gesture/button unwinds in-app layers (lyrics, queue, dialogs, details) before exiting. / 返回手势/按键逐层关闭应用内层级（歌词、队列、弹窗、详情）后才退出。
-- Mobile: the library tab and home sections no longer disappear after visiting a recommended playlist; feed views support pull-to-refresh. / 移动端：经过推荐歌单详情后，曲库 Tab 与主页区段不再丢失；feed 视图支持下拉刷新。
-- macOS desktop: native rounded window with system traffic lights (overlay title bar), with drag regions on the top bar and sidebar. / macOS 桌面：原生圆角窗口与系统红绿灯（Overlay 标题栏），顶栏与侧栏可拖动。
+- The Android notification / lock-screen media card shows the full song title, artist and artwork, and taps back into the app. / Android 通知栏/锁屏媒体卡片显示完整歌名、歌手与封面，点按可回到应用。
+- Desktop player-bar favorite is now the same size as the neighbouring transport buttons; the mobile full-screen player has a favorite star next to the title. / 桌面播放条收藏钮与右侧按钮等大；手机全屏播放页歌名旁有收藏星。
+
+### Navigation / 导航
+
+- Fixes around search-detail back navigation, the UP page dock disappearing and oversized search covers on mobile. / 修复搜索详情页返回、UP 主页底部导航栏消失、手机搜索封面过大。
 
 ### Installers / 安装包
 
-All installers include the Python backend. No separate server or Python installation is required. Internet access to Bilibili is required for streaming.
-
-所有安装包均内置 Python 后端，无需额外安装 Python 或启动服务器；在线播放仍需要联网访问 B 站。
-
-| Platform / 平台 | Download / 文件 |
-| --- | --- |
-| macOS 14+ Apple Silicon | `*-mac-arm64.dmg` |
-| macOS 14+ Intel | `*-mac-x64.dmg` |
-| Windows x64 | `*-win-x64.exe` |
-| Android 8+ ARM64 / x86_64 | `*-android.apk` |
-
-Desktop builds are not developer-signed or notarized, so macOS and Windows may display security prompts. Android APKs use the project's persistent signing key and are distributed outside Google Play.
-
-桌面版暂未使用开发者证书签名或公证，macOS、Windows 可能显示安全提示。APK 使用项目固定签名，供直接安装，不通过 Google Play 分发。
-
-Android v0.3.0 supports background playback and lock-screen controls. Advanced audio analysis still requires an external audio decoder on desktop and is not bundled on Android.
-
-Android v0.3.0 已支持后台播放与锁屏控制；高级音频分析仍需桌面端外部解码器，Android 未内置。
-
-See `SHA256SUMS.txt` for download checksums. Account data and cookies stay in each application's private data directory.
-
-校验和见 `SHA256SUMS.txt`；账号数据与 Cookie 均保存在各应用的私有数据目录。
+Same distribution channels as v0.3.0 — dmgs / android apks via the GitHub release workflow. / 分发渠道同 v0.3.0——通过 GitHub release 工作流产出 dmg 与 apk。
