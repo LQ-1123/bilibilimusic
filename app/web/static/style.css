@@ -113,6 +113,10 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .sec-head h2{font-size:20px;font-weight:800;letter-spacing:.3px}
 .sec-head .more{font-size:12px;color:var(--txt3);margin-left:auto;cursor:pointer;transition:.2s}
 .sec-head .more:hover{color:var(--pink-txt)}
+/* 资料库（手机端）新建歌单入口：侧栏 ＋ 在 ≤900px 不可见 */
+.btn-newpl{margin-left:auto;height:30px;padding:0 13px;border-radius:999px;background:var(--card);
+  border:1px solid var(--stroke);color:var(--txt2);font-size:12px;font-weight:600;cursor:pointer;transition:.2s;flex:none}
+.btn-newpl:hover{color:var(--pink-txt);border-color:var(--pink-tint);background:var(--pink-tint)}
 .sec-head .hint{font-size:12px;color:var(--txt3)}
 .sec-head .addpl{width:24px;height:24px;border-radius:8px;background:var(--pink-tint);color:var(--pink-txt);
   display:grid;place-items:center;font-size:14px;font-weight:700;cursor:pointer;align-self:center;transition:.2s}

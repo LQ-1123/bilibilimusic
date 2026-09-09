@@ -56,6 +56,8 @@
 <section class="view" id="view-library">
   <div class="dt-top">
     <div style="font-size:13px;color:var(--txt2);font-weight:600">资料库</div>
+    <!-- 手机端侧栏不可见（.sidebar 在 ≤900px 隐藏），新建歌单入口放这里 -->
+    <button class="btn-newpl" type="button" onclick="createPlaylist()" title="新建歌单">＋ 新建歌单</button>
   </div>
   <div class="sec-head"><h2>合集</h2><span class="hint">多分 P 视频 · 点开逐个收藏</span></div>
   <div class="rack" id="mlib-albums" hx-get="/partials/albums" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
