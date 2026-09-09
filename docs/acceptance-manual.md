@@ -285,8 +285,8 @@
 | 09-09 | B6 批（#23–#37） | 用户真机 · 桌面（mac Tauri）+ Android | ✅ | `verify-b6.md` 全清单通过：#27 IME 二次修正（候选上屏、播放不断）、#29 通知栏/锁屏媒体卡（歌名+歌手+封面+进度、点卡回 App）、#37 合集三分类+容器逐曲星标、#33 取消收藏、#34 资料库视图与返回、#35 双端星标、#36 专辑入口、桌面 #23–#26 |
 | 09-09 | v0.3.0 遗留（#1/#2/#3/#4/F0/#14/#6 预筛） | 用户真机 · Android | ✅ | 手势导航返回手感；锁屏 30 分钟不断播；蓝牙耳机按键；拔耳机自动暂停；来电暂停；逐 P 听音对照（与 B 站 App 一致）；删专辑后 B 站收藏夹同步消失（网页端核对）；横屏刘海无遮挡；曲库长列表滚动流畅（#6 预筛通过，无需 profile） |
 | 09-10 | #25 分享（Web/桌面） | mac 内置浏览器 + 无头 Chrome（CDP 驱动真实页面） | ✅ | 单曲 ··· 菜单 → `video/BV…` + 歌名/UP 名；专辑详情 → `_album_out.shareUrl`；歌单详情 → `favlist?fid=…`；`/api/albums/1/share-link` 200 真链接；临时库系列带 mid → `collectiondetail?sid=777`、缺 mid 反查失败 → 409 可读文案；垃圾文本 → 「没识别到 B 站链接」；未登录 → 弹登录；share/clipboard/execCommand 全失败 → 弹窗展示链接（不静默） |
-| 09-10 | #25 分享（Android 正向） | 待重新打包 APK | ⏳ | 曲库单曲菜单点「分享」→ 系统面板出现 → 选微信后对方收到可点开的 B 站链接（`BiliMusicNative.shareText`） |
-| 09-10 | #25 分享（Android 反向） | 待重新打包 APK | ⏳ | B 站 App 分享视频 → 系统面板选 BiliMusic → 应用打开并提示入库（`SEND text/plain` + `__receiveShare`）；冷启动/后台两种入口都要试（`onCreate` / `onNewIntent`） |
+| 09-10 | #25 分享（Android 正向） | v1.1.0 APK 已发布（Release v1.1.0），待真机验收 | ⏳ | 曲库单曲菜单点「分享」→ 系统面板出现 → 选微信后对方收到可点开的 B 站链接（`BiliMusicNative.shareText`） |
+| 09-10 | #25 分享（Android 反向） | v1.1.0 APK 已发布，待真机验收（已核 APK 内含 SEND text/plain + shareText 桥） | ⏳ | B 站 App 分享视频 → 系统面板选 BiliMusic → 应用打开并提示入库（`SEND text/plain` + `__receiveShare`）；冷启动/后台两种入口都要试（`onCreate` / `onNewIntent`） |
 
 **进度汇总**：通过 27 / 27 组——**v0.4.0 验收闭环（2026-09-09 真机抽查全过，无新增待修项）**。遗留仅剩增量项：#3 深段（Media3 迁移，按需）· #14 series 二期（下一大项，见 next-steps §2）。
 
