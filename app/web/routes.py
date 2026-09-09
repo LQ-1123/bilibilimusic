@@ -632,8 +632,11 @@ def albums_partial(request: Request):
         return gate
     with new_session() as session:
         albums = session.exec(select(Album).order_by(Album.created_at.desc())).all()
-    cards = [{"id": a.id, "title": a.title, "artist": a.artist, "totalPages": a.total_pages,
-              "coverUrl": https_media_url(a.cover_url)} for a in albums]
+    cards = [{
+        "id": a.id, "title": a.title, "artist": a.artist,
+        "count_text": f"{a.total_pages} 个作品" if a.kind == "series" else f"{a.total_pages} 首",
+        "kind": a.kind,
+        "coverUrl": https_media_url(a.cover_url)} for a in albums]
     return templates.TemplateResponse(request, "partials/albums.html", {"albums": cards})
 
 

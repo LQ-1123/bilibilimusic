@@ -5,6 +5,7 @@
 - 短链 b23.tv/xxxx（302 跳转逐跟随，每一跳过 url_guard 校验）
 - 明链 www.bilibili.com/video/BVxxxx?p=n、b23.tv/BVxxxx
 - 裸 BV 号文本
+- 系列明链 space.bilibili.com/{mid}/channel/collectiondetail?sid=N → SeriesRef（v0.5.0）
 """
 
 import re
@@ -20,6 +21,7 @@ BV_RE = re.compile(r"BV[0-9A-Za-z]{10}")
 AV_RE = re.compile(r"(?<!\w)av(\d{1,15})(?!\d)", re.IGNORECASE)
 VIDEO_PATH_RE = re.compile(r"/video/(BV[0-9A-Za-z]{10}|av\d+)", re.IGNORECASE)
 FAV_FID_RE = re.compile(r"[?&]fid=(\d+)")
+SERIES_PATH_RE = re.compile(r"^/(\d+)/channel/collectiondetail/?$", re.IGNORECASE)
 
 _REDIRECT_CODES = (301, 302, 303, 307, 308)
 _MAX_REDIRECT_HOPS = 5
@@ -30,6 +32,14 @@ class VideoRef:
     bvid: str | None = None
     avid: int | None = None
     page: int = 1
+
+
+@dataclass
+class SeriesRef:
+    """B 站跨视频系列（合集）：space.bilibili.com/{mid}/channel/collectiondetail?sid=N。"""
+
+    sid: int
+    mid: int = 0
 
 
 def parse_video_url(url: str) -> VideoRef | None:
@@ -65,6 +75,33 @@ def parse_fav_id(text: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def parse_series_url(url: str) -> SeriesRef | None:
+    """静态解析系列明链；不是系列链接返回 None。
+
+    形如 https://space.bilibili.com/12345/channel/collectiondetail?sid=678
+    （「列表」系列 seriesdetail 是另一套接口，本期不支持）。
+    """
+    parts = urlsplit(url or "")
+    host = (parts.hostname or "").lower()
+    if host not in ("space.bilibili.com", "www.space.bilibili.com"):
+        return None
+    m = SERIES_PATH_RE.match(parts.path)
+    if not m:
+        return None
+    qs = parse_qs(parts.query)
+    try:
+        sid = int(qs["sid"][0])
+    except (KeyError, IndexError, ValueError):
+        return None
+    if sid <= 0:
+        return None
+    try:
+        mid = int(m.group(1))
+    except ValueError:
+        mid = 0
+    return SeriesRef(sid=sid, mid=mid)
+
+
 async def follow_redirects(
     client: httpx.AsyncClient,
     url: str,
@@ -90,16 +127,16 @@ async def follow_redirects(
     return current
 
 
-async def _resolve_single_url(client: httpx.AsyncClient, url: str) -> VideoRef | None:
-    direct = parse_video_url(url)
+async def _resolve_single_url(client: httpx.AsyncClient, url: str) -> VideoRef | SeriesRef | None:
+    direct: VideoRef | SeriesRef | None = parse_series_url(url) or parse_video_url(url)
     if direct:
         return direct
-    final = await follow_redirects(client, url, stop=parse_video_url)
-    return parse_video_url(final)
+    final = await follow_redirects(client, url, stop=lambda u: parse_series_url(u) or parse_video_url(u))
+    return parse_series_url(final) or parse_video_url(final)
 
 
-async def resolve_share_text(client: httpx.AsyncClient, text: str) -> VideoRef:
-    """从任意分享文本中解析出视频引用；失败抛 ValueError（文案可直接展示）。"""
+async def resolve_target(client: httpx.AsyncClient, text: str) -> VideoRef | SeriesRef:
+    """从任意分享文本中解析出视频或系列引用；失败抛 ValueError（文案可直接展示）。"""
     text = (text or "").strip()
     if not text:
         raise ValueError("分享内容为空")
@@ -126,4 +163,12 @@ async def resolve_share_text(client: httpx.AsyncClient, text: str) -> VideoRef:
             continue
         if ref:
             return ref
-    raise ValueError(f"链接不是可识别的 B 站视频：{last_error or '未知原因'}")
+    raise ValueError(f"链接不是可识别的 B 站视频/系列：{last_error or '未知原因'}")
+
+
+async def resolve_share_text(client: httpx.AsyncClient, text: str) -> VideoRef:
+    """视频版解析（系列链接在这里抛 ValueError）；系列导入走 resolve_target。"""
+    ref = await resolve_target(client, text)
+    if not isinstance(ref, VideoRef):
+        raise ValueError("这是系列（合集）链接，请通过支持合集的入口导入")
+    return ref

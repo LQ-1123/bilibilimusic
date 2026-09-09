@@ -14,9 +14,10 @@
     <span class="du">{{ s.duration_text }}</span>
     <span class="row-acts">
       {% if s.collected %}<button class="addto" type="button" data-add="{{ s.id }}" title="收藏到歌单">＋</button>{% endif %}
+      {% set is_series = album is not none and album.kind == 'series' %}
       <button class="star{{ ' on' if s.collected else '' }}" type="button"
-              {% if s.collected %}data-uncollect="{{ s.id }}" title="移出曲库（仍留在合集里，不影响 B 站收藏）" aria-label="移出曲库"
-              {% else %}data-collect="{{ s.id }}" title="收藏这首到曲库" aria-label="收藏到曲库"{% endif %}>
+              {% if s.collected %}data-uncollect="{{ s.id }}" title="{% if is_series %}移出曲库并取消该视频的 B 站收藏{% else %}移出曲库（仍留在合集里，不影响 B 站收藏）{% endif %}" aria-label="移出曲库"
+              {% else %}data-collect="{{ s.id }}" title="{% if is_series %}收藏这首（同步收藏该视频到 B 站）{% else %}收藏这首到曲库{% endif %}" aria-label="收藏到曲库"{% endif %}>
         <svg aria-hidden="true"><use href="#i-star"/></svg>
       </button>
     </span>

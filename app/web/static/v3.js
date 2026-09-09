@@ -393,10 +393,12 @@
       if (!response.ok) throw new Error("专辑加载失败，请重试");
       var album = await response.json();
       if (!isAlbumDetail(id, generation)) return;
-      dtState.name = album.title; dtState.bvid = album.sourceBvid || album.bvid;
+      var isSeries = album.kind === "series";
+      dtState.name = album.title; dtState.bvid = album.sourceBvid || album.bvid; dtState.albumKind = album.kind;
       $("dt-title").textContent = album.title;
       $("dt-crumb").textContent = "主页 / " + album.title;
-      $("dt-meta").textContent = album.artist + " · " + album.totalPages + " 首 · 按分 P 顺序";
+      $("dt-eyebrow").textContent = isSeries ? "合集" : "专辑";
+      $("dt-meta").textContent = album.artist + " · " + album.totalPages + (isSeries ? " 个作品" : " 首 · 按分 P 顺序");
       var img = document.createElement("img"); img.src = album.coverUrl; img.alt = ""; img.referrerPolicy = "no-referrer";
       cover.classList.add("album-cover"); cover.replaceChildren(img);
       await loadAlbumTracks(id, generation);
@@ -422,7 +424,13 @@
   window.deleteDetailAlbum = async function () {
     if (dtState.kind !== "album") return;
     var id = dtState.id, generation = albumDetailGeneration;
-    var confirmed = await window.__confirmModal("删除专辑「" + dtState.name + "」？", "将取消这个视频的 B 站收藏，并删除整张专辑及其本地曲目。仅移除一首歌请使用曲目行的隐藏按钮。");
+    var isSeries = dtState.albumKind === "series";
+    var confirmed = await window.__confirmModal(
+      (isSeries ? "删除合集「" : "删除专辑「") + dtState.name + "」？",
+      isSeries
+        ? "将取消这些视频的 B 站收藏（失败会稍后自动重试），并删除整个合集容器及其本地曲目。"
+        : "将取消这个视频的 B 站收藏，并删除整张专辑及其本地曲目。仅移除一首歌请使用曲目行的隐藏按钮。"
+    );
     if (!confirmed) return;
     try {
       var response = await fetch("/api/albums/" + encodeURIComponent(id), { method: "DELETE" });
@@ -964,11 +972,13 @@
     }
 
     function renderLinkCard(url) {
+      // 系列明链给「收藏为合集」的专门文案（v0.5.0）；短链/其余按视频收藏
+      var series = /space\.bilibili\.com\/\d+\/channel\/collectiondetail/i.test(url);
       lib.innerHTML = '<div class="sd-collect">' +
-        '<span style="font-size:24px;flex:none">🎬</span>' +
-        '<div class="sd-meta"><div class="sd-t">识别到视频链接</div>' +
-        '<div class="sd-s">' + esc(url) + '</div></div>' +
-        '<button class="sd-go" type="button">♥ 收藏</button></div>';
+        '<span style="font-size:24px;flex:none">' + (series ? "📚" : "🎬") + '</span>' +
+        '<div class="sd-meta"><div class="sd-t">' + (series ? "识别到系列（合集）链接" : "识别到视频链接") + '</div>' +
+        '<div class="sd-s">' + (series ? "收藏为合集容器 · 点开逐个收藏" : esc(url)) + '</div></div>' +
+        '<button class="sd-go" type="button">' + (series ? "♥ 收藏合集" : "♥ 收藏") + '</button></div>';
       var btn = lib.querySelector(".sd-go");
       btn.addEventListener("click", function () {
         var pid = document.getElementById("collect-playlist-id");

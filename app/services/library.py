@@ -28,9 +28,75 @@ def list_songs(
 
 
 def get_album_by_source(bvid: str) -> Album | None:
-    """#37：按源视频找已存在的合集容器（导入幂等，避免重复建容器）。"""
+    """#37：按源视频找已存在的合集容器（导入幂等，避免重复建容器）。
+
+    v0.5.0：系列容器的 source_bvid 是 "sid:<id>" 前缀，与 bvid 天然不冲突。
+    """
     with new_session() as session:
         return session.exec(select(Album).where(Album.source_bvid == bvid)).first()
+
+
+def get_album(album_id: int) -> Album | None:
+    with new_session() as session:
+        return session.get(Album, album_id)
+
+
+def rows_by_bvid(bvid: str) -> list[Song]:
+    """该视频的全部分 P 行（系列导入幂等/认领散曲用）。"""
+    with new_session() as session:
+        return list(session.exec(select(Song).where(Song.bvid == bvid)))
+
+
+def find_fav_folder_by_bvid(bvid: str) -> int:
+    """同视频已有行记录过收藏位置 → 复用该夹 id（B 站收藏是视频级的，不重复请求）。"""
+    with new_session() as session:
+        row = session.exec(
+            select(Song).where(Song.bvid == bvid, Song.fav_folder_id > 0)  # type: ignore[attr-defined]
+        ).first()
+        return row.fav_folder_id if row else 0
+
+
+def claim_song_to_album(song_id: int, album_id: int, track_no: int, *,
+                         title: str = "", duration: int = 0) -> None:
+    """v0.5.0：把已存在的行（散曲/上次导入）挂进系列容器——收藏状态与歌单不动。
+
+    换设备场景：sync 拉回的视频是散曲（album_id=0）；用户重建系列容器时
+    这里把它们「认领」回容器（PRD 的 sid 重建 + 与收藏夹合并）。
+    """
+    with new_session() as session:
+        song = session.get(Song, song_id)
+        if song is None:
+            return
+        song.album_id = album_id
+        song.track_no = track_no
+        if title:
+            song.title = title
+        if duration:
+            song.duration = duration
+        session.add(song)
+        session.commit()
+
+
+def uncollect_bvid_rows(bvid: str, album_id: int) -> list[int]:
+    """把某视频在指定容器内的全部分 P 行退回「目录态」（collected=False）。
+
+    系列的 B 站收藏是视频级的：取消收藏时同一视频的所有分 P 行要一起移出曲库，
+    并清掉收藏位置记录（收藏已随之取消）。
+    """
+    with new_session() as session:
+        rows = session.exec(
+            select(Song).where(Song.bvid == bvid, Song.album_id == album_id)  # type: ignore[attr-defined]
+        ).all()
+        changed = []
+        for song in rows:
+            if song.collected or song.playlist_id or song.fav_folder_id:
+                song.collected = False
+                song.playlist_id = 0
+                song.fav_folder_id = 0
+                session.add(song)
+                changed.append(song.id)
+        session.commit()
+        return changed
 
 
 def collect_song(song_id: int, playlist_id: int = 0) -> Song | None:

@@ -1,7 +1,7 @@
 {% for album in albums %}
-<button type="button" class="poster album-card" data-album="{{ album.id }}" data-name="{{ album.title }}" onclick="openDetailFrom(this)" title="打开专辑「{{ album.title }}」">
+<button type="button" class="poster album-card" data-album="{{ album.id }}" data-name="{{ album.title }}" onclick="openDetailFrom(this)" title="打开{{ '合集' if album.kind == 'series' else '专辑' }}「{{ album.title }}」">
   <span class="pc pc-img"><span class="mosaic one"><img src="{{ album.coverUrl }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span><span class="nm">{{ album.title }}</span></span>
-  <span class="row"><span class="en">{{ album.artist }} · {{ album.totalPages }} 首</span></span>
+  <span class="row"><span class="en">{% if album.kind == 'series' %}合集 · {% endif %}{{ album.artist }} · {{ album.count_text }}</span></span>
 </button>
 {% else %}
 <div class="empty">收藏多分 P 音乐视频后，专辑会显示在这里。</div>

@@ -84,6 +84,30 @@ class SyncService:
         self._jobs: dict[str, asyncio.Task] = {}
         self._folder_counts: dict[int, int] = {}  # 上次全量对账时的夹 → 条目数
         self._recent_pulls: dict[str, float] = {}  # bvid → 上次提交导入的时刻
+        # v0.5.0：删除系列容器时取消收藏失败的登记处（下次对账重试自愈），
+        # 等待期间这些 bvid 压制拉取——本地已删、B 站还没删，不拉回才对。
+        self._unfav_pending: dict[str, tuple[int, int]] = {}  # bvid → (aid, folder_id)
+        self._pull_suppressed: set[str] = set()
+
+    def defer_unfav(self, bvid: str, aid: int, folder_id: int = 0) -> None:
+        """取消收藏失败 → 登记待自愈；对应 bvid 在成功取消前不再被拉取导入。"""
+        if aid:
+            self._unfav_pending[bvid] = (aid, folder_id)
+            self._pull_suppressed.add(bvid)
+
+    async def _drain_unfav(self) -> None:
+        """自愈重试：清空「取消收藏失败」的登记（失败留到下轮对账再试）。"""
+        for bvid, (aid, folder_id) in list(self._unfav_pending.items()):
+            try:
+                if folder_id:
+                    await self.bili.unfavorite_song(aid, folder_id=folder_id)
+                else:
+                    await self.bili.unfavorite_song(aid)
+            except Exception:  # noqa: BLE001  接口抖动：下轮再试
+                continue
+            self._unfav_pending.pop(bvid, None)
+            self._pull_suppressed.discard(bvid)
+            await asyncio.sleep(random.uniform(*_VERIFY_INTERVAL))
 
     def get(self, sync_id: str) -> SyncState | None:
         return self._tasks.get(sync_id)
@@ -150,6 +174,7 @@ class SyncService:
         return {f["id"]: f["count"] for f in folders} != self._folder_counts
 
     async def _reconcile(self, state: SyncState) -> None:
+        await self._drain_unfav()  # 先清「取消收藏失败」的欠账，再对账
         playlists.ensure_default()
         state.adopted = await playlists.adopt_folders(self.bili)
         folders_all = await self.bili.list_library_folders(refresh=True)
@@ -201,11 +226,15 @@ class SyncService:
             for bvid, (_aid, fid) in cts.items():
                 global_at.setdefault(bvid, fid)
 
-        all_local = {s.bvid: s for s in library.list_songs(limit=5000)}
+        # 「已在本地」按全量行判断（only_collected=False）：合集容器里只有未收藏
+        # 子作品的视频也算已导入，否则对账会把它们反复提交导入（v0.5.0 修复）。
+        # local 遍历用列表而非 bvid 映射——同视频多个分 P 行都要参与删除/转移。
+        all_songs = library.list_songs(limit=5000, only_collected=False)
+        all_bvids = {s.bvid for s in all_songs}
 
         for p, ids, live, contents in plans:
             pid = p.id or 0
-            local = [s for s in all_local.values() if s.playlist_id == pid]
+            local = [s for s in all_songs if s.playlist_id == pid]
 
             # 夹级删除：配置过夹池的歌单，夹在 B 站侧全部消失 → 删歌单随夹走。
             # 歌还在另一歌单夹里的随收藏转移过去（B 站删夹不会转移收藏，这里
@@ -235,7 +264,7 @@ class SyncService:
 
             # 拉取：夹里有、本地全库没有 → 导入流水线（轮询期间未完成的不重复提交）
             for bvid, (_aid, folder_id) in contents.items():
-                if bvid in all_local:
+                if bvid in all_bvids or bvid in self._pull_suppressed:
                     continue
                 if now - self._recent_pulls.get(bvid, 0.0) < _PULL_TTL:
                     continue

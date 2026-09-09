@@ -225,7 +225,8 @@ async def materialize_album(album_id: int, request: Request) -> dict:
         album = session.get(Album, album_id)
         if album is None:
             raise HTTPException(status_code=404, detail="专辑不存在")
-        if album.materialized_pages >= album.total_pages:
+        if album.kind == "series" or album.materialized_pages >= album.total_pages:
+            # 系列容器不懒物化（v0.5.0）：导入任务是唯一的补齐来源，进度随任务推进
             return _album_songs_payload(album, session)
         source_bvid, album_title = album.source_bvid, album.title
 
@@ -254,10 +255,17 @@ async def materialize_album(album_id: int, request: Request) -> dict:
 
 
 def _album_songs_payload(album: Album, session) -> dict:
-    """前端契约（playAlbum）：{songs, hasMore, materializedPages}，只返回已物化的分 P。"""
+    """前端契约（playAlbum）：{songs, hasMore, materializedPages}，只返回已物化的分 P。
+
+    系列（v0.5.0）：track_no 按分 P 累计而 total_pages 是视频数，两者不同刻度；
+    已导入的行全量可见（导入任务持续推进），不做懒物化分页。
+    """
     songs = session.exec(
         select(Song).where(Song.album_id == album.id).order_by(Song.track_no)  # type: ignore[attr-defined]
     ).all()
+    if album.kind == "series":
+        return {"songs": [song_out(s) for s in songs], "hasMore": False,
+                "materializedPages": len(songs)}
     limit = album.materialized_pages or 0
     visible = [s for s in songs if s.track_no <= limit]
     return {"songs": [song_out(s) for s in visible], "hasMore": limit < album.total_pages,
@@ -266,31 +274,40 @@ def _album_songs_payload(album: Album, session) -> dict:
 
 @router.delete("/albums/{album_id}")
 async def delete_album(album_id: int, request: Request) -> dict:
-    # 语义矩阵（paged）：删专辑 = 取消收藏该视频（B 站一次）+ 本地曲目清理
+    # 语义矩阵：paged 删专辑 = 取消收藏该视频（B 站一次）+ 本地曲目清理；
+    # series（v0.5.0）删容器 = 逐视频批量取消收藏（失败登记 syncer 自愈）+ 本地整删。
     with new_session() as session:
         album = session.get(Album, album_id)
         if album is None:
             raise HTTPException(status_code=404, detail="专辑不存在")
+        kind = album.kind
         songs = session.exec(select(Song).where(Song.album_id == album_id)).all()
         song_ids = [s.id for s in songs]
         fav_targets = {(s.aid, s.fav_folder_id) for s in songs if s.aid}
 
     bili: BiliClient = request.state.bili
-    for aid, folder_id in fav_targets:  # 全部分 P 共用一个视频：取消收藏一次即可
-        try:
-            if folder_id:
-                await bili.unfavorite_song(aid, folder_id=folder_id)
-            else:
-                await bili.unfavorite_song(aid)
-        except (BiliApiError, httpx.HTTPError):  # 尽力而为：B 站失败不阻塞本地删除
-            pass
+    if kind == "series":
+        await request.state.importer.unfavorite_series_songs(
+            songs, on_defer=request.state.syncer.defer_unfav
+        )
+    else:
+        for aid, folder_id in fav_targets:  # 全部分 P 共用一个视频：取消收藏一次即可
+            try:
+                if folder_id:
+                    await bili.unfavorite_song(aid, folder_id=folder_id)
+                else:
+                    await bili.unfavorite_song(aid)
+            except (BiliApiError, httpx.HTTPError):  # 尽力而为：B 站失败不阻塞本地删除
+                pass
 
     with new_session() as session:
         for sid in song_ids:
             song = session.get(Song, sid)
             if song is not None:
                 session.delete(song)
-        session.delete(album)
+        album_row = session.get(Album, album_id)
+        if album_row is not None:
+            session.delete(album_row)
         session.commit()
     return {"ok": True}
 
@@ -401,19 +418,61 @@ async def lyrics_preview(request: Request, payload: dict) -> dict:
     return {"lyrics": result[0] if result else None, "source": result[1] if result else None}
 
 
+def _album_of(song) -> Album | None:
+    if not song.album_id:
+        return None
+    return library.get_album(song.album_id)
+
+
+async def _remove_series_song_from_bili(request: Request, song) -> None:
+    """系列子作品移出曲库后的 B 站侧：取消该视频收藏（视频级，一次）。
+
+    失败登记到 syncer 自愈，期间该 bvid 压制拉取（不会删完又被拉回）。
+    """
+    if not song.aid:
+        return
+    folder_id = song.fav_folder_id or library.find_fav_folder_by_bvid(song.bvid)
+    try:
+        if folder_id:
+            await request.state.bili.unfavorite_song(song.aid, folder_id=folder_id)
+        else:
+            await request.state.bili.unfavorite_song(song.aid)
+    except (BiliApiError, httpx.HTTPError):
+        request.state.syncer.defer_unfav(song.bvid, song.aid, folder_id)
+
+
 @router.post("/songs/{song_id}/collect")
-def collect_song_api(song_id: int, playlist_id: int = 0) -> dict:
-    """#37：把合集里的某个子作品收藏进曲库（可指定歌单）。B 站收藏是视频级的，这里只动本地。"""
+async def collect_song_api(song_id: int, request: Request, playlist_id: int = 0) -> dict:
+    """#37：把合集里的某个子作品收藏进曲库（可指定歌单）。
+
+    系列容器（v0.5.0）语义：星标 = 该视频在 B 站收藏一次（视频级），
+    后台尽力而为，失败由对账补收藏。
+    """
     song = library.collect_song(song_id, playlist_id)
     if song is None:
         raise HTTPException(status_code=404, detail="歌曲不存在")
+    album = _album_of(song)
+    if album is not None and album.kind == "series":
+        asyncio.create_task(request.state.importer.favorite_series_song(song_id))
     return {"ok": True, "song": song_out(song)}
 
 
 @router.post("/songs/{song_id}/uncollect")
-def uncollect_song_api(song_id: int) -> dict:
-    """#37：把子作品移出曲库（仍留在合集里，不取消 B 站收藏）。"""
-    if not library.uncollect_song(song_id):
+async def uncollect_song_api(song_id: int, request: Request) -> dict:
+    """把子作品移出曲库。
+
+    paged（#37）：只动本地，B 站收藏不动（整视频收藏是导入时给的）。
+    series（v0.5.0）：移出 = 该视频退出曲库 + 取消 B 站收藏——同视频的
+    其他分 P 行一起退（收藏是视频级的），目录行保留在容器里可再星标。
+    """
+    song = library.get_song(song_id)
+    if song is None:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    album = _album_of(song)
+    if album is not None and album.kind == "series":
+        library.uncollect_bvid_rows(song.bvid, album.id or 0)
+        asyncio.create_task(_remove_series_song_from_bili(request, song))
+    elif not library.uncollect_song(song_id):
         raise HTTPException(status_code=404, detail="歌曲不存在")
     return {"ok": True}
 
@@ -423,7 +482,15 @@ async def delete_song_api(
     song_id: int, request: Request, files: FileStore = Depends(_files)
 ) -> dict:
     song = library.get_song(song_id)
-    if song is None or not library.delete_song(song_id, files):
+    if song is None:
+        raise HTTPException(status_code=404, detail="歌曲不存在")
+    # 系列子作品：删除 = 退出曲库 + 取消该视频收藏；目录行保留（系列其余不受影响）
+    album = _album_of(song)
+    if album is not None and album.kind == "series":
+        library.uncollect_bvid_rows(song.bvid, album.id or 0)
+        asyncio.create_task(_remove_series_song_from_bili(request, song))
+        return {"ok": True}
+    if not library.delete_song(song_id, files):
         raise HTTPException(status_code=404, detail="歌曲不存在")
     # 删歌即取消收藏（夹池强关联曲库）；失败不影响本地删除
     bili: BiliClient = request.state.bili

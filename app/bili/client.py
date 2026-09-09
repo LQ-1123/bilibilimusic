@@ -325,6 +325,67 @@ class BiliClient:
             "face": https_media_url(str(owner.get("face") or "")),
         }
 
+    async def seasons_archives_list(
+        self, mid: int, season_id: int, page_num: int = 1, page_size: int = 30
+    ) -> tuple[list[dict], int]:
+        """跨视频系列（合集）的视频清单（v0.5.0）；返回 (archives, 视频总数)。
+
+        与空间投稿同族的 space 页接口，对 Referer/指纹同样敏感：带空间页
+        Referer + -352/-412 短间隔重试。每条 archive 含 bvid/aid/title/pic/duration。
+        """
+        params = {
+            "mid": mid, "season_id": season_id,
+            "page_num": max(1, page_num), "page_size": max(1, min(page_size, 30)),
+            "sort_reverse": "false",
+        }
+        headers = {"Referer": f"https://space.bilibili.com/{mid}/channel/collectiondetail?sid={season_id}"}
+        last_err: BiliApiError | None = None
+        for attempt in range(4):
+            if attempt:
+                await asyncio.sleep(1.0 if attempt == 1 else 2.0)
+            try:
+                data = await self._get_json_signed(
+                    "/x/polymer/web-space/seasons_archives_list", params, headers=headers
+                )
+                break
+            except BiliApiError as exc:
+                if exc.code not in (-352, -412):
+                    raise
+                last_err = exc
+        else:
+            raise last_err or BiliApiError(-352, "请求被 B 站拦截，请稍后再试")
+        archives = [a for a in (data.get("archives") or []) if isinstance(a, dict) and a.get("bvid")]
+        total = int((data.get("page") or {}).get("total") or 0) or len(archives)
+        return archives, total
+
+    async def season_meta(self, mid: int, season_id: int) -> dict:
+        """系列元信息（名称/封面/总数，v0.5.0）；best-effort，失败返回空 dict。
+
+        seasons_series_list 一次返回 UP 主全部合集+列表，结构在不同版本间
+        有差异（seasons_list.seasons_list / 顶层列表），这里做多形态兼容；
+        导入方以「清单接口 + 兜底标题」为主，缺元信息不影响建容器。
+        """
+        headers = {"Referer": f"https://space.bilibili.com/{mid}/channel/collectionlist"}
+        try:
+            data = await self._get_json_signed(
+                "/x/polymer/web-space/seasons_series_list", {"mid": mid}, headers=headers
+            )
+        except Exception:  # noqa: BLE001  元信息拿不到不阻塞导入
+            return {}
+        items: list[dict] = []
+        for key in ("seasons_list", "series_list"):
+            node = data.get(key) or {}
+            items.extend(node.get(key) or [])
+        items.extend(data.get("seasons") or [])
+        for item in items:
+            meta = item.get("meta") if isinstance(item.get("meta"), dict) else item
+            try:
+                if int(meta.get("season_id") or 0) == season_id:
+                    return meta
+            except (TypeError, ValueError):
+                continue
+        return {}
+
     async def space_arcs(self, mid: int, pn: int = 1, ps: int = 30, order: str = "pubdate") -> tuple[list[dict], int]:
         """UP 主投稿列表（wbi arc/search）；返回 (vlist, 投稿总数)。
 
