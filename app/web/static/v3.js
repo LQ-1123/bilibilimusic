@@ -955,8 +955,42 @@
     var LINK = /^\s*(https?:\/\/|b23\.|bv|av)/i;
     var timer = null, lastQ = null;
 
-    function open() { drop.hidden = false; }
+    // 面板贴住搜索框：不再依赖 CSS 里的固定 top（62px 会盖住输入框 9px），
+    // 滚动、改窗口、侧栏宽度变化都重新量一次；搜索框滚出视口时面板一并收起，
+    // 免得它孤零零钉在页面上、跟输入框脱节。
+    var wantOpen = false;
+    function place() {
+      if (!wantOpen) return;
+      if (document.documentElement.clientWidth <= 900) {
+        // 手机端是底部胶囊，沿用 CSS 的 bottom 定位
+        drop.style.top = ""; drop.style.left = ""; drop.style.width = ""; drop.style.maxHeight = "";
+        drop.hidden = false;
+        return;
+      }
+      var bar = $("tbSearch") || input;
+      var r = bar.getBoundingClientRect();
+      if (!r.width) { drop.hidden = true; return; }
+      if (r.bottom < 4 || r.top > window.innerHeight - 4) { drop.hidden = true; return; } // 搜索框滚出视口
+      drop.hidden = false;
+      drop.style.left = r.left + "px";
+      drop.style.width = r.width + "px";
+      drop.style.top = (r.bottom + 8) + "px";
+      drop.style.maxHeight = Math.max(160, Math.min(560, window.innerHeight - r.bottom - 32)) + "px";
+    }
+    var placeRaf = 0;
+    function placeSoon() {
+      if (placeRaf) return;
+      placeRaf = requestAnimationFrame(function () { placeRaf = 0; place(); });
+    }
+    var mainScrollEl = $("mainEl");
+    if (mainScrollEl) mainScrollEl.addEventListener("scroll", placeSoon, { passive: true });
+    window.addEventListener("scroll", placeSoon, { passive: true });
+    window.addEventListener("resize", placeSoon);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", placeSoon);
+
+    function open() { wantOpen = true; place(); }
     function close() {
+      wantOpen = false;
       drop.hidden = true;
       var tb = $("topbar"); // 手机端：搜索胶囊随关闭一并收起
       if (tb) { tb.classList.remove("searching"); tb.style.bottom = ""; }
@@ -1174,6 +1208,12 @@
     if (big) big.addEventListener("click", function () { panel.classList.add("showlyrics"); });
     var bubble = $("ly-bubble");
     if (bubble) bubble.addEventListener("click", function () { panel.classList.toggle("showlyrics"); });
+    // 播放列表：复用播放条上的队列按钮（含它的 on 视觉态）
+    var lq = $("ly-queue");
+    if (lq) lq.addEventListener("click", function () {
+      var bq = $("btn-queue");
+      if (bq) bq.click();
+    });
   })();
 
   // ---------- 歌词页控制条：进度/时间跟随当前媒体（曲库歌或试听流），seek 双向 ----------
@@ -1263,9 +1303,8 @@
     });
 
     // ··· 详情菜单：加入歌单 / 分享 / 推荐相似歌曲（试听歌无曲库 id，无相似推荐）/ 在 B 站打开
-    var more = $("ly-more");
-    if (more) more.addEventListener("click", function (e) {
-      e.stopPropagation();
+    // 歌词视图顶栏的 ··· 与播放页歌名右侧的 ··· 共用这一份逻辑
+    function openSongMenu(anchor) {
       var sm = $("song-menu");
       if (!sm) return;
       var trial = window.BiliPlayer && BiliPlayer.trialInfo();
@@ -1281,7 +1320,7 @@
       items.push('<button type="button" class="pm-item" data-act="bili">在 B 站打开</button>');
       sm.innerHTML = items.join("");
       sm.hidden = false;
-      var r = more.getBoundingClientRect();
+      var r = anchor.getBoundingClientRect();
       var mh = sm.offsetHeight, mw = sm.offsetWidth;
       sm.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, r.right - mw)) + "px";
       sm.style.top = (r.top - mh - 8 > 8 ? r.top - mh - 8 : r.bottom + 8) + "px";
@@ -1289,6 +1328,10 @@
       sm.dataset.url = url;
       sm.dataset.trial = trial ? "1" : "";
       sm.dataset.songid = song ? song.id : "";
+    }
+    ["ly-more", "ly-more-big"].forEach(function (id) {
+      var btn = $(id);
+      if (btn) btn.addEventListener("click", function (e) { e.stopPropagation(); openSongMenu(btn); });
     });
     var sm2 = $("song-menu");
     if (sm2) sm2.addEventListener("click", function (e) {
@@ -1346,7 +1389,7 @@
     });
     document.addEventListener("click", function (e) {
       var sm = $("song-menu");
-      if (sm && !sm.hidden && !e.target.closest("#song-menu") && !e.target.closest("#ly-more")) sm.hidden = true;
+      if (sm && !sm.hidden && !e.target.closest("#song-menu") && !e.target.closest("#ly-more") && !e.target.closest("#ly-more-big")) sm.hidden = true;
     });
   })();
 

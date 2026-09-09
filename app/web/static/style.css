@@ -13,6 +13,14 @@
   --sidebar-hover:rgba(255,255,255,.07);
   --stroke:rgba(255,255,255,.085); --stroke2:rgba(255,255,255,.16);
   --shadow:0 16px 48px rgba(0,0,0,.5); --shadow-sm:0 6px 22px rgba(0,0,0,.36);
+  /* 搜索类表面（顶栏搜索框 / 手机搜索胶囊 / 搜索结果面板）：更透 + 更强模糊，磨砂才看得出来 */
+  --search-glass:rgba(20,20,28,.54);
+  --search-edge:rgba(255,255,255,.2);
+  --search-shadow:0 12px 34px rgba(0,0,0,.5);
+  /* 手机底部导航的「液态玻璃」选中块：中性冷白，不带品牌粉色（用户反馈粉色渐变难看） */
+  --nav-pill:linear-gradient(155deg,rgba(255,255,255,.30),rgba(255,255,255,.12) 55%,rgba(255,255,255,.07));
+  --nav-pill-border:rgba(255,255,255,.24);
+  --nav-pill-shadow:inset 0 1px 2px rgba(255,255,255,.34),0 4px 12px rgba(0,0,0,.36);
   --hero-op:.55; --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.55'/></svg>");
   color-scheme:dark;
 }
@@ -25,6 +33,12 @@ html[data-theme="light"]{
   --sidebar-hover:rgba(35,35,45,.05);
   --stroke:rgba(20,20,35,.09); --stroke2:rgba(20,20,35,.16);
   --shadow:0 18px 50px rgba(30,30,60,.14); --shadow-sm:0 6px 20px rgba(30,30,60,.10);
+  --search-glass:rgba(255,255,255,.5);
+  --search-edge:rgba(255,255,255,.85);
+  --search-shadow:0 12px 34px rgba(30,30,60,.16);
+  --nav-pill:linear-gradient(155deg,rgba(255,255,255,.62),rgba(255,255,255,.34) 55%,rgba(255,255,255,.26));
+  --nav-pill-border:rgba(255,255,255,.75);
+  --nav-pill-shadow:inset 0 1px 2px rgba(255,255,255,.75),0 4px 14px rgba(30,30,60,.12);
   --hero-op:.4; color-scheme:light;
 }
 
@@ -62,6 +76,11 @@ body.playing .eq i{animation:eq 1.05s infinite ease-in-out}
 body.playing .eq i:nth-child(2){animation-delay:.28s}
 body.playing .eq i:nth-child(3){animation-delay:.55s}
 @keyframes eq{0%,100%{height:26%}38%{height:100%}68%{height:52%}}
+
+/* 走马灯标题：左右边缘羽化，文字滚到两端时淡出而不是硬切（参考图效果） */
+#player-title,#lyrics-title,#ly-title-big{
+  -webkit-mask-image:linear-gradient(to right,transparent 0,#000 10%,#000 90%,transparent 100%);
+  mask-image:linear-gradient(to right,transparent 0,#000 10%,#000 90%,transparent 100%)}
 
 /* ---------- 顶栏 ---------- */
 /* --inset-* 由 Android 壳注入（边到边，#2 方案 B）；浏览器/桌面走 env() 兜底（iOS PWA 生效） */
@@ -350,6 +369,11 @@ html[data-theme="light"] .tb-search,html[data-theme="light"] #player-bar,
 html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme="light"] .topbar.searching{
   background:rgba(255,255,255,.48);border-color:rgba(255,255,255,.7);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -1px 1px rgba(255,255,255,.4),0 8px 28px rgba(35,35,50,.12)}
+/* 搜索框 / 手机搜索胶囊：换用更透的 --search-glass + 更强的模糊，背后的内容才会显成磨砂 */
+.tb-search,.topbar.searching{
+  background:var(--search-glass);
+  -webkit-backdrop-filter:blur(40px) saturate(1.9);backdrop-filter:blur(40px) saturate(1.9);
+  border-color:var(--search-edge);box-shadow:var(--search-shadow)}
 .tb-search input::placeholder{color:var(--txt2)}
 #player-bar .p-ctl .big{background:transparent;color:var(--txt);box-shadow:none}
 #player-bar .p-ctl button,#player-bar .p-acts button{color:var(--txt)}
@@ -487,8 +511,8 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
   left:max(calc(var(--side) + 28px), calc((100% + var(--side) - 480px) / 2)); /* 与内容区居中的搜索框左缘对齐 */
   width:min(480px,calc(100% - var(--side) - 60px)); /* 与 .tb-search 同宽对齐 */
   max-height:min(560px,calc(100% - 130px));z-index:75;border-radius:16px;overflow-y:auto;padding:8px;
-  background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);
-  border:1px solid var(--stroke);box-shadow:var(--shadow)}
+  background:var(--search-glass);backdrop-filter:blur(44px) saturate(1.9);-webkit-backdrop-filter:blur(44px) saturate(1.9);
+  border:1px solid var(--search-edge);box-shadow:var(--search-shadow)}
 .sd-sec{font-size:11px;font-weight:700;letter-spacing:1.4px;color:var(--txt3);padding:12px 14px 6px}
 .sd-ava{flex:none;width:38px;height:38px;border-radius:50%;object-fit:cover;background:var(--raise)}
 
@@ -772,6 +796,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .app[data-view="search"] #view-search{display:block}
 .app[data-view="library"] #view-library{display:block}
 .app[data-view="detail"] .topbar{display:none}
+/* 详情 / 歌单视图里点搜索仍要能弹出来（上面那条 display:none 优先级更高，这里显式放行） */
+.app[data-view="detail"] .topbar.searching{display:flex}
 .dt-top{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;
   padding:calc(16px + var(--inset-top, env(safe-area-inset-top, 0px))) 2px 12px}
 .dt-top #dt-crumb{transition:opacity .28s}
@@ -923,12 +949,16 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .rack{scroll-padding-left:16px}
   .hero::before{inset:-30px -16px -70px -16px}
   .topbar{display:none}
-  /* 手机端：点底部搜索圆钮 → 搜索胶囊从圆钮位置向左展开（与底部 Dock 同一水平线） */
-  .topbar.searching{display:flex;position:absolute;left:12px;right:86px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));top:auto;z-index:110;
+  /* 手机端：点底部搜索圆钮 → 搜索胶囊从圆钮位置向左展开（与底部 Dock 同一水平线）。
+     必须 position:fixed：.topbar 在滚动容器 .main 里，absolute 会跟着内容滚走「卡在半空」 */
+  .topbar.searching{display:flex;position:fixed;left:12px;right:86px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));top:auto;z-index:110;
     border-width:1px;border-style:solid;border-radius:999px;padding:8px 10px;gap:8px;
     transform-origin:100% 50%;animation:msExpand .32s cubic-bezier(.3,.85,.3,1)}
   @keyframes msExpand{from{transform:scaleX(.18);opacity:.3}to{transform:none;opacity:1}}
   .topbar.searching .tb-right,.topbar.searching .tb-cir{display:none}
+  /* 详情 / 歌单视图默认隐藏顶栏（.app[data-view="detail"] .topbar{display:none} 优先级更高），
+     但搜索胶囊必须仍然弹得出来 */
+  .app[data-view="detail"] .topbar.searching{display:flex}
   /* The expanded shell owns the glass, avoiding two stacked translucent surfaces. */
   .topbar.searching .tb-search{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;
     border-color:transparent;box-shadow:none}
@@ -937,8 +967,10 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   body.msearching .m-tabs{opacity:0;transform:scale(.9);pointer-events:none}
   body.msearching .m-orb{opacity:0;transform:scale(.6);pointer-events:none}
   .m-tabs,.m-orb{transition:opacity .3s,transform .3s cubic-bezier(.3,.85,.3,1)}
-  /* 结果面板从胶囊上方展开 */
-  .search-drop{top:auto;bottom:calc(86px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));left:12px;right:12px;width:auto;max-height:calc(100% - 260px)}
+  /* 结果面板从胶囊上方展开（导航条高 66px + 底距 14px + 8px 间隙） */
+  .search-drop{top:auto;bottom:calc(88px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));left:12px;right:12px;width:auto;max-height:calc(100% - 260px)}
+  /* 播放条可见时，搜索面板再往上让开一条（播放条底距 96px + 高 66px + 10px 间隙） */
+  body:has(#player-bar:not(.hidden)) .search-drop{bottom:calc(172px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)))}
   .tb-search{flex:1}
   .tb-right .tb-chip{padding:0 11px}
   .tb-chip .lbl{display:none}
@@ -950,23 +982,29 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .trk .row-acts .goalbum{opacity:1}
   .trk .row-acts .star{opacity:1}
   .trk .addto{display:grid;opacity:1}  /* 触屏无 hover：加入歌单常显 */
-  #player-bar{left:12px;right:12px;bottom:calc(86px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));max-width:none;grid-template-columns:auto minmax(0,1fr) auto;
-    grid-template-areas:"ctl meta acts";min-height:56px;padding:6px 10px;gap:6px}
+  /* 手机播放条精简（用户要求）：封面 + 歌名 + UP主 + 播放/暂停 + 下一首。
+     进度条、上一首、收藏/歌词/队列都不显示（歌词仍可点封面打开） */
+  #player-bar{left:12px;right:12px;bottom:calc(96px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));
+    /* 与下方悬浮组同宽同高（导航条 + 间距 + 圆钮），居中 */
+    width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
+    max-width:calc(100% - 24px);min-height:var(--nav-h);
+    grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"meta ctl";padding:8px 14px;gap:10px}
   #player-bar .p-time{display:none}
-  #player-bar .p-ctl{grid-area:ctl}
-  #player-bar .p-ctl button{width:30px;height:30px;font-size:13px}
-  #player-bar .p-ctl .big{width:36px;height:36px;font-size:13px}
-  #player-bar .p-meta{grid-area:meta}
-  #player-cover{width:38px;height:38px;border-radius:50%}
-  #seek{display:none}
-  #player-artist{display:none}
-  #player-bar .p-acts{grid-area:acts}
-  #player-bar .p-acts button{width:32px;height:32px;font-size:13px}
+  #player-bar .p-meta{grid-area:meta;gap:10px}
+  #player-bar .p-ctl{grid-area:ctl;gap:2px}
+  #player-bar .p-ctl button{width:32px;height:32px;font-size:14px}
+  #player-bar .p-ctl .big{width:42px;height:42px;font-size:15px}
+  #player-bar .p-ctl #btn-prev{display:none}
+  #player-bar .p-acts{display:none}
   .volhost{display:none}
+  #player-cover{width:44px;height:44px;border-radius:12px}
+  #player-title{font-size:14px}
+  #seek{display:none}
+  #player-artist{display:block;font-size:11px;margin-top:2px}
   #task-list{left:12px;bottom:150px;max-width:calc(100vw - 24px)}
   #queue-panel{top:10px;bottom:calc(150px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)))}
   /* 手机端歌词全屏（Apple Music 式）：顶栏=小封面+左对齐歌名+···，歌词居中作主体，底部=进度+三键 */
-  #lyrics-panel{display:flex;flex-direction:column}
+  #lyrics-panel{display:flex;flex-direction:column;--ly-col:75%} /* 播放页所有元素共用的居中列宽 */
   .ly-volhost{display:none} /* 手机端不需要音量条 */
   /* 封面视图顶栏只留 ✕（歌名随大封面沉底贴进度条）；歌词视图恢复完整顶栏 */
   #lyrics-panel:not(.showlyrics) .l-left{display:block;padding:12px 12px 4px}
@@ -983,33 +1021,59 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .l-song span{font-size:12px;margin-top:3px}
   .ly-morerow{width:auto;padding:0}
   #ly-more{width:38px;height:38px}
-  #lyrics-scroll{flex:1;display:flex;flex-direction:column;padding:22px 28px 12px}
+  #lyrics-scroll{flex:1;display:flex;flex-direction:column;padding:20px 30px 12px}
   #lyrics-scroll .l-line:first-child{margin-top:auto}
   #lyrics-scroll .l-line:last-child{margin-bottom:auto}
   #lyrics-scroll .l-empty{margin:auto}
-  .l-line{font-size:23px;padding:15px 0;text-align:center;opacity:.52;filter:blur(.6px)}
-  .l-line.on{opacity:1;filter:none}
-  .l-bottom{flex:none;gap:2px;padding:4px 22px calc(22px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)))}
-  .ly-prog{width:100%}
-  .ly-ctl{gap:36px;padding-top:10px}
-  .ly-ctl .big svg{width:48px;height:48px}
+  /* 歌词左对齐 + 当前行放大加粗、其余行缩小变淡（参考图排版） */
+  .l-line{font-size:17px;font-weight:600;line-height:1.45;padding:12px 0;text-align:left;
+    opacity:.42;filter:none;transition:font-size .22s,opacity .22s,color .22s}
+  .l-line.on{font-size:23px;font-weight:800;opacity:1;filter:none}
+  /* min-width:0 + align-items:stretch：让三行各自撑满底栏内容宽，
+     不用百分比宽度（这一层里百分比解析不稳，会把第四行右侧按钮挤出屏幕） */
+  .l-bottom{flex:none;width:100%;min-width:0;align-items:stretch;gap:2px;
+    padding:4px 0 calc(58px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)))}
+  .ly-prog{width:var(--ly-col);margin:0 auto}
+  .ly-ctl{width:var(--ly-col);margin:0 auto;justify-content:space-between;gap:0;padding:12px 0 52px}
+  .ly-ctl button{width:56px;height:56px}
+  .ly-ctl button svg{width:28px;height:28px}
+  .ly-ctl .big svg{width:68px;height:68px}
   .ly-ctl #ly-mode,.ly-ctl #ly-add{display:none}
-  /* 手机端播放页封面视图（Apple Music 式）：顶栏下大封面 + 大标题 + 词气泡 */
-  .l-hero{display:flex;flex-direction:column;flex:none;justify-content:flex-end;padding:6px 24px 0}
-  #lyrics-cover-big{width:100%;aspect-ratio:1;object-fit:cover;border-radius:16px;corner-shape:superellipse(2);
+  /* 播放页不要左上角 ✕（返回手势/返回键即可退出） */
+  #lyrics-panel:not(.showlyrics) #btn-lyrics-close{display:none}
+  /* 手机端播放页封面视图：按参考图比例——封面 75% 宽居中，歌名行/进度条 84% 宽，
+     底部两个图标内缩 15%（参考图里它们不在最边缘） */
+  .l-hero{display:flex;flex-direction:column;flex:none;justify-content:flex-end;align-items:center;padding:6px 0 0}
+  /* 封面单独算：在「页面高度 − 下方歌名行 − 进度/控件」的剩余空间里垂直居中 */
+  .l-cvr{position:relative;width:var(--ly-col);max-width:420px;aspect-ratio:1;max-height:100%;margin:auto}
+  /* 封面底部居中的「3 / 30」队列位置（参考图的 < 1 / 4 > 样式） */
+  .l-pos{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);
+    padding:3px 12px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.4px;
+    color:#fff;background:rgba(0,0,0,.42);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);pointer-events:none}
+  #lyrics-cover-big{width:100%;height:100%;aspect-ratio:1;object-fit:cover;border-radius:16px;corner-shape:superellipse(2);
     box-shadow:0 24px 55px rgba(0,0,0,.42);background:var(--raise);cursor:pointer}
-  .l-herosong{display:flex;align-items:flex-end;gap:12px;padding:16px 2px 10px}
+  .l-herosong{display:flex;align-items:center;gap:6px;width:var(--ly-col);margin:0 auto;padding:16px 0 8px}
   .hs-txt{flex:1;min-width:0}
   .hs-txt b{display:block;font-size:21px;font-weight:800;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .hs-txt span{display:block;font-size:14px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #ly-bubble{display:grid;place-items:center;flex:none;width:36px;height:36px;color:var(--txt2);transition:.15s}
+  #ly-bubble,#ly-queue{display:grid;place-items:center;flex:none;width:52px;height:52px;color:var(--txt2);transition:.15s}
+  #ly-bubble svg,#ly-queue svg{width:28px;height:28px;display:block}
+  #ly-bubble svg{width:36px;height:36px} /* 歌词气泡比列表键再大一圈 */
+  #ly-bubble:hover,#ly-queue:hover{color:var(--txt)}
+  /* 第四行：歌词 + 播放列表，两端对齐（参考图排版）。
+     宽度交给 .l-bottom 的 align-items:stretch 拉伸，不写百分比 */
+  .ly-foot{width:var(--ly-col);margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:2px 0 0}
+  /* 播放页歌名右侧的 ··· */
+  #ly-more-big{flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;
+    font-size:18px;font-weight:800;line-height:1;color:var(--txt3);transition:.15s;margin-bottom:2px}
+  #ly-more-big:active{transform:scale(.94)}
+  #ly-more-big:hover{color:var(--txt)}
   /* #35(a)：手机端播放详情页歌名后的收藏钮（原来星标只在歌词视图的 .l-songrow 里，封面态看不到） */
   #ly-star-big{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
     font-size:20px;line-height:1;color:var(--txt3);transition:.15s;margin-bottom:2px}
   #ly-star-big:active{transform:scale(.94)}
   #ly-star-big.on{color:var(--pink)}
-  #ly-bubble svg{width:20px;height:20px;display:block}
-  #ly-bubble:hover{color:var(--txt)}
   #lyrics-panel.showlyrics #ly-bubble{color:var(--pink)}
   /* 视图切换：封面视图藏歌词、歌词视图藏封面 */
   #lyrics-panel.showlyrics .l-hero{display:none}
@@ -1045,22 +1109,34 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .dt-hero .dt-cvr{width:130px;height:130px}
   .dt-title{font-size:24px}
   .dt-info{flex-basis:100%}
-  #m-dock{display:flex;align-items:center;gap:10px;position:absolute;left:12px;right:12px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));z-index:65}
-  .m-tabs{flex:1;height:58px;border-radius:999px;display:flex;align-items:center;position:relative;isolation:isolate;
-    border-width:1px;border-style:solid}
-  .m-tabs::before{content:"";position:absolute;inset:5px auto 5px 5px;width:calc((100% - 10px)/3);
+  /* 底部悬浮组的公共尺寸：导航条与上方播放条共用，保证两条宽度/高度相当 */
+  body{--nav-pad:6px;--nav-tabw:84px;--nav-gap:10px;--nav-orb:64px;--nav-h:66px}
+  #m-dock{display:flex;align-items:center;justify-content:center;gap:var(--nav-gap);position:absolute;left:12px;right:12px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));z-index:65}
+  /* 导航条：只包住内容（不再撑满屏宽），更高更「胖」；--nav-pad 是选中块四周留白，
+     nav-liquid.js 会读同一个变量来算位移，改这里就能整体缩放留白 */
+  .m-tabs{--nav-pad:6px;--nav-tabw:84px;flex:0 1 auto;max-width:100%;height:var(--nav-h);border-radius:999px;
+    display:flex;align-items:center;position:relative;isolation:isolate;
+    border-width:1px;border-style:solid;padding:var(--nav-pad);box-sizing:border-box;touch-action:pan-y}
+  /* 选中块（液态玻璃）：位置与形变由 nav-liquid.js 写入
+     --pill-x / --pill-w / --pill-sx / --pill-sy，拖动时跟手并把横向滞后量转成「水珠」拉伸；
+     无 JS 时退回 :not(.liquid) 的百分比定位 */
+  .m-tabs::before{content:"";position:absolute;
+    inset:var(--nav-pad) auto var(--nav-pad) var(--nav-pad);
+    width:var(--pill-w,calc((100% - var(--nav-pad)*2)/3));
     border-radius:999px;pointer-events:none;z-index:-1;
-    background:linear-gradient(155deg,rgba(255,255,255,.38),var(--pink-tint) 55%,rgba(251,114,153,.24));
-    border:1px solid rgba(255,255,255,.5);
-    box-shadow:inset 0 1px 2px rgba(255,255,255,.65),inset 0 -1px 2px rgba(251,114,153,.2),0 3px 8px rgba(110,35,65,.1);
-    -webkit-backdrop-filter:blur(12px) saturate(1.8);backdrop-filter:blur(12px) saturate(1.8);
-    transform:translateX(0);transition:transform .55s cubic-bezier(.22,1.28,.36,1)}
-  .m-tabs:has([data-mtab="library"].on)::before{transform:translateX(100%)}
-  .m-tabs:has([data-mtab="account"].on)::before{transform:translateX(200%)}
-  .m-tab{flex:1;min-width:0;height:48px;margin:0;display:flex;justify-content:center;flex-direction:column;align-items:center;gap:3px;
-    color:var(--txt);font-size:9.5px;font-weight:700;padding:0;border-radius:999px;letter-spacing:0;
+    background:var(--nav-pill);
+    border:1px solid var(--nav-pill-border);
+    box-shadow:var(--nav-pill-shadow);
+    -webkit-backdrop-filter:blur(12px) saturate(1.5);backdrop-filter:blur(12px) saturate(1.5);
+    transform-origin:50% 50%;will-change:transform;
+    transform:translate3d(var(--pill-x,0px),0,0) scale(var(--pill-sx,1),var(--pill-sy,1))}
+  .m-tabs:not(.liquid)::before{transform:translateX(0);transition:transform .55s cubic-bezier(.22,1.28,.36,1)}
+  .m-tabs:not(.liquid):has([data-mtab="library"].on)::before{transform:translateX(100%)}
+  .m-tabs:not(.liquid):has([data-mtab="account"].on)::before{transform:translateX(200%)}
+  .m-tab{flex:0 0 var(--nav-tabw);min-width:0;height:52px;margin:0;display:flex;justify-content:center;flex-direction:column;align-items:center;gap:4px;
+    color:var(--txt);font-size:10px;font-weight:700;padding:0;border-radius:999px;letter-spacing:0;
     transition:color .22s,transform .3s cubic-bezier(.22,1.28,.36,1);background:none;border:none;-webkit-tap-highlight-color:transparent}
-  .m-tab svg{width:19px;height:19px;transition:transform .4s cubic-bezier(.22,1.5,.36,1)}
+  .m-tab svg{width:20px;height:20px;transition:transform .4s cubic-bezier(.22,1.5,.36,1)}
   .m-tab.on{color:var(--pink-txt)}
   .m-tab.on svg{transform:translateY(-1px) scale(1.12)}
   .m-tab:active{transform:scale(.92)}
@@ -1071,11 +1147,16 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
     .m-tab:active,.m-tab.on svg{transform:none}
   }
   @media (prefers-reduced-transparency:reduce){
-    .m-tabs::before{background:var(--bg2);backdrop-filter:none;-webkit-backdrop-filter:none}
+    .m-tabs::before{background:var(--bg2);border-color:var(--stroke2);box-shadow:var(--shadow-sm);
+      backdrop-filter:none;-webkit-backdrop-filter:none}
   }
-  .m-orb{width:58px;height:58px;flex:none;border-radius:50%;display:grid;place-items:center;color:var(--txt);
+  .m-orb{width:var(--nav-orb);height:var(--nav-orb);flex:none;border-radius:50%;display:grid;place-items:center;color:var(--txt);
     border-width:1px;border-style:solid}
-  .m-orb svg{width:21px;height:21px}
+  .m-orb svg{width:22px;height:22px}
+  /* 窄屏（iPhone SE 等）：整体收窄，保证两条 + 圆钮都不撑出屏幕 */
+  @media (max-width:370px){
+    body{--nav-tabw:66px;--nav-orb:58px;--nav-h:62px}
+  }
   /* 搜索下拉跟随悬浮胶囊定位 */
   .search-drop{top:76px;left:12px;right:12px;width:auto;max-height:calc(100% - 200px)}
   /* Tab 视图切换（仅手机）：主页=完整首页（推荐歌单不随 Tab 切换消失）；

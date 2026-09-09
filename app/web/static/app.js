@@ -752,6 +752,8 @@
 
   // ---------- 歌词面板（B站字幕 + LRCLIB 混合，后端返回 LRC/纯文本） ----------
   var NOTE_RE = /[♪♫♩♬]/g; // 歌词行装饰符号（LRCLIB/AI 字幕常见），展示前剥掉
+  // 作词/作曲/编曲等元数据行：老库里可能已经存进去了，展示前再剥一道（BUG-007）
+  var META_RE = /^(作词|作曲|作詞|编曲|編曲|制作人|製作人|混音|母带|母帶|录音|錄音|监制|監製|出品|OP|SP|词|曲|lyrics?|composer|arranger?|producer|mixed\s*by|written\s*by)\s*[:：]/i;
 
   function parseLrc(text) {
     var out = [], timed = 0;
@@ -766,6 +768,7 @@
       } else {
         body = line.replace(/^\[[^\]]*\]/, "").trim();
       }
+      if (body && META_RE.test(body)) return; // 元数据行不当歌词
       body = body.replace(NOTE_RE, " ").replace(/\s+/g, " ").trim();
       out.push({ t: m ? parseInt(m[1], 10) * 60 + parseFloat(m[2]) : -1, text: body });
     });
@@ -824,7 +827,11 @@
       t1.title = title;
       if (window.BiliTicker) BiliTicker.set(t1); // 歌词页大标题同走马灯（#13）
     }
-    if (t2) { t2.textContent = title; t2.title = title; }
+    if (t2) {
+      t2.textContent = title;
+      t2.title = title;
+      if (window.BiliTicker) BiliTicker.set(t2); // 播放页大歌名超长也走马灯
+    }
     $("lyrics-artist").textContent = artist;
     var ba = $("ly-artist-big");
     if (ba) ba.textContent = artist;
@@ -839,6 +846,12 @@
     var sourceEl = $("lyrics-source");
     if (sourceEl) { sourceEl.hidden = true; sourceEl.textContent = ""; }
     setLyricsCover(meta.cover);
+    var posEl = $("ly-pos");
+    if (posEl) {
+      var p = meta.pos;
+      if (p && p.total > 1) { posEl.textContent = p.index + " / " + p.total; posEl.hidden = false; }
+      else { posEl.hidden = true; posEl.textContent = ""; }
+    }
     $("lyrics-scroll").innerHTML = '<div class="l-empty">歌词加载中…</div>';
     fetch(meta.fetchUrl, meta.fetchInit)
       .then(function (r) {
@@ -900,6 +913,7 @@
     return {
       key: "lib:" + song.id, title: song.title, artist: song.artist, cover: song.coverUrl,
       fetchUrl: "/api/songs/" + song.id + "/lyrics",
+      pos: window.BiliPlayer ? window.BiliPlayer.position() : null,
     };
   }
 
@@ -1181,6 +1195,10 @@
     songs: fetchSongs, // v3.js 搜索下拉用
     activeMedia: function () { return (recActive && recAudio) ? recAudio : audio; }, // 歌词页进度条寻址
     currentSong: function () { return playlist[current] || null; }, // 含 bvid
+    position: function () { // 队列位置（1 基），用于播放页封面上的「3 / 30」；无队列返回 null
+      if (!playlist.length || !playlist[current]) return null;
+      return { index: current + 1, total: playlist.length };
+    },
     trialInfo: function () { // 试听歌元数据（bvid/title/artist/cover），非试听返回 null
       return (recActive && recAudio)
         ? { bvid: recAudio.dataset.bvid, title: recAudio.dataset.title, artist: recAudio.dataset.artist, cover: recAudio.dataset.cover }
