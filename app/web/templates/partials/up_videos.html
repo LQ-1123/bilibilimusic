@@ -3,19 +3,24 @@
   {% if top10 %}
   <section class="up-sec">
     <h3>热门歌曲</h3>
-    <ol class="up-songs">
-      {% for v in top10 %}
-      <li class="up-song" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
-        <span class="no">{{ loop.index }}</span>
-        <span class="im"><img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
-        <div class="tt">
-          <div class="t1">{{ v.title }}</div>
-          <div class="t2">{{ v.play_text }} 播放</div>
+    <div class="up-hots">
+      {% for col in top10|batch(3) %}
+      {% set base = loop.index0 * 3 %}
+      <div class="up-col">
+        {% for v in col %}
+        <div class="up-song" data-bvid="{{ v.bvid }}" data-artist="{{ name }}" onclick="playRecRow(this)" title="{{ v.title }}">
+          <span class="no">{{ base + loop.index }}</span>
+          <span class="im"><img src="{{ v.pic }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+          <div class="tt">
+            <div class="t1">{{ v.title }}</div>
+            <div class="t2">{{ v.play_text }} 播放</div>
+          </div>
+          <span class="du">{{ v.length }}</span>
         </div>
-        <span class="du">{{ v.length }}</span>
-      </li>
+        {% endfor %}
+      </div>
       {% endfor %}
-    </ol>
+    </div>
   </section>
   {% endif %}
   {% if items %}

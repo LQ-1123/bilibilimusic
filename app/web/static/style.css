@@ -647,7 +647,7 @@ body:not(.playing) .i-pause{display:none}
 
 /* ---------- UP 主作品页 · Apple Music 沉浸式艺术家页 ----------
    深色环境背景铺满全屏（侧栏玻璃浮于其上）；头像主色 --uph 驱动环境光；滚动时 hero 虚化融入（--upfog） */
-#up-panel{position:absolute;inset:0;z-index:90;display:flex;flex-direction:column;background:#0a0a10;overflow:hidden;padding-left:var(--side);
+#up-panel{position:absolute;inset:0;z-index:90;display:flex;flex-direction:column;background:#0a0a10;overflow:hidden;
   color:#f5f5f7;
   --txt:#f5f5f7;--txt2:rgba(245,245,247,.62);--txt3:rgba(245,245,247,.42);
   --card:rgba(255,255,255,.07);--card2:rgba(255,255,255,.13);
@@ -676,7 +676,7 @@ body:not(.playing) .i-pause{display:none}
   filter:drop-shadow(0 34px 80px rgba(0,0,0,.62)) blur(calc(var(--upfog,0)*22px));
   opacity:calc(1 - var(--upfog,0)*.88);
   transition:opacity .3s}
-#up-close{position:absolute;top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)));left:calc(var(--side) + 20px);z-index:5;width:36px;height:36px;border-radius:50%;
+#up-close{position:absolute;top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)));left:20px;z-index:5;width:36px;height:36px;border-radius:50%;
   background:rgba(255,255,255,.09);backdrop-filter:blur(18px) saturate(1.4);-webkit-backdrop-filter:blur(18px) saturate(1.4);
   border:1px solid rgba(255,255,255,.13);display:grid;place-items:center;color:rgba(255,255,255,.75);font-size:13px;transition:.15s}
 #up-close:hover{color:#fff;background:rgba(255,255,255,.16)}
@@ -699,9 +699,14 @@ body:not(.playing) .i-pause{display:none}
 #up-play svg{width:30px;height:30px}
 /* 内容区：上下两大区（热门歌曲 / 全部音乐），每区内部多列排布，宽屏无空白 */
 .up-lay{display:grid;grid-template-columns:1fr;gap:38px;padding:40px 52px 150px}
+.up-lay>.up-sec{min-width:0}  /* 出血轨道不回撑内容区宽度（grid item 默认 min-width:auto） */
 .up-sec h3{font-size:16px;font-weight:700;color:rgba(255,255,255,.94);margin:0 0 16px;letter-spacing:.2px}
-/* 热门歌曲：编号行无卡片底，宽屏自动分多列 */
-.up-songs{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:2px 44px}
+/* 热门歌曲：首页货架同款滑动逻辑——每列 3 行、列宽 44vw、左出血滑过玻璃侧栏 */
+.up-hots{display:flex;gap:34px;overflow-x:auto;margin:0 -52px 4px calc(-1 * (var(--side) + 52px));
+  padding:4px 52px 14px calc(var(--side) + 52px);scroll-padding-left:calc(var(--side) + 52px);
+  scroll-snap-type:x proximity;scrollbar-width:none}
+.up-hots::-webkit-scrollbar{display:none}
+.up-col{width:min(560px,44vw);flex:none;display:flex;flex-direction:column;scroll-snap-align:start}
 .up-song{display:flex;align-items:center;gap:13px;padding:8px 10px;border-radius:10px;cursor:pointer;transition:background .15s}
 .up-song:hover{background:rgba(255,255,255,.06)}
 .up-song .no{width:18px;text-align:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;color:rgba(255,255,255,.38);flex:none}
@@ -1023,7 +1028,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #up-share,#up-shuffle{width:42px;height:42px}
   .up-acts{gap:20px;margin-top:14px}
   .up-lay{grid-template-columns:1fr;gap:44px;padding:30px 20px 150px}
-  .up-songs{grid-template-columns:1fr}
+  .up-hots{margin:0 -20px 4px;padding:4px 20px 14px;scroll-padding-left:20px}
+  .up-col{width:calc(100vw - 40px)}  /* 手机：单列占满，左右滑动 */
   .up-videos{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px 14px}
   .dcol{width:calc(100vw - 32px)}  /* 手机：单列占满，左右滑动 */
   .upv-lay{grid-template-columns:1fr;gap:22px}

@@ -282,7 +282,9 @@
 | 09-08 | #20 Overlay 定稿 | mac 桌面构建 + 截图目检 | ✅ | TitleBarStyle::Overlay：系统原生圆角窗框 + 真·红绿灯（系统绘制）；侧栏顶部让位 40px 可拖动；顶栏拖拽/双击最大化；三键手感待用户确认 |
 | 09-08 | #4 耳机拔出 | Android 15 模拟器 | ✅ 代码/注册/通路 | BECOMING_NOISY 接收器注册 ✓（dumpsys）；evalInPage 通路 ✓（通知暂停键同构实测）；shell 广播卡 ordered 无法真实触发（模拟器限制）→ 真机拔耳机终验 |
 | 09-08 | #4 音频焦点 | 设计确认 | ✅ 方案确认 | 来电/他 App 抢占由 Chromium AudioFocusDelegate 原生处理（WebView 内建），不自管避免双重请求冲突；真机来电场景抽查 |
+| 09-09 | B6 批（#23–#37） | 用户真机 · 桌面（mac Tauri）+ Android | ✅ | `verify-b6.md` 全清单通过：#27 IME 二次修正（候选上屏、播放不断）、#29 通知栏/锁屏媒体卡（歌名+歌手+封面+进度、点卡回 App）、#37 合集三分类+容器逐曲星标、#33 取消收藏、#34 资料库视图与返回、#35 双端星标、#36 专辑入口、桌面 #23–#26 |
+| 09-09 | v0.3.0 遗留（#1/#2/#3/#4/F0/#14/#6 预筛） | 用户真机 · Android | ✅ | 手势导航返回手感；锁屏 30 分钟不断播；蓝牙耳机按键；拔耳机自动暂停；来电暂停；逐 P 听音对照（与 B 站 App 一致）；删专辑后 B 站收藏夹同步消失（网页端核对）；横屏刘海无遮挡；曲库长列表滚动流畅（#6 预筛通过，无需 profile） |
 
-**进度汇总**：通过 21 / 25 组（#1 #2 #3 一段+升级 #5 #7 #9 #10 #13 #14 一期 #15 #16 #17 #18 #20 #21 #22 均含模拟器/桌面实测）｜ 遗留：#3 深段（Media3 迁移/锁屏深测）· #4 真机终验（来电/拔耳机）· #6 真机 profile · #14 series 二期 · #11 真机手势 · #20 手感目检 · 真机抽查（手势导航/锁屏 30 分钟/逐 P 听音/收藏粒度）
+**进度汇总**：通过 27 / 27 组——**v0.4.0 验收闭环（2026-09-09 真机抽查全过，无新增待修项）**。遗留仅剩增量项：#3 深段（Media3 迁移，按需）· #14 series 二期（下一大项，见 next-steps §2）。
 
 > **模拟器验收环境（2026-09-08 搭建）**：Android Studio SDK + `emulator` 包 + `system-images;android-35;default;arm64-v8a`，AVD 名 `BM35`（Pixel 6，三键导航）。项目侧需：`android/local.properties`（sdk.dir）、Gradle wrapper 8.11.1、`brew install python@3.11`（Chaquopy buildPython，构建时 PATH 前置）、`PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。种子数据：`adb push` 曲库 DB/cookies/active_mid 到 `/data/local/tmp` 后 `run-as` 拷入 `files/data/`。WebView 调试：debug 构建已开 `setWebContentsDebuggingEnabled`，`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后可用 CDP（websocket 需 `suppress_origin=True`）。

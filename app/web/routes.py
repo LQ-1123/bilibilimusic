@@ -94,15 +94,24 @@ _HUES = [340, 14, 258, 44, 192, 130, 285, 210]
 
 
 def _playlist_cards() -> tuple[list[dict], int]:
-    """侧栏 + 海报架共用的歌单卡片数据（含每歌单曲目数 + 最新封面）。返回 (cards, 总曲数)。"""
+    """侧栏 + 海报架共用的歌单卡片数据（含每歌单曲目数 + 最新封面）。返回 (cards, 总条目数)。
+
+    计数按「B 站收藏夹视频数」口径（v0.5.0）：每个多 P/系列合集容器 = 1 条，
+    其子作品不单独计；只计收藏单曲。这样「我的曲库 / 全部歌曲」数与 B 站收藏夹一致。
+    """
     from app.api.routes import song_out
 
     pls = playlists.list_playlists()
     all_songs = library.list_songs(limit=10000)
+    singles = [s for s in all_songs if not s.album_id]  # 收藏单曲（不含合集容器内的子作品）
+    with new_session() as session:
+        album_count = session.exec(
+            select(func.count()).select_from(Album)
+        ).one() or 0
     counts: dict[int, int] = {}
     covers: dict[int, str] = {}  # 每歌单最新一首的封面（list_songs 新歌在前）
     newest_cover = ""
-    for s in all_songs:
+    for s in singles:
         pid = s.playlist_id or 0
         counts[pid] = counts.get(pid, 0) + 1
         if pid not in covers:
@@ -112,19 +121,24 @@ def _playlist_cards() -> tuple[list[dict], int]:
                 if not newest_cover:
                     newest_cover = url
     cards = [{
-        "id": 0, "name": "全部歌曲", "count": len(all_songs), "default": False, "hue": 340,
+        "id": 0, "name": "全部歌曲", "count": len(singles) + album_count, "default": False, "hue": 340,
         "cover": covers.get(0, newest_cover),
     }]
     for i, p in enumerate(pls):
+        base = counts.get(p.id, 0)
+        if p.name == playlists.DEFAULT_NAME:
+            base += album_count  # 默认「我的曲库」= B 站收藏夹：多 P 合集算条目
+        elif not album_count:
+            pass
         cards.append({
             "id": p.id,
             "name": p.name,
-            "count": counts.get(p.id, 0),
+            "count": base,
             "default": p.name == playlists.DEFAULT_NAME,
             "hue": _HUES[i % len(_HUES)],
             "cover": covers.get(p.id, ""),
         })
-    return cards, len(all_songs)
+    return cards, len(singles) + album_count
 
 
 @router.get("/", response_class=HTMLResponse)

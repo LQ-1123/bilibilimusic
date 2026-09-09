@@ -475,6 +475,19 @@
         swap: "innerHTML",
       });
     }
+    // v0.5.0：曲库（全部歌曲 / 我的曲库默认歌单）按 B 站收藏夹口径，
+    // 列表里也把多 P「合集」容器列出来（否则计数对上了、内容对不上）
+    var collBox = document.getElementById("dt-collections");
+    if (collBox) {
+      var isCollection = d.pl === "0" || d.default === "1";
+      collBox.hidden = !isCollection;
+      if (isCollection && window.htmx) {
+        htmx.ajax("GET", "/partials/albums", { target: "#dt-albums", swap: "innerHTML" });
+      } else {
+        var dtAlbums = document.getElementById("dt-albums");
+        if (dtAlbums) dtAlbums.innerHTML = "";
+      }
+    }
     if (mainEl) mainEl.scrollTop = 0;
   }
 
@@ -1249,7 +1262,7 @@
       }
     });
 
-    // ··· 详情菜单：加入歌单 / 打开原链接 / 分享 / 推荐相似歌曲（试听歌无曲库 id，无相似推荐）/ 在 B 站打开
+    // ··· 详情菜单：加入歌单 / 分享 / 推荐相似歌曲（试听歌无曲库 id，无相似推荐）/ 在 B 站打开
     var more = $("ly-more");
     if (more) more.addEventListener("click", function (e) {
       e.stopPropagation();
@@ -1262,7 +1275,6 @@
       var url = "https://www.bilibili.com/video/" + bvid;
       var items = [
         '<button type="button" class="pm-item" data-act="pl">加入歌单</button>',
-        '<button type="button" class="pm-item" data-act="open">打开原链接</button>',
         '<button type="button" class="pm-item" data-act="share">分享</button>',
       ];
       if (song) items.push('<button type="button" class="pm-item" data-act="similar">推荐相似歌曲</button>');
@@ -1712,5 +1724,12 @@
     libEs.addEventListener("playlistsChanged", libRefresh);
     // （重）连上即全量刷新：断线/服务重启期间错过的推送事件用一次拉取补齐
     libEs.onopen = libRefresh;
+  }
+
+  // ---------- v0.5.0：打开 App 即同步一次 ----------
+  // 让本地曲库以 B 站收藏夹为准并跨设备对齐；每次打开只触发一次（sessionStorage 计数）。
+  if (document.body && document.body.dataset.auth === "1" && !sessionStorage.getItem("bm_synced_open")) {
+    sessionStorage.setItem("bm_synced_open", "1");
+    setTimeout(function () { if (window.syncNow) syncNow(); }, 1200);
   }
 })();
