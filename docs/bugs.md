@@ -76,6 +76,38 @@ if not medias or (total is not None and len(out) >= total): break   # 20 >= 0 �
 
 ---
 
+## BUG-006 音频流按 id 取最大选档，放开高音质后会选错 ｜ P1 ｜ `[待修]`（用户要求先记不修）
+
+**现象**：目前无感。一旦支持杜比/Hi-Res，会**挑到 192K 而不是 Hi-Res**。
+
+**根因**：`app/bili/quality.py` 的 `pick_best_audio()` 用 `max(streams, key=lambda s: s.quality_id)`，
+但 B 站音质 id 的**数字大小 ≠ 音质高低**：
+
+| id | 档位 |
+|---|---|
+| 30216 | 64K |
+| 30232 | 132K |
+| 30280 | **192K** |
+| 30250 | 杜比全景声 |
+| 30251 | **Hi-Res 无损** |
+
+`max(id)` 在所有档位里会选到 **30280（192K）**，把 30251（Hi-Res）/ 30250（杜比）排在后面。
+
+**当前为何不炸**：`client.py` 请求 playurl 用的是 `fnval=16`（仅基础 DASH），B 站只返回
+30216/30232/30280 三条 AAC 流，`max(id)` 恰好等于 192K —— 属于「巧合正确」。
+
+**修复方向**（用户要求暂缓）：
+1. 改为按 `bandwidth` 降序（同码率再用质量优先级 tie-break）——`AudioStream` 已经存了 `bandwidth`；
+2. 若后续放开 `fnval=4048`，另需处理 `dash.flac.audio`（无损）与 `dash.dolby.audio[]`，
+   优先 flac → dolby → dash.audio 按带宽取最高；
+3. 注意 FLAC/Hi-Res 码率约 1000+ kbps，本服务是**实时代理不落地**，建议 Wi-Fi 优先无损、蜂窝自动降档。
+
+**参考**：`wood3n/biu` 的 `src/common/utils/audio.ts`（`sortAudio` 主键 bandwidth 降序 +
+`audioQualitySort` 优先级）与 `electron/ipc/api/audio-stream-url.ts`（带 Cookie/Referer/UA +
+按会员状态选 quality）。
+
+---
+
 ## FEAT-001 登录方式改为「点二维码 → 存相册 + 拉起 B 站 App」｜ v1.0.1
 
 **背景**：短信登录依赖极验（见 BUG-002/003），体验差；扫码在单手机上又不方便（没法用同一台机器扫自己的屏幕）。
