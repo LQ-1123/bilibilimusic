@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
         splash.setBackgroundColor(0xFFFFFFFF);
         ImageView art = new ImageView(this);
         art.setImageResource(R.drawable.loading_mobile);
-        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        art.setScaleType(ImageView.ScaleType.FIT_CENTER); // 等比缩放整图，不裁切
         splash.addView(art, new android.widget.FrameLayout.LayoutParams(
             android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
             android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
