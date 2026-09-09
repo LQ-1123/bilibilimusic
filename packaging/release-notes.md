@@ -22,6 +22,7 @@ Desktop v1.0.1 and Android v1.0.1 fix the biggest real-world bug since v1.0.0 an
 ### 其他 / Misc
 
 - 推荐歌单卡片去掉多余的圆形播放按钮。 / Removed the redundant play button on recommended-playlist cards.
+- 启动页换成全屏插画（桌面 `loading_pc.png` / 手机 `loading_mobile.png`）。 / New full-screen splash artwork on both platforms.
 
 ### 安装 / Installers
 
