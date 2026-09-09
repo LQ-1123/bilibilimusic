@@ -47,29 +47,28 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        // 品牌启动页（#9）：深色底 + 居中图标 + 细字状态行（失败信息也显示在这里）
+        // 启动页：全屏铺 loading_mobile.png 插画 + 底部细字状态行（失败信息也显示在这里）
         float dp = getResources().getDisplayMetrics().density;
-        LinearLayout splash = new LinearLayout(this);
-        splash.setOrientation(LinearLayout.VERTICAL);
-        splash.setGravity(android.view.Gravity.CENTER);
-        splash.setBackgroundColor(0xFF0B0B10);
-        ImageView icon = new ImageView(this);
-        icon.setImageResource(R.drawable.icon);
-        icon.setClipToOutline(true);
-        icon.setOutlineProvider(new android.view.ViewOutlineProvider() {
-            @Override public void getOutline(View view, android.graphics.Outline outline) {
-                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), 22 * dp);
-            }
-        });
-        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams((int) (96 * dp), (int) (96 * dp));
-        iconLp.bottomMargin = (int) (18 * dp);
-        icon.setLayoutParams(iconLp);
-        splash.addView(icon);
+        android.widget.FrameLayout splash = new android.widget.FrameLayout(this);
+        splash.setBackgroundColor(0xFFFFFFFF);
+        ImageView art = new ImageView(this);
+        art.setImageResource(R.drawable.loading_mobile);
+        art.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        splash.addView(art, new android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT));
         statusText = new TextView(this);
         statusText.setText("正在启动…");
         statusText.setTextSize(12.5f);
-        statusText.setTextColor(0xFF8A8A97);
-        splash.addView(statusText);
+        statusText.setTextColor(0xFF6B6B78);
+        statusText.setGravity(android.view.Gravity.CENTER);
+        android.widget.FrameLayout.LayoutParams stLp = new android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT);
+        stLp.gravity = android.view.Gravity.BOTTOM;
+        stLp.bottomMargin = (int) (36 * dp);
+        stLp.leftMargin = stLp.rightMargin = (int) (24 * dp);
+        splash.addView(statusText, stLp);
         setContentView(splash);
         setupEdgeToEdge();
         new Thread(() -> {

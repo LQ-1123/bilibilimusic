@@ -3,8 +3,10 @@
      图标明暗由 Theme.BiliMusic 原生桥随应用主题切换） -->
 <resources>
     <color name="bm_bg">#0b0b10</color>
+    <!-- 启动页底色：与 loading_mobile.png 的白底一致，避免系统 splash 阶段闪深色 -->
+    <color name="bm_splash_bg">#ffffff</color>
     <style name="Theme.BiliMusic" parent="@android:style/Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/bm_bg</item>
+        <item name="android:windowBackground">@color/bm_splash_bg</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
