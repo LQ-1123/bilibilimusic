@@ -71,11 +71,21 @@ def test_part_duration_and_pages_from_one_view():
     asyncio.run(run())
 
 
-def test_part_display_title_strips_index_noise():
+def test_part_display_title_keeps_part_song_name():
+    # 子曲目标题只保留分P名（歌名），不再重复拼接合集名
     from app.services.importer import part_display_title
-    assert part_display_title("陶喆合集", "01 · 晴天") == "陶喆合集 · 晴天"
-    assert part_display_title("陶喆合集", "第3集 夜曲") == "陶喆合集 · 夜曲"
-    assert part_display_title("陶喆合集", "12.《Melody》") == "陶喆合集 · 《Melody》"
+    assert part_display_title("陶喆合集", "01 · 晴天") == "晴天"
+    assert part_display_title("陶喆合集", "第3集 夜曲") == "夜曲"
+    assert part_display_title("陶喆合集", "12.《Melody》") == "《Melody》"
+
+
+def test_part_display_title_falls_back_to_main_for_placeholder():
+    from app.services.importer import part_display_title
+    assert part_display_title("陶喆合集", "P1") == "陶喆合集"
+    assert part_display_title("陶喆合集", "正片") == "陶喆合集"
+    assert part_display_title("陶喆合集", "") == "陶喆合集"
+    # 单字中文歌名是有效歌名，不能按长度丢掉
+    assert part_display_title("陶喆合集", "枫") == "枫"
 
 
 def test_part_display_title_no_duplicate_main_title():
@@ -83,6 +93,38 @@ def test_part_display_title_no_duplicate_main_title():
     main = "PLAYLIST | 陶喆 | 精选歌单"
     assert part_display_title(main, f"{main} · 11.月亮") == f"{main} · 11.月亮"
     # 分P名完整覆盖主标题时不重复拼接
+
+
+def test_short_title_collapses_album_prefix_only():
+    from app.services.titles import short_title
+    main = "【周杰伦】50首精选合集/后台播放/无损音质/HIFI音质/华语流行音乐才是最叼的"
+    assert short_title(f"{main} · 001.周杰伦-晴天", main) == "周杰伦-晴天"
+    # 标题里本来就有 ` · `（非合集结构）时不能乱切
+    other = "黄小琥《没那么简单》 但是方大同风格编曲 · 没那么简单"
+    assert short_title(other, main) == other
+    # 分P名是占位名时保持原样
+    assert short_title(f"{main} · P1", main) == f"{main} · P1"
+
+
+def test_album_child_titles_shortened_by_migration(db_env):
+    """存量库：引擎初始化时把「合集标题 · 分P标题」收敛为分P标题。"""
+    from app.db.models import Album
+    from app.db.session import _get_engine, new_session
+    main = "【周杰伦】50首精选合集/后台播放/无损音质/HIFI音质/华语流行音乐才是最叼的"
+    with new_session() as session:
+        album = Album(kind="paged", source_bvid="BVmig000001", title=main, artist="UP",
+                      cover_url="", total_pages=2, materialized_pages=2)
+        session.add(album)
+        session.flush()
+        session.add(Song(bvid="BVmig000001", cid=1, title=f"{main} · 001.周杰伦-晴天",
+                         artist="UP", audio_path="", cover_path="", album_id=album.id, track_no=1))
+        session.add(Song(bvid="BVmig000001", cid=2, title=f"{main} · P2",
+                         artist="UP", audio_path="", cover_path="", album_id=album.id, track_no=2))
+        session.commit()
+    dbs._migrate(_get_engine(None))
+    with new_session() as session:
+        titles = [s.title for s in session.exec(select(Song).order_by(Song.track_no)).all()]
+    assert titles == ["周杰伦-晴天", f"{main} · P2"]  # 占位名不收敛
 
 
 def test_album_songs_payload_respects_materialized_pages(db_env):

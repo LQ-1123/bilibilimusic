@@ -11,7 +11,6 @@ B 站跨视频合集（collectiondetail?sid=）拉清单后逐视频入库，多
 import asyncio
 import logging
 import random
-import re
 import uuid
 
 import httpx
@@ -23,6 +22,7 @@ from app.core.link_parser import resolve_share_text
 from app.db.models import Album, ImportTask, Song
 from app.db.session import context_mid, new_session
 from app.services import library, playlists
+from app.services.titles import part_display_title
 
 # 懒物化阈值：超过该分 P 数的专辑先只建起始分 P，其余由前端 materialize 按需补齐
 _ALBUM_LAZY_PAGES = 300
@@ -31,22 +31,6 @@ _SERIES_PAGE_GAP = (0.6, 1.2)
 _SERIES_VIDEO_GAP = (0.35, 0.9)
 _SERIES_UNFAV_GAP = (0.4, 0.8)
 _SERIES_VIDEO_CAP = 1000
-_PART_NOISE_RE = re.compile(
-    r"^\s*(?:第?\s*\d{1,4}\s*[集话回期部]\s*[·.:：、_-]*\s*|\d{1,3}\s*[.·、_-]\s*)"
-)
-
-
-def part_display_title(main: str, part: str) -> str:
-    """分 P 展示标题：去掉「01.」「第3集」等序号噪声；分 P 名已含主标题信息时不再拼接。"""
-    part = (part or "").strip()
-    cleaned = _PART_NOISE_RE.sub("", part).strip() or part
-    main_compact = re.sub(r"\s+", "", main or "")
-    part_compact = re.sub(r"\s+", "", cleaned)
-    if not part_compact or main_compact in part_compact:
-        return cleaned or main
-    if part_compact in main_compact:
-        return main
-    return f"{main} · {cleaned}"
 from app.storage.files import FileStore
 
 _ACTIVE_STATUSES = ("pending", "resolving", "downloading")
@@ -184,8 +168,7 @@ class ImportService:
 
         title = info.title
         if info.page > 1 or (info.part_title and info.part_title not in ("", info.title)):
-            suffix = info.part_title or f"P{info.page}"
-            title = f"{info.title} · {suffix}"
+            title = part_display_title(info.title, info.part_title or f"P{info.page}")
 
         playlist_id = self._task_playlist.pop(task_id, 0)
         if not playlist_id:

@@ -1,16 +1,22 @@
 """歌词服务：B 站字幕 + LRCLIB 混合取词。
 
 来源优先级（质量从高到低）：
-1. B 站人工 CC 字幕（UP 主上传的歌词字幕，带时间轴）；
+1. B 站人工 CC 字幕（UP 主上传的歌词字幕，带时间轴；与视频绑定，不可能错配）；
 2. LRCLIB 正式歌词（开源歌词库，syncedLyrics 即标准 LRC，免 key）；
-3. 网易云歌词（非官方接口，中文覆盖最好；限频 + 失败冷却 + 静默降级，仅收带轴）；
-4. B 站 AI 字幕（语音识别兜底，唱歌部分准确率一般）；
+3. 网易云歌词（非官方接口，**默认关闭** BM_LYRICS_NETEASE=1 才启用；仅收带轴）；
+4. B 站 AI 字幕（语音识别兜底，唱歌部分准确率一般，但同样与视频绑定）；
 5. LRCLIB 纯文本歌词（无轴，前端静态展示）。
+
+外部歌词源（LRCLIB / 网易云）一律先过**置信度校验**（`accept_external`）：
+歌名必须匹配、时长必须在 ±3s 内、时间轴必须真实存在，且总分要达到阈值；
+过不了就当这一源没结果，**继续降级**，而不是把错配结果直接显示出来
+（宁缺毋滥，见 docs/bugs.md BUG-007 / BUG-008）。
 
 LRCLIB 明确标为 instrumental 的曲目保留纯音乐提示，不用 AI 字幕覆盖。
 
 LRCLIB 请求走独立的 httpx 客户端（不带 B 站 cookie，登录态不外泄）。
 取词结果统一为文本存库：带时间轴的 LRC，或无轴纯文本（前端降级静态展示）。
+落库前会剥掉「作词 : xxx」这类元数据行。
 """
 
 import asyncio
@@ -23,6 +29,7 @@ import httpx
 
 from app.bili.client import BiliApiError, BiliClient, VideoRef
 from app.bili.subtitle import subtitle_body_to_lrc
+from app.config import settings
 from app.db.models import Song
 from app.services import library
 
@@ -37,8 +44,25 @@ _INSTRUMENTAL_TEXT = "纯音乐，请欣赏"
 _NETEASE_API = "https://music.163.com"
 _NETEASE_MIN_INTERVAL = 1.5
 _NETEASE_COOLDOWN = 60.0
+_NETEASE_MAX_LYRIC_FETCH = 3  # 每首歌最多为几条候选结果取歌词（限频友好）
 _ncm_state = {"last": 0.0, "cooldown_until": 0.0}
-_SYNCED_HEAD_RE = re.compile(r"\[\d{1,2}:\d{2}")
+
+# 分P/合集标题的拼接分隔符（app/services/importer.py 的 part_display_title）
+_PART_SEP = " · "
+_MAX_CANDIDATES = 6  # 候选上限：分P标题在前，截断不再吃掉真歌名（BUG-008）
+
+# 置信度阈值：严格（宁缺毋滥）需要歌名匹配 + 时长贴合 + 至少一项强信号
+_STRICT_THRESHOLD = 7
+_LOOSE_THRESHOLD = 4
+
+_LRC_LINE_RE = re.compile(r"^\[(\d{1,3}):(\d{2}(?:[.:]\d{1,3})?)\]\s*(.*)$")
+_LRC_TIME_RE = re.compile(r"\[(\d{1,3}):(\d{2}(?:[.:]\d{1,3})?)\]")
+_NORM_STRIP_RE = re.compile(r"[\s\-_—–·・|｜/\\、,，.。!！?？:：;；'\"“”‘’()（）\[\]【】<>《》+&~]+")
+_META_LINE_RE = re.compile(
+    r"^(作词|作曲|編曲|编曲|作詞|制作人|製作人|混音|母带|母帶|录音|錄音|监制|監製|出品|"
+    r"OP|SP|词|曲|lyrics?|composer|arranger?|producer|mixed\s*by|written\s*by)\s*[:：]",
+    re.IGNORECASE,
+)
 
 # B 站标题里的标签/噪声（【4K】【官方MV】、Official Video、翻唱、无损音源…）
 _BRACKET_RE = re.compile(r"【[^】]*】|\[[^\]]*\]|「[^」]*」|『[^』]*』|（[^）]*）|\([^)]*\)")
@@ -53,12 +77,29 @@ _NOISE_RE = re.compile(
 
 
 def title_candidates(title: str) -> list[str]:
-    """B 站视频标题 → LRCLIB 搜索用的歌名候选列表。
+    """B 站视频标题 → 外部歌词库搜索用的歌名候选列表。
 
-    书名号先转分隔（「周杰伦《晴天》」→ 两段），再去括号标签、按分隔符切段
-    并丢弃纯噪声段，得到「清洗全串」；多段时各段单独成候选（B 站标题常见
-    「歌名-歌手」混写）；最后兜底原始标题。
+    多P/合集曲目的标题形如「合集标题 · 分P标题」（见 importer.part_display_title），
+    真正的歌名是**分P标题**，所以先按 ` · ` 拆开、把分P标题的候选排在前面，
+    再补整串标题的候选（BUG-008：原先整串切段后真歌名排最后，被 [:4] 截掉）。
+
+    单个片段的清洗：书名号先转分隔（「周杰伦《晴天》」→ 两段），再去括号标签、
+    按分隔符切段并丢弃纯噪声段，得到「清洗全串」；多段时各段单独成候选
+    （B 站标题常见「歌名-歌手」混写）；最后兜底该片段的原始文本。
     """
+    out: list[str] = []
+    for part in reversed([p.strip() for p in title.split(_PART_SEP) if p.strip()][1:]):
+        for cand in _candidates_from(part):
+            if cand not in out:
+                out.append(cand)
+    for cand in _candidates_from(title):
+        if cand not in out:
+            out.append(cand)
+    return out[:_MAX_CANDIDATES]
+
+
+def _candidates_from(title: str) -> list[str]:
+    """单个标题片段 → 候选列表（原有清洗逻辑）。"""
     title = title.replace("《", " ").replace("》", " ")
     stripped = _BRACKET_RE.sub(" ", title).strip()
     from_brackets = False
@@ -82,7 +123,7 @@ def title_candidates(title: str) -> list[str]:
     for c in cands:
         if c and c not in out:
             out.append(c)
-    return out[:4]
+    return out
 
 
 def _keep_segment(seg: str) -> bool:
@@ -90,6 +131,101 @@ def _keep_segment(seg: str) -> bool:
     if len(seg) > 24:
         return False
     return bool(_NOISE_RE.sub("", seg).strip())
+
+
+# ---- 置信度校验（BUG-007：错配不该挡住下一级） ----
+
+def normalize_text(text: str) -> str:
+    """归一化：小写并去掉空白、标点、装饰符号，用于歌名/歌手比对。"""
+    return _NORM_STRIP_RE.sub("", (text or "").lower())
+
+
+def strip_meta_lines(lyrics: str) -> str:
+    """剥掉「作词 : xxx / 作曲 : xxx / 编曲 : xxx」这类 LRC 元数据行。
+
+    网易云歌词头部常带这些行，前端只剥音符符号，会当成歌词显示（BUG-007）。
+    """
+    out: list[str] = []
+    for line in (lyrics or "").splitlines():
+        if not line.strip():
+            continue
+        match = _LRC_LINE_RE.match(line)
+        body = (match.group(3) if match else line).strip()
+        if body and _META_LINE_RE.match(body):
+            continue
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+def looks_synced(lyrics: str, duration: int = 0) -> bool:
+    """时间轴真实校验：≥4 个带轴行、≥3 个不同非零时间，且末行不早于时长的 40%。
+
+    旧判定只看前 200 字有没有 `[mm:ss`，会被「[00:00.000] 作词 : xxx」这类
+    头部行、或整篇全零时间戳的歌词骗过（BUG-007）。
+    """
+    times = [
+        int(m.group(1)) * 60 + float(m.group(2).replace(":", "."))
+        for m in _LRC_TIME_RE.finditer(lyrics or "")
+    ]
+    if len(times) < 4:
+        return False
+    nonzero = {round(t, 1) for t in times if t > 0}
+    if len(nonzero) < 3:
+        return False
+    if duration and max(nonzero) < max(20.0, duration * 0.4):
+        return False
+    return True
+
+
+def match_confidence(
+    *,
+    candidate: str,
+    name: str,
+    item_artist: str,
+    song_title: str,
+    song_artist: str,
+    duration: int,
+    item_duration: float,
+    synced: bool,
+) -> int:
+    """外部歌词命中项的置信度打分，0 = 直接否决。
+
+    硬门槛（任一不满足即 0 分）：双方时长已知且相差 ≤3s、歌名归一化后相等或互相包含。
+    加分：歌名相等 +3 / 包含 +2；歌手出现在标题或 UP 主里 +3；时长 ≤1.5s +3、≤3s +2；
+    带真实时间轴 +1。满分 10。
+    """
+    if not duration or not item_duration or abs(item_duration - duration) > _DURATION_TOLERANCE:
+        return 0
+    cand_n, name_n = normalize_text(candidate), normalize_text(name)
+    if not cand_n or not name_n:
+        return 0
+    if cand_n == name_n:
+        score = 3
+    elif cand_n in name_n or name_n in cand_n:
+        score = 2
+    else:
+        return 0
+    artist_n = normalize_text(item_artist)
+    if artist_n and artist_n in normalize_text(f"{song_title} {song_artist} {candidate}"):
+        score += 3
+    score += 3 if abs(item_duration - duration) <= 1.5 else 2
+    if synced:
+        score += 1
+    return score
+
+
+def accept_external(**kwargs) -> bool:
+    """置信度是否达标：严格模式（默认）宁缺毋滥，放宽需 BM_LYRICS_STRICT=0。"""
+    threshold = _STRICT_THRESHOLD if settings.lyrics_strict else _LOOSE_THRESHOLD
+    return match_confidence(**kwargs) >= threshold
+
+
+def _sanitize_lrclib_item(item: dict, duration: int) -> dict:
+    """带轴字段若通不过 looks_synced，降级为纯文本，避免假时间轴被采纳。"""
+    synced = str(item.get("syncedLyrics") or "")
+    if synced and not looks_synced(synced, duration):
+        return {**item, "syncedLyrics": ""}
+    return item
 
 
 def pick_lrclib_result(items: list[dict], duration: int) -> tuple[str, bool] | None:
@@ -153,7 +289,10 @@ class LyricsService:
         library.update_lyrics(song_id, lyrics, source)
 
     async def fetch_for_song(self, song: Song) -> tuple[str, str] | None:
-        """按优先级取词，返回 (文本, 来源 cc/lrclib/ai)；全部落空返回 None。"""
+        """按优先级取词，返回 (文本, 来源 cc/lrclib/ncm/ai)；全部落空返回 None。
+
+        外部源（LRCLIB / 网易云）置信度不达标时视作无结果，**继续降级**。
+        """
         body = await self._subtitle_body(song, ai_only=False)
         if body:
             return subtitle_body_to_lrc(body), "cc"
@@ -223,7 +362,11 @@ class LyricsService:
     # ---- LRCLIB ----
 
     async def _from_lrclib(self, title: str, artist: str, duration: int) -> tuple[str, bool] | None:
-        """按歌名候选逐个搜索：先「歌名+UP主」，再纯关键词；命中即返回。"""
+        """按歌名候选逐个搜索：先「歌名+UP主」，再纯关键词。
+
+        每条结果先过置信度校验，不合格的直接丢弃（当作这一源没有结果），
+        全部候选都没合格结果就返回 None，让上层继续降级。
+        """
         for candidate in title_candidates(title):
             queries: list[dict] = []
             if artist.strip():
@@ -231,9 +374,28 @@ class LyricsService:
             queries.append({"q": candidate})
             for params in queries:
                 items = await self._lrclib_search(params)
-                hit = pick_lrclib_result(items, duration)
+                pool: list[dict] = []
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    synced_raw = str(item.get("syncedLyrics") or "").strip()
+                    if not accept_external(
+                        candidate=candidate,
+                        name=str(item.get("trackName") or ""),
+                        item_artist=str(item.get("artistName") or ""),
+                        song_title=title,
+                        song_artist=artist,
+                        duration=duration,
+                        item_duration=float(item.get("duration") or 0),
+                        synced=bool(synced_raw),
+                    ):
+                        continue
+                    pool.append(_sanitize_lrclib_item(item, duration))
+                hit = pick_lrclib_result(pool, duration)
                 if hit:
-                    return hit
+                    text = strip_meta_lines(hit[0])
+                    if text:
+                        return text, hit[1]
         return None
 
     async def _lrclib_search(self, params: dict) -> list[dict]:
@@ -305,18 +467,61 @@ class LyricsService:
             return ""
 
     async def _from_netease(self, title: str, artist: str, duration: int) -> tuple[str, str] | None:
-        """网易云搜索：歌名候选（+UP主）逐个试，时长容差内且带时间轴才采纳（来源 ncm）。"""
-        for candidate in title_candidates(title)[:2]:
+        """网易云搜索：歌名候选（+UP主）逐个试。
+
+        默认关闭（BM_LYRICS_NETEASE=1 才启用）：该接口对无版权歌手会返回同名翻唱
+        甚至另一首歌，实测错配率高（docs/bugs.md BUG-007）。
+        启用时同样走置信度校验：歌名匹配 + 时长 ≤3s + 真实时间轴，且取**得分最高**的一条，
+        不再「第一个通过就返回」。
+        """
+        if not settings.lyrics_netease:
+            return None
+        threshold = _STRICT_THRESHOLD if settings.lyrics_strict else _LOOSE_THRESHOLD
+        for candidate in title_candidates(title):
             queries: list[str] = []
             if artist.strip():
                 queries.append(f"{candidate} {artist.strip()}")
             queries.append(candidate)
             for query in queries:
+                best: tuple[int, str] | None = None
+                fetches = 0
                 for item in await self._netease_search(query):
-                    duration_ms = int(item.get("duration") or 0)
-                    if duration and duration_ms and abs(duration_ms / 1000 - duration) > _DURATION_TOLERANCE:
+                    item_duration = float(int(item.get("duration") or 0)) / 1000
+                    item_artist = "/".join(
+                        str(a.get("name") or "")
+                        for a in (item.get("artists") or item.get("ar") or [])
+                        if isinstance(a, dict)
+                    )
+                    # 先用已知信息（歌名/时长/歌手）筛，避免为无关结果打歌词接口
+                    if match_confidence(
+                        candidate=candidate,
+                        name=str(item.get("name") or ""),
+                        item_artist=item_artist,
+                        song_title=title,
+                        song_artist=artist,
+                        duration=duration,
+                        item_duration=item_duration,
+                        synced=True,
+                    ) <= 0:
                         continue
-                    lyric = await self._netease_lyric(int(item["id"]))
-                    if lyric and _SYNCED_HEAD_RE.search(lyric[:200]):
-                        return lyric.strip(), "ncm"
+                    if fetches >= _NETEASE_MAX_LYRIC_FETCH:
+                        break
+                    fetches += 1
+                    lyric = strip_meta_lines(await self._netease_lyric(int(item["id"])))
+                    if not lyric or not looks_synced(lyric, duration):
+                        continue
+                    score = match_confidence(
+                        candidate=candidate,
+                        name=str(item.get("name") or ""),
+                        item_artist=item_artist,
+                        song_title=title,
+                        song_artist=artist,
+                        duration=duration,
+                        item_duration=item_duration,
+                        synced=True,
+                    )
+                    if score > 0 and (best is None or score > best[0]):
+                        best = (score, lyric)
+                if best and best[0] >= threshold:
+                    return best[1].strip(), "ncm"
         return None

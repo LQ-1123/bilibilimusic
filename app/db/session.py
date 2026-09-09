@@ -164,6 +164,33 @@ def _migrate(engine) -> None:
                 "UPDATE recpool SET cover_url = 'https://' || substr(cover_url, 8) "
                 "WHERE cover_url LIKE 'http://%'"
             )
+    _shorten_album_child_titles(engine, insp)
+
+
+def _shorten_album_child_titles(engine, insp) -> None:
+    """一次性把多P合集子曲目标题从「合集标题 · 分P标题」收敛为分P标题（歌名）。
+
+    合集名在专辑页标题/专辑卡/面包屑上都有，标题里再重复一长串既占位又难读。
+    只在**确实知道主标题**（album.title）时收敛，避免误伤标题本身带 ` · ` 的曲目；
+    幂等：收敛后不再匹配，不会重复执行。
+    """
+    if "album" not in insp.get_table_names():
+        return
+    from app.services.titles import PART_SEP, clean_part_title, is_meaningful_part
+
+    with engine.begin() as conn:
+        rows = conn.exec_driver_sql(
+            "SELECT s.id, s.title, a.title FROM song s JOIN album a ON a.id = s.album_id "
+            "WHERE s.album_id > 0 AND s.title LIKE '% · %'"
+        ).fetchall()
+        for song_id, title, album_title in rows:
+            if not title or not album_title or not title.startswith(album_title + PART_SEP):
+                continue
+            short = clean_part_title(title[len(album_title) + len(PART_SEP):])
+            if is_meaningful_part(short) and short != title:
+                conn.exec_driver_sql(
+                    "UPDATE song SET title = ? WHERE id = ?", (short, song_id)
+                )
 
 
 def new_session() -> Session:
