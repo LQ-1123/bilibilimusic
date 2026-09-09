@@ -616,11 +616,16 @@ class BiliClient:
             return {}
 
     async def get_fav_videos(self, media_id: int, cap: int = 200) -> list[dict]:
-        """拉取收藏夹内的视频条目（已失效或非视频条目自动过滤）。"""
+        """拉取收藏夹内的视频条目（已失效或非视频条目自动过滤）。
+
+        终止条件用响应里的 `has_more`——`/x/v3/fav/resource/list` **不返回**
+        `media_count`（它在 `info` 里），旧代码拿它当终止条件会得到 0，
+        导致永远只翻第一页 20 条（多端同步各自只拿到子集的根因）。
+        """
         out: list[dict] = []
         pn = 1
-        total = None
-        while len(out) < cap and pn <= 50:
+        max_pages = max(1, cap // 20 + 1)  # ps=20；按 cap 放开页数，不再硬编码 50 页
+        while len(out) < cap and pn <= max_pages:
             data = await self._get_json_signed(
                 "/x/v3/fav/resource/list",
                 {
@@ -632,8 +637,6 @@ class BiliClient:
                     "platform": "web",
                 },
             )
-            if total is None:
-                total = int(data.get("media_count") or 0)
             medias = data.get("medias") or []
             for item in medias:
                 if not item.get("bvid"):
@@ -647,7 +650,11 @@ class BiliClient:
                 )
                 if len(out) >= cap:
                     break
-            if not medias or (total is not None and len(out) >= total):
+            # 无更多页 / 本页空 / 已凑够目标数 → 停
+            if not medias or not data.get("has_more"):
+                break
+            info_total = int((data.get("info") or {}).get("media_count") or 0)
+            if info_total and len(out) >= info_total:
                 break
             pn += 1
         return out
