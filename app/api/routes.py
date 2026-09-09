@@ -778,7 +778,14 @@ async def create_qrcode(bili: BiliClient = Depends(_login_bili)) -> dict:
 @auth_router.get("/captcha")
 async def get_captcha(bili: BiliClient = Depends(_login_bili)) -> dict:
     """短信登录用的极验参数（gt/challenge/token），前端 initGeetest 弹滑块。"""
-    return await bili.captcha_get()
+    try:
+        return await bili.captcha_get()
+    except BiliApiError as exc:
+        raise HTTPException(status_code=502, detail=exc.message) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"验证服务连不上（{type(exc).__name__}），请检查网络后重试"
+        ) from exc
 
 
 @auth_router.post("/sms/send")

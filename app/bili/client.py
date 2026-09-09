@@ -881,9 +881,21 @@ class BiliClient:
     # ---- 短信验证码登录（passport 极验 v3：前端滑块拿三件套，后端只转发） ----
 
     async def captcha_get(self) -> dict:
-        """登录用极验参数：{token(captcha_key), geetest:{gt, challenge}}。"""
-        data = await self._get_json(_PASSPORT + "/x/passport-login/captcha", {"source": "main-web"})
-        return data
+        """登录用极验参数：{token(captcha_key), geetest:{gt, challenge}}。
+
+        passport 接口偶发 ConnectTimeout（尤其经代理/VPN 时，实测 3 次里 1 次超时），
+        这里重试 3 次再放弃，避免手机端一上来就「验证参数获取失败」。
+        """
+        last: Exception | None = None
+        for attempt in range(3):
+            try:
+                return await self._get_json(
+                    _PASSPORT + "/x/passport-login/captcha", {"source": "main-web"}
+                )
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last = exc
+                await asyncio.sleep(0.6 * (attempt + 1))
+        raise BiliApiError(-500, f"验证服务连不上（{type(last).__name__}），请检查网络后重试")
 
     async def sms_send(
         self, tel: str, cid: str = "86", *, token: str = "",
