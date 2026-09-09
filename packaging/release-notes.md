@@ -1,8 +1,8 @@
-## BiliMusic v1.1: 分享能力与手机端打磨 / sharing and mobile polish
+## BiliMusic v1.1.0: 分享能力与手机端打磨 / sharing and mobile polish
 
-Desktop v1.1 and Android v1.1 are a feature release on top of v1.0.2.
+Desktop v1.1.0 and Android v1.1.0 are a feature release on top of v1.0.2.
 
-v1.1 在 v1.0.2 基础上新增分享能力，并集中打磨手机端界面与歌词质量。
+v1.1.0 在 v1.0.2 基础上新增分享能力，并集中打磨手机端界面与歌词质量。
 
 ### 分享 / Sharing
 
@@ -24,9 +24,9 @@ v1.1 在 v1.0.2 基础上新增分享能力，并集中打磨手机端界面与�
 
 ### 安装 / Installers
 
-- macOS: `BiliMusic-1.1-mac-arm64.dmg` / `BiliMusic-1.1-mac-x64.dmg`
-- Windows: `BiliMusic-1.1-win-x64.exe`
-- Android: `BiliMusic-1.1-android.apk` (arm64-v8a / x86_64)
+- macOS: `BiliMusic-1.1.0-mac-arm64.dmg` / `BiliMusic-1.1.0-mac-x64.dmg`
+- Windows: `BiliMusic-1.1.0-win-x64.exe`
+- Android: `BiliMusic-1.1.0-android.apk` (arm64-v8a / x86_64)
 - `SHA256SUMS.txt` for verification
 
 > 数据目录沿用旧版本；老库启动时自动补 `album.mid` 列。 / Data directories are reused; older databases get the new `album.mid` column on startup.
