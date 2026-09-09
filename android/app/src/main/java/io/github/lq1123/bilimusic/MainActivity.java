@@ -2,9 +2,13 @@ package io.github.lq1123.bilimusic;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.view.View;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -183,7 +187,70 @@ public class MainActivity extends Activity {
             @JavascriptInterface public void playbackStopped() {
                 stopService(new Intent(MainActivity.this, MediaPlaybackService.class));
             }
+            /** 登录二维码：存进相册（B 站 App「扫一扫 → 相册」能选到）。 */
+            @JavascriptInterface public void saveQrToGallery(String dataUrl) {
+                runOnUiThread(() -> saveQr(dataUrl));
+            }
+            /** 拉起 B 站 App，让用户去扫刚存下的二维码。 */
+            @JavascriptInterface public void openBilibiliApp() {
+                runOnUiThread(MainActivity.this::launchBilibili);
+            }
         };
+    }
+
+    /** 登录二维码存进系统相册：B 站 App 的「扫一扫 → 相册」能选到它（单机扫码登录）。 */
+    private void saveQr(String dataUrl) {
+        if (Build.VERSION.SDK_INT < 29
+                && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 91);
+            toast("请允许存储权限后，再点一次二维码");
+            return;
+        }
+        try {
+            int comma = dataUrl == null ? -1 : dataUrl.indexOf(',');
+            if (comma < 0) return;
+            byte[] png = android.util.Base64.decode(
+                dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.Images.Media.DISPLAY_NAME, "bilimusic-login-qr.png");
+            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
+            if (Build.VERSION.SDK_INT >= 29) {
+                values.put(MediaStore.Images.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_PICTURES + "/BiliMusic");
+                values.put(MediaStore.Images.Media.IS_PENDING, 1);
+            }
+            Uri uri = getContentResolver().insert(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) { toast("保存失败：相册不可写"); return; }
+            try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+                if (out != null) out.write(png);
+            }
+            if (Build.VERSION.SDK_INT >= 29) {
+                ContentValues done = new ContentValues();
+                done.put(MediaStore.Images.Media.IS_PENDING, 0);
+                getContentResolver().update(uri, done, null, null);
+            }
+            toast("二维码已存到相册");
+        } catch (Exception e) {
+            toast("保存失败：" + e.getClass().getSimpleName());
+        }
+    }
+
+    /** 拉起 B 站 App；没装则打开下载页。 */
+    private void launchBilibili() {
+        Intent app = getPackageManager().getLaunchIntentForPackage("tv.danmaku.bili");
+        if (app != null) {
+            app.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            try { startActivity(app); return; } catch (Exception ignored) {}
+        }
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://app.bilibili.com/")));
+        } catch (Exception ignored) {}
+    }
+
+    private void toast(String msg) {
+        android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show();
     }
 
     private void copyAssets(String source, File target) throws Exception {

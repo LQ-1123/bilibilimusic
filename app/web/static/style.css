@@ -870,6 +870,9 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 #login-modal #qr-refresh:hover{background:#e3e5e7}
 #login-modal .bl-qr-sub{font-size:12.5px;color:#9499a0;line-height:1.9;margin-top:12px}
 #login-modal .bl-qr-sub b{color:#fb7299;font-weight:600}
+/* 短信登录已下线（v1.0.1）：弹窗改为单列扫码；点二维码 → 存相册并拉起 B 站 App */
+#login-modal #qr-tap-hint{color:#fb7299;font-weight:600}
+#login-modal .bl-box{width:min(340px,calc(100vw - 32px));flex-direction:column;gap:14px;justify-content:center}
 #login-modal .bl-div{width:1px;background:#e3e5e7;align-self:stretch;flex:none}
 /* 右栏：短信登录表单 */
 #login-modal .bl-right{flex:1;min-width:0;display:flex;flex-direction:column}

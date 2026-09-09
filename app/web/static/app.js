@@ -1051,7 +1051,6 @@
     if (!m) return;
     m.classList.remove("hidden");
     if (!qrLive) { qrLive = true; genQr(); }
-    if (window.preloadLoginAssets) window.preloadLoginAssets(); // 预热极验脚本，减少点「获取验证码」后的等待
   };
   window.closeLogin = function () {
     var m = $("login-modal");
@@ -1065,100 +1064,32 @@
   if (loginCloseBtn) loginCloseBtn.addEventListener("click", window.closeLogin);
   if (location.search.indexOf("login=1") >= 0) window.openLogin(); // 兼容旧 /login 链接
 
-  // ---------- 短信验证码登录（B 站同款极验滑块：gt.js 懒加载 + 打开弹窗预热） ----------
-  var gtReady = null;
-  function loadGt() {
-    if (window.initGeetest) return Promise.resolve();
-    if (gtReady) return gtReady;
-    gtReady = new Promise(function (resolve, reject) {
-      var s = document.createElement("script");
-      s.src = "https://static.geetest.com/static/tools/gt.js";
-      s.onload = resolve;
-      s.onerror = function () { gtReady = null; reject(new Error("gt.js 加载失败")); };
-      document.head.appendChild(s);
-    });
-    return gtReady;
-  }
-  function fetchCaptcha() {
-    // 极验参数接口偶发超时（尤其经代理/VPN 时）：把后端 detail 透出来，
-    // 别再统一显示「获取验证参数失败」这种没法排查的文案
-    return fetch("/api/auth/captcha").then(function (r) {
-      return r.json().then(function (d) { return { ok: r.ok, d: d }; },
-        function () { return { ok: false, d: null }; });
-    });
-  }
-  // 打开登录弹窗时预热：先把 gt.js 拉下来（它来自 geetest CDN，跨境线路最慢的一步）
-  window.preloadLoginAssets = function () {
-    loadGt().catch(function () {});
-  };
-  function smsMsg(txt, isErr) {
-    var el = $("sms-msg");
-    if (!el) return;
-    el.textContent = txt || "";
-    el.classList.toggle("err", !!isErr);
-  }
-  var smsCountdown = 0;
-  function tickSmsBtn() {
-    var btn = $("sms-send");
-    if (!btn) return;
-    if (smsCountdown > 0) {
-      btn.disabled = true;
-      btn.textContent = smsCountdown + "s";
-    } else {
-      btn.disabled = false;
-      btn.textContent = "获取验证码";
+  // ---------- 二维码点击：存相册 + 打开 B 站 App（单机扫码登录） ----------
+  // 单手机上没法用同一台机器扫自己屏幕：点二维码 → 存进相册 → 拉起 B 站 App，
+  // 用「扫一扫 → 相册」选中它即可确认登录；后端轮询到确认会自动进入。
+  function qrTap() {
+    var src = qrImg && qrImg.src;
+    if (!src || src.indexOf("data:image") !== 0) return;
+    var nat = window.BiliMusicNative;
+    if (nat && nat.saveQrToGallery) {
+      nat.saveQrToGallery(src);
+      if (nat.openBilibiliApp) nat.openBilibiliApp();
+      $("qr-status").textContent = "已存到相册 → B 站「扫一扫 → 相册」选它";
+      return;
     }
+    var a = document.createElement("a"); // 浏览器/桌面：直接下载
+    a.href = src;
+    a.download = "bilimusic-login-qr.png";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    $("qr-status").textContent = "二维码已保存 → B 站「扫一扫 → 相册」";
   }
-  var smsCaptchaKey = ""; // B 站流程：发送成功后返回 captcha_key，登录时必带
-  // 获取验证码：拉极验参数 → 弹滑块 → 通过后调发送接口
-  function smsSend() {
-    var tel = ($("sms-tel").value || "").trim();
-    if (!/^\d{11}$/.test(tel)) { smsMsg("请输入 11 位手机号", true); return; }
-    smsMsg("加载验证组件…");
-    Promise.all([loadGt(), fetchCaptcha()]) // 并行：gt.js 与参数接口不再串行等待
-      .then(function (both) { return both[1]; })
-      .then(function (res) {
-        var cap = res && res.ok ? res.d : null;
-        if (!cap || !cap.geetest) {
-          throw new Error((res && res.d && res.d.detail) || "验证服务连不上，请检查网络后重试");
-        }
-        window.initGeetest({
-          gt: cap.geetest.gt, challenge: cap.geetest.challenge,
-          offline: false, new_captcha: true, product: "bind", // bind 模式：不绑 DOM，verify() 手动弹滑块
-        }, function (captchaObj) {
-          captchaObj.onReady(function () { captchaObj.verify(); smsMsg("请完成滑块验证…"); });
-          captchaObj.onSuccess(function () {
-            var v = captchaObj.getValidate();
-            fetch("/api/auth/sms/send", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                tel: tel, cid: "86", token: cap.token,
-                challenge: v.geetest_challenge, validate: v.geetest_validate, seccode: v.geetest_seccode,
-              }),
-            }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-              .then(function (res) {
-                if (res.ok && res.d.ok) {
-                  smsCaptchaKey = res.d.captchaKey || "";
-                  smsMsg("验证码已发送，5 分钟内有效");
-                  smsCountdown = 60;
-                  tickSmsBtn();
-                  var iv = setInterval(function () {
-                    smsCountdown--; tickSmsBtn();
-                    if (smsCountdown <= 0) clearInterval(iv);
-                  }, 1000);
-                } else {
-                  smsMsg((res.d && res.d.detail) || "发送失败，请重试", true);
-                }
-              });
-          });
-          captchaObj.onError(function () { smsMsg("验证组件出错，请重试", true); });
-          captchaObj.onClose(function () { smsMsg("完成滑块验证后才能发送验证码", true); });
-        });
-      })
-      .catch(function (e) { smsMsg(e.message || "加载失败，请重试", true); });
+  if (qrImg) {
+    qrImg.addEventListener("click", qrTap);
+    qrImg.style.cursor = "pointer";
+    qrImg.title = "点击：保存到相册并打开 B 站 App";
   }
-  var smsSendBtn = $("sms-send");
-  if (smsSendBtn) smsSendBtn.addEventListener("click", smsSend);
 
   // ---------- 浏览器登录兜底（#18）：WebView 里极验滑块可能起不来 ----------
   // 点击 → 桥/新窗口打开系统浏览器登录页（同一后端，Cookie 存服务端互通）→
@@ -1189,32 +1120,8 @@
         .catch(function () { window.__toast && window.__toast("暂时连不上 B 站，稍后再试"); });
     });
   }
-  var smsGo = $("sms-go");
-  if (smsGo) smsGo.addEventListener("click", function () {
-    var tel = ($("sms-tel").value || "").trim();
-    var code = ($("sms-code").value || "").trim();
-    if (!/^\d{11}$/.test(tel)) { smsMsg("请输入 11 位手机号", true); return; }
-    if (!/^\d{6}$/.test(code)) { smsMsg("请输入 6 位验证码", true); return; }
-    if (!smsCaptchaKey) { smsMsg("请先获取短信验证码", true); return; }
-    if (smsGo.disabled) return;
-    stopQr();
-    smsGo.disabled = true;
-    smsMsg("登录中…");
-    fetch("/api/auth/sms/login", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tel: tel, code: code, cid: "86", captchaKey: smsCaptchaKey }),
-    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
-      .then(function (res) {
-        if (res.ok && res.d.ok === true) {
-          smsMsg("登录成功，正在进入…");
-          setTimeout(function () { location.href = "/"; }, 600);
-        } else {
-          smsMsg((res.d && res.d.detail) || "登录失败，请重试", true);
-        }
-      })
-      .catch(function () { smsMsg("网络错误，请重试", true); })
-      .finally(function () { smsGo.disabled = false; });
-  });
+  var smsGo = $("sms-go"); // 短信登录已下线（v1.0.1）：DOM 不存在时这段不执行
+  if (smsGo) smsGo.addEventListener("click", function () {});
 
   // 未登录：任何 htmx/fetch 打到鉴权接口的 401 都弹登录窗
   // 初始加载抑制窗口：页面装载期的局部请求 401 不弹窗（空骨架自然呈现），之后的用户操作才弹
