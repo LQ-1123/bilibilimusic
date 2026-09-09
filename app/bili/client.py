@@ -222,10 +222,11 @@ class BiliClient:
     # ---- 基础请求 ----
 
     async def _get_json(
-        self, path: str, params: dict | None = None, *, ok_codes: tuple[int, ...] = (0,), headers: dict | None = None
+        self, path: str, params: dict | None = None, *, ok_codes: tuple[int, ...] = (0,),
+        headers: dict | None = None, timeout: float | None = None,
     ) -> dict:
         url = path if path.startswith("http") else _API + path
-        resp = await self.http.get(url, params=params, headers=headers)
+        resp = await self.http.get(url, params=params, headers=headers, timeout=timeout)
         return self._parse_json_response(resp, ok_codes=ok_codes)
 
     async def _post_json(self, path: str, data: dict, *, ok_codes: tuple[int, ...] = (0,)) -> dict:
@@ -890,11 +891,12 @@ class BiliClient:
         for attempt in range(3):
             try:
                 return await self._get_json(
-                    _PASSPORT + "/x/passport-login/captcha", {"source": "main-web"}
+                    _PASSPORT + "/x/passport-login/captcha", {"source": "main-web"},
+                    timeout=5.0,  # 短超时：失败也快，别让用户干等 20s 才重试
                 )
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 last = exc
-                await asyncio.sleep(0.6 * (attempt + 1))
+                await asyncio.sleep(0.4 * (attempt + 1))
         raise BiliApiError(-500, f"验证服务连不上（{type(last).__name__}），请检查网络后重试")
 
     async def sms_send(

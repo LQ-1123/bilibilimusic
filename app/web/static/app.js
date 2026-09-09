@@ -1051,6 +1051,7 @@
     if (!m) return;
     m.classList.remove("hidden");
     if (!qrLive) { qrLive = true; genQr(); }
+    if (window.preloadLoginAssets) window.preloadLoginAssets(); // 预热极验脚本，减少点「获取验证码」后的等待
   };
   window.closeLogin = function () {
     var m = $("login-modal");
@@ -1064,7 +1065,7 @@
   if (loginCloseBtn) loginCloseBtn.addEventListener("click", window.closeLogin);
   if (location.search.indexOf("login=1") >= 0) window.openLogin(); // 兼容旧 /login 链接
 
-  // ---------- 短信验证码登录（B 站同款极验滑块：gt.js 懒加载） ----------
+  // ---------- 短信验证码登录（B 站同款极验滑块：gt.js 懒加载 + 打开弹窗预热） ----------
   var gtReady = null;
   function loadGt() {
     if (window.initGeetest) return Promise.resolve();
@@ -1078,6 +1079,18 @@
     });
     return gtReady;
   }
+  function fetchCaptcha() {
+    // 极验参数接口偶发超时（尤其经代理/VPN 时）：把后端 detail 透出来，
+    // 别再统一显示「获取验证参数失败」这种没法排查的文案
+    return fetch("/api/auth/captcha").then(function (r) {
+      return r.json().then(function (d) { return { ok: r.ok, d: d }; },
+        function () { return { ok: false, d: null }; });
+    });
+  }
+  // 打开登录弹窗时预热：先把 gt.js 拉下来（它来自 geetest CDN，跨境线路最慢的一步）
+  window.preloadLoginAssets = function () {
+    loadGt().catch(function () {});
+  };
   function smsMsg(txt, isErr) {
     var el = $("sms-msg");
     if (!el) return;
@@ -1102,15 +1115,8 @@
     var tel = ($("sms-tel").value || "").trim();
     if (!/^\d{11}$/.test(tel)) { smsMsg("请输入 11 位手机号", true); return; }
     smsMsg("加载验证组件…");
-    loadGt()
-      .then(function () {
-        // 极验参数接口偶发超时（尤其经代理/VPN 时）：把后端 detail 透出来，
-        // 别再统一显示「获取验证参数失败」这种没法排查的文案
-        return fetch("/api/auth/captcha").then(function (r) {
-          return r.json().then(function (d) { return { ok: r.ok, d: d }; },
-            function () { return { ok: false, d: null }; });
-        });
-      })
+    Promise.all([loadGt(), fetchCaptcha()]) // 并行：gt.js 与参数接口不再串行等待
+      .then(function (both) { return both[1]; })
       .then(function (res) {
         var cap = res && res.ok ? res.d : null;
         if (!cap || !cap.geetest) {
