@@ -10,6 +10,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
+import android.webkit.CookieManager;
 import android.webkit.JsResult;
 import android.webkit.JsPromptResult;
 import android.webkit.JavascriptInterface;
@@ -200,11 +202,23 @@ public class MainActivity extends Activity {
 
     private void showPlayer() {
         web = new WebView(this);
-        web.getSettings().setJavaScriptEnabled(true);
-        web.getSettings().setDomStorageEnabled(true);
-        web.getSettings().setMediaPlaybackRequiresUserGesture(false);
-        web.getSettings().setAllowFileAccess(false);
-        web.getSettings().setAllowContentAccess(false);
+        WebSettings ws = web.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setDomStorageEnabled(true);
+        ws.setDatabaseEnabled(true);
+        ws.setMediaPlaybackRequiresUserGesture(false);
+        ws.setAllowFileAccess(false);
+        ws.setAllowContentAccess(false);
+        // 短信登录的极验滑块（static.geetest.com）在 WebView 里不渲染，两个主因：
+        //   1) 默认 UA 带 "; wv" 被风控识别为 WebView；
+        //   2) 跨站脚本的第三方 Cookie 默认被拦（极验会话拿不到）。
+        // 伪装成普通手机 Chrome 并放开第三方 Cookie —— 页面布局走 CSS 视口，不受 UA 影响。
+        ws.setUserAgentString(
+            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
+                + "(KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+        ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        CookieManager.getInstance().setAcceptCookie(true);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(web, true);
         web.setWebViewClient(new WebViewClient() {
             @Override public void onPageFinished(WebView view, String url) {
                 view.evaluateJavascript("Boolean(document.getElementById('app'))", value -> {
