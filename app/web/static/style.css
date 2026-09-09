@@ -821,7 +821,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .upv-meta{font-size:12px;color:var(--txt3);margin-top:6px}
 
 /* ---------- 账号（移动端 Tab 用） ---------- */
-#view-account{padding-top:8px}
+/* 顶部要叠加安全区 inset（--inset-top），否则卡片顶到状态栏/刘海下面 */
+#view-account{padding-top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)))}
 .acct-card{background:var(--card);border:1px solid var(--stroke);border-radius:16px;padding:18px;display:flex;gap:14px;align-items:center}
 .acct-card .ava{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;object-fit:cover;
   background:radial-gradient(120% 120% at 20% 15%, #ff9db9, #fb7299 55%, #b23a67)}
