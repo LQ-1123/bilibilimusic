@@ -307,12 +307,19 @@ class ImportService:
             cover = str(meta.get("cover") or archives[0].get("pic") or "")
             artist = str(meta.get("up_name") or "").strip()
             album = Album(kind="series", source_bvid=source_key, title=title,
-                          artist=artist, cover_url=cover,
+                          artist=artist, cover_url=cover, mid=mid,
                           total_pages=total or len(archives), materialized_pages=0)
             with new_session() as session:
                 session.add(album)
                 session.commit()
                 session.refresh(album)
+        elif mid and not album.mid:  # 老容器缺 mid：这次拿到了就补上（分享链接依赖它）
+            with new_session() as session:
+                row = session.get(Album, album.id)
+                if row is not None and not row.mid:
+                    row.mid = mid
+                    session.add(row)
+                    session.commit()
         album_id = album.id or 0
 
         failures: list[str] = []

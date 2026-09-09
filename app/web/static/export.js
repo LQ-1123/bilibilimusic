@@ -112,6 +112,8 @@
       $("btn-copy-link").textContent = "已复制";
       setTimeout(function () { $("btn-copy-link").textContent = "复制链接"; }, 1500);
     };
+    // #25：统一走 share.js 的复制降级链（clipboard → execCommand），少一份重复实现
+    if (window.__copyText) { window.__copyText(link).then(done); return; }
     if (navigator.clipboard) {
       navigator.clipboard.writeText(link).then(done).catch(function () {
         fallbackCopy(link);

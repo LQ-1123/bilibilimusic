@@ -83,7 +83,14 @@ def _migrate(engine) -> None:
     import sqlalchemy
 
     insp = sqlalchemy.inspect(engine)
-    if "song" not in insp.get_table_names():
+    tables = set(insp.get_table_names())
+    # #25：系列合集补 mid（拼分享链接用）。老库的容器 mid=0，分享时再懒回填。
+    if "album" in tables:
+        album_cols = {c["name"] for c in insp.get_columns("album")}
+        if "mid" not in album_cols:
+            with engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TABLE album ADD COLUMN mid INTEGER DEFAULT 0")
+    if "song" not in tables:
         return
     # SQLite cannot drop the implicit index created by `bvid UNIQUE`; rebuild
     # the table once so paged entries can share a bvid while keeping the data.

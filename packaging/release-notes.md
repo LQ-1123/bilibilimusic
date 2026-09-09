@@ -1,23 +1,32 @@
-## BiliMusic v1.0.2: 启动页与移动端细节 / splash and mobile polish
+## BiliMusic v1.1: 分享能力与手机端打磨 / sharing and mobile polish
 
-Desktop v1.0.2 and Android v1.0.2 are a small polish release on top of v1.0.1.
+Desktop v1.1 and Android v1.1 are a feature release on top of v1.0.2.
 
-v1.0.2 是在 v1.0.1 基础上的体验修补版。
+v1.1 在 v1.0.2 基础上新增分享能力，并集中打磨手机端界面与歌词质量。
 
-### 启动页 / Splash
+### 分享 / Sharing
 
-- 启动页改为**等比缩放整图显示，不裁切**；四周留白与图片底色同为白色，因此看不出接缝（实测边缘色差 2）。桌面用 `loading_pc.png`、手机用 `loading_mobile.png`。 / The splash now scales the whole artwork without cropping; the surrounding padding matches the artwork's white background so the seam is invisible (measured colour delta: 2).
+- **正向分享**：曲库单曲、歌单、专辑/合集、UP 主页、导出弹窗都能一键分享，内容是**真实 B 站链接**（自带 B 站预览卡，不做视觉仿冒）。降级链：Android 原生分享面板 → `navigator.share` → 剪贴板 → `execCommand` → 弹窗展示链接，**任何一环失败都不会静默**。 / Share songs, playlists, albums, UP pages and export links with the real Bilibili URL. Fallback chain: native Android share sheet → `navigator.share` → clipboard → `execCommand` → show the link in a dialog; no step fails silently.
+- **反向分享**：在 B 站 App 点分享 → 系统面板里选 BiliMusic → 一步入库（收藏夹 / 合集链接同样识别）。未登录或文本里没有 B 站链接时会直接说清原因。 / Reverse sharing: share from the Bilibili app and pick BiliMusic to import in one step; unreadable text and logged-out states are explained instead of failing silently.
+- **修掉系列合集分享链接**：跨视频合集以前会拼出打不开的 `video/sid:…`，现在走 `collectiondetail?sid=…`；拿不到来源 UP 时明确提示，不再发半截链接。 / Fixed broken share links for cross-video collections.
 
-### 移动端 / Mobile
+### 手机端 / Mobile
 
-- **修复手机端无法新建歌单**：新建入口原来只在侧栏，而侧栏在窄屏下是隐藏的。现在「资料库」顶部有「＋ 新建歌单」按钮，走同一个后端接口（同步创建 B 站收藏夹）。 / Fixed playlist creation on mobile: the entry lived in the sidebar, which is hidden on narrow screens. A “＋ 新建歌单” button now sits at the top of the Library tab.
-- **账号页下移**：账号卡片原来贴着状态栏/刘海，现在顶部叠加了安全区高度并增加留白。 / The account page no longer hugs the status bar.
+- **底部导航液态玻璃选中块**：可跟手拖动，拖动中水珠形变并溢出导航条，松手过阻尼落位不弹跳。 / Liquid-glass nav pill: follows the finger, deforms like a droplet while dragging, settles without overshoot.
+- **播放条精简**：只保留封面、歌名/UP、播放与切歌，去掉进度条与次要按钮。 / Slim player bar: cover, title/artist and transport only.
+- **播放页与歌词页改版**：按参考图比例重建（封面 75% 宽、控件与底行对齐），歌名走马灯两端羽化，歌词字号与进度条加粗，收藏与「···」对齐且已收藏为粉色。 / Rebuilt the player and lyrics pages to the reference proportions, with marquee fades and a pink active favourite.
+- **PC 歌词页**：去掉与「点封面打开歌词」重复的歌词按钮，左上角关闭钮常显（桌面没有返回手势）。 / Desktop lyrics page: removed the duplicate lyrics button and kept the close button always visible.
+
+### 歌词质量 / Lyrics
+
+- 兜底来源加**置信度校验**：网易云错配不再冒充命中，宁可空着也不显示错歌词。 / Confidence checks on fallback lyric sources: a wrong match no longer counts as a hit.
+- 合集子曲目标题收敛为分集名，歌词候选提取不再丢掉真歌名。 / Album child titles collapse to the part title, so lyric candidates keep the real song name.
 
 ### 安装 / Installers
 
-- macOS: `BiliMusic-1.0.2-mac-arm64.dmg` / `BiliMusic-1.0.2-mac-x64.dmg`
-- Windows: `BiliMusic-1.0.2-win-x64.exe`
-- Android: `BiliMusic-1.0.2-android.apk` (arm64-v8a / x86_64)
+- macOS: `BiliMusic-1.1-mac-arm64.dmg` / `BiliMusic-1.1-mac-x64.dmg`
+- Windows: `BiliMusic-1.1-win-x64.exe`
+- Android: `BiliMusic-1.1-android.apk` (arm64-v8a / x86_64)
 - `SHA256SUMS.txt` for verification
 
-> 数据目录沿用旧版本。 / Data directories are reused.
+> 数据目录沿用旧版本；老库启动时自动补 `album.mid` 列。 / Data directories are reused; older databases get the new `album.mid` column on startup.

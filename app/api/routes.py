@@ -27,6 +27,7 @@ from app.bili.client import (
 from app.bili.quality import pick_best_audio, quality_label
 from app.config import settings
 from app.core.cookies import CookieStore
+from app.core.share_links import album_share_url
 from app.core.url_guard import UnsafeUrlError, validate_bilibili_url
 from app.db.models import Album, ImportTask, Song
 from app.db.session import new_session
@@ -162,10 +163,14 @@ async def create_batch_import(body: ImportCreate, request: Request) -> dict:
     """智能提交：收藏夹链接批量导入，否则单视频导入（响应含 mode 区分）。"""
     from app.services.batch import submit_any
 
-    return await submit_any(
-        request.state.importer, request.state.bili, body.url,
-        playlist_id=body.playlistId,
-    )
+    try:
+        return await submit_any(
+            request.state.importer, request.state.bili, body.url,
+            playlist_id=body.playlistId,
+        )
+    except (ValueError, BiliApiError, httpx.HTTPError) as exc:
+        # #25 反向分享：外部分享文本形态多样，必须回可读原因而不是 500
+        raise HTTPException(status_code=400, detail=str(exc) or "无法识别的分享内容") from exc
 
 
 @router.get("/imports")
@@ -190,8 +195,11 @@ def list_songs(q: str = "", playlist_id: int = 0) -> dict:
 
 def _album_out(album: Album) -> dict:
     return {"id": album.id, "kind": album.kind, "sourceBvid": album.source_bvid,
+            "mid": album.mid,
             "title": album.title, "artist": album.artist, "coverUrl": https_media_url(album.cover_url),
-            "totalPages": album.total_pages, "materializedPages": album.materialized_pages}
+            "totalPages": album.total_pages, "materializedPages": album.materialized_pages,
+            # #25：分享链接随容器一起下发（系列缺 mid 时为空串，前端再走 share-link 懒回填）
+            "shareUrl": album_share_url(album.kind, album.source_bvid, album.mid)}
 
 
 @router.get("/albums")
@@ -207,6 +215,54 @@ def get_album(album_id: int) -> dict:
         if album is None:
             raise HTTPException(status_code=404, detail="专辑不存在")
         return _album_out(album)
+
+
+@router.get("/albums/{album_id}/share-link")
+async def album_share_link(album_id: int, request: Request) -> dict:
+    """#25：专辑/合集详情页「分享」→ 真实 B 站链接。
+
+    系列合集需要来源 UP 的 mid（`collectiondetail?sid=` 的路径参数），老容器
+    mid=0 时用合集中任一曲目的 bvid 反查一次并回填；仍拿不到就明确报 409，
+    绝不下发拼了一半的链接。
+    """
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        if album is None:
+            raise HTTPException(status_code=404, detail="专辑不存在")
+        kind, source_bvid, mid, title = album.kind, album.source_bvid, album.mid, album.title
+
+    link = album_share_url(kind, source_bvid, mid)
+    if not link and kind == "series":
+        mid = await _backfill_series_mid(album_id, request)
+        link = album_share_url(kind, source_bvid, mid)
+    if not link:
+        raise HTTPException(status_code=409, detail="拿不到合集来源 UP，暂时拼不出分享链接")
+    return {"name": title, "kind": kind, "link": link}
+
+
+async def _backfill_series_mid(album_id: int, request: Request) -> int:
+    """用容器内任一曲目的 bvid 反查 UP mid 并回填（一次网络调用，失败静默）。"""
+    with new_session() as session:
+        album = session.get(Album, album_id)
+        if album is None:
+            return 0
+        if album.mid:
+            return album.mid  # 已回填过：不再打接口
+        row = session.exec(
+            select(Song).where(Song.album_id == album_id, Song.bvid != "").limit(1)
+        ).first()
+    bvid = row.bvid if row is not None else ""
+    if not bvid:
+        return 0
+    mid = await request.state.bili.video_owner_mid(bvid)
+    if mid:
+        with new_session() as session:
+            album = session.get(Album, album_id)
+            if album is not None and not album.mid:
+                album.mid = mid
+                session.add(album)
+                session.commit()
+    return mid
 
 
 @router.get("/albums/{album_id}/songs")

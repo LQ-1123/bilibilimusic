@@ -299,6 +299,14 @@ class BiliClient:
             pages=page_rows,
         )
 
+    async def video_owner_mid(self, bvid: str) -> int:
+        """视频 UP 主的 mid（#25：系列合集拼分享链接缺 mid 时反查回填）。失败返回 0。"""
+        try:
+            data = await self._get_json_signed("/x/web-interface/wbi/view", {"bvid": bvid})
+        except (BiliApiError, httpx.HTTPError):
+            return 0
+        return int((data.get("owner") or {}).get("mid") or 0)
+
     async def video_page_cids(self, bvid: str) -> list[int]:
         """视频全部分 P 的 cid 列表（与 get_video_info 同一 wbi view 数据）；无分 P 抛 BiliApiError。"""
         data = await self._get_json_signed("/x/web-interface/wbi/view", {"bvid": bvid})

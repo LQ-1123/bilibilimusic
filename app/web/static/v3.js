@@ -395,6 +395,7 @@
       if (!isAlbumDetail(id, generation)) return;
       var isSeries = album.kind === "series";
       dtState.name = album.title; dtState.bvid = album.sourceBvid || album.bvid; dtState.albumKind = album.kind;
+      dtState.shareUrl = album.shareUrl || "";  // #25：后端已拼好的真实 B 站链接（系列缺 mid 时为空）
       $("dt-title").textContent = album.title;
       $("dt-crumb").textContent = "主页 / " + album.title;
       $("dt-eyebrow").textContent = isSeries ? "合集" : "专辑";
@@ -573,13 +574,27 @@
       if (row && window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
     });
   };
-  // 分享该歌单：取对应 B 站收藏夹链接（自动复制 + 弹窗展示可手动复制）
+  // 分享该歌单/专辑/合集：真实 B 站链接（#25 统一走 __share 的降级链：原生面板 → 系统分享 → 复制 → 弹窗）
   window.shareDetail = function () {
     if (dtState.kind === "album") {
-      if (!dtState.bvid) { window.__toast("专辑还在加载，请稍后再试"); return; }
-      var link = "https://www.bilibili.com/video/" + encodeURIComponent(dtState.bvid);
-      if (navigator.clipboard) navigator.clipboard.writeText(link).catch(function () {});
-      window.__promptModal("分享专辑「" + dtState.name + "」", { value: link });
+      var kindLabel = dtState.albumKind === "series" ? "合集" : "专辑";
+      if (dtState.shareUrl) {
+        window.__share({ title: dtState.name, text: kindLabel + "「" + dtState.name + "」", url: dtState.shareUrl });
+        return;
+      }
+      // 系列合集缺 mid 时 shareUrl 为空：让后端反查来源 UP 再拼链接
+      fetch("/api/albums/" + String(dtState.id) + "/share-link")
+        .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
+        .then(function (res) {
+          var data = null;
+          try { data = JSON.parse(res.t); } catch (e) {}
+          if (!res.ok || !data || !data.link) {
+            window.__toast((data && data.detail) || "拿不到分享链接");
+            return;
+          }
+          window.__share({ title: dtState.name, text: kindLabel + "「" + dtState.name + "」", url: data.link });
+        })
+        .catch(function () { window.__toast("网络错误，请重试"); });
       return;
     }
     if (dtState.kind === "rec") { window.__toast("线上推荐歌单不支持分享"); return; }
@@ -590,11 +605,13 @@
         try { data = JSON.parse(res.t); } catch (e) {}
         if (!res.ok) { window.__toast((data && data.detail) || "获取分享链接失败"); return; }
         var link = (data && data.link) || "";
-        if (link && navigator.clipboard) navigator.clipboard.writeText(link).catch(function () {});
+        if (!link) { window.__toast("这个歌单还没有可分享的链接"); return; }
         var extra = (data && data.folderCount > 1) ? "（共 " + data.folderCount + " 夹，链接为首夹）" : "";
-        if (window.__promptModal) {
-          window.__promptModal("分享「" + ((data && data.name) || "") + "」· 链接已复制" + extra, { value: link });
-        }
+        window.__share({
+          title: (data && data.name) || dtState.name,
+          text: "歌单「" + ((data && data.name) || dtState.name) + "」" + extra,
+          url: link,
+        });
       })
       .catch(function () { window.__toast("网络错误，请重试"); });
   };
@@ -770,9 +787,8 @@
     var shareBtn = $("up-share");
     if (shareBtn) shareBtn.addEventListener("click", function () {
       var link = "https://space.bilibili.com/" + (p.dataset.mid || "");
-      if (navigator.clipboard) navigator.clipboard.writeText(link).then(function () {
-        window.__toast("主页链接已复制");
-      }, function () { window.__toast(link); });
+      var upName = ($("up-name") || {}).textContent || "";
+      window.__share({ title: upName || "UP 主页", text: upName ? upName + " 的 B 站主页" : "", url: link });
     });
     var shufBtn = $("up-shuffle");
     if (shufBtn) shufBtn.addEventListener("click", function () {
@@ -1328,6 +1344,9 @@
       sm.dataset.url = url;
       sm.dataset.trial = trial ? "1" : "";
       sm.dataset.songid = song ? song.id : "";
+      // #25：分享时带上歌名/UP 名（分享文本更可读；没有就只发链接）
+      sm.dataset.title = (trial ? trial.title : (song ? song.title : "")) || "";
+      sm.dataset.artist = (trial ? trial.artist : (song ? song.artist : "")) || "";
     }
     ["ly-more", "ly-more-big"].forEach(function (id) {
       var btn = $(id);
@@ -1344,14 +1363,10 @@
       if (kind === "bili") { window.open("https://www.bilibili.com/video/" + bvid, "_blank"); return; }
       if (kind === "share") {
         var link = "https://www.bilibili.com/video/" + bvid;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(link).then(
-            function () { window.__toast("链接已复制 · 可粘贴给朋友或本应用整单收藏"); },
-            function () { window.__toast("复制失败，请手动复制：" + link); }
-          );
-        } else {
-          window.__toast(link);
-        }
+        var st = sm2.dataset.title || "", sa = sm2.dataset.artist || "";
+        // 歌名里常已含 UP 名（「UP - 歌名」），重复就不再拼一遍
+        var line = st && sa && st.indexOf(sa) < 0 ? st + " - " + sa : st;
+        window.__share({ title: st || "分享一首歌", text: line, url: link });
         return;
       }
       if (kind === "similar") {

@@ -406,18 +406,18 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
 /* 进度条（胶囊 #seek + 歌词页 #ly-seek）：已播粉色填充（--p 由 JS 同步），hover/拖动变粗；无拖动圆球 */
 #seek,#ly-seek{--p:0%;width:100%;height:12px;-webkit-appearance:none;appearance:none;background:transparent;cursor:pointer}
 #seek::-webkit-slider-runnable-track,#ly-seek::-webkit-slider-runnable-track{
-  height:3.5px;border-radius:3px;
+  height:6px;border-radius:4px;
   background:linear-gradient(90deg,var(--pink) var(--p,0%),var(--stroke2) var(--p,0%));
 }
 #seek::-webkit-slider-thumb,#ly-seek::-webkit-slider-thumb{
   -webkit-appearance:none;width:0;height:0;border:none;box-shadow:none;
 }
 #seek:hover::-webkit-slider-runnable-track,#seek:active::-webkit-slider-runnable-track,
-#ly-seek:hover::-webkit-slider-runnable-track,#ly-seek:active::-webkit-slider-runnable-track{height:7px}
-#seek::-moz-range-track,#ly-seek::-moz-range-track{height:3.5px;border-radius:3px;background:var(--stroke2)}
-#seek::-moz-range-progress,#ly-seek::-moz-range-progress{height:3.5px;border-radius:3px;background:var(--pink)}
+#ly-seek:hover::-webkit-slider-runnable-track,#ly-seek:active::-webkit-slider-runnable-track{height:9px}
+#seek::-moz-range-track,#ly-seek::-moz-range-track{height:6px;border-radius:4px;background:var(--stroke2)}
+#seek::-moz-range-progress,#ly-seek::-moz-range-progress{height:6px;border-radius:4px;background:var(--pink)}
 #seek:hover::-moz-range-track,#seek:active::-moz-range-track,
-#ly-seek:hover::-moz-range-track,#ly-seek:active::-moz-range-track{height:7px}
+#ly-seek:hover::-moz-range-track,#ly-seek:active::-moz-range-track{height:9px}
 #seek::-moz-range-thumb,#ly-seek::-moz-range-thumb{width:0;height:0;border:none}
 .p-acts{display:flex;align-items:center}
 .p-acts button{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;color:var(--txt2);transition:.18s;font-size:15px}
@@ -571,7 +571,7 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
 body.trial #seek,body.trial .p-time{visibility:hidden}
 
 /* ---------- 队列面板 ---------- */
-#queue-panel{position:absolute;top:14px;right:14px;bottom:100px;width:min(344px,calc(100vw - 28px));z-index:70;border-radius:18px;
+#queue-panel{position:absolute;top:14px;right:14px;bottom:100px;width:min(344px,calc(100vw - 28px));z-index:90;border-radius:18px; /* 高于歌词面板(80)，否则从歌词页点播放列表会被盖住 */
   background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
 .q-head{padding:16px 18px 12px;border-bottom:1px solid var(--stroke)}
@@ -599,6 +599,7 @@ body.trial #seek,body.trial .p-time{visibility:hidden}
   --card:rgba(255,255,255,.1);--card2:rgba(255,255,255,.16);--raise:rgba(255,255,255,.08);
   --stroke:rgba(255,255,255,.14);--stroke2:rgba(255,255,255,.25);
   --pink:#fff;--pink-tint:rgba(255,255,255,.16);
+  --pink-star:#fb7299; /* 面板内 --pink 被改成白色，收藏态单独用品牌粉 */
   grid-template-columns:42% 1fr;grid-template-rows:1fr auto;
 }
 /* Blur artwork directly so remote covers retain their colors without canvas access. */
@@ -639,7 +640,7 @@ body:not(.playing) .i-pause{display:none}
 .ly-morerow{display:flex;justify-content:flex-end;gap:8px;flex:none;padding:0 4px}
 #ly-star{width:38px;height:30px;border-radius:999px;color:var(--txt3);font-size:14px;transition:.15s}
 #ly-star:hover{color:var(--pink-txt);background:var(--pink-tint)}
-#ly-star.on{color:var(--pink)}
+#ly-star.on{color:var(--pink-star,var(--pink))}
 #ly-more{width:34px;height:30px;border-radius:999px;color:var(--txt2);letter-spacing:2px;font-weight:800;transition:.15s}
 .ly-volhost{position:absolute;top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)));right:26px;z-index:5;display:flex;align-items:center;gap:8px;color:var(--txt2)}
 .ly-volhost svg{width:17px;height:17px;display:block}
@@ -1010,8 +1011,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #lyrics-panel:not(.showlyrics) .l-left{display:block;padding:12px 12px 4px}
   #lyrics-panel:not(.showlyrics) .l-left #lyrics-cover,
   #lyrics-panel:not(.showlyrics) .l-songrow{display:none}
-  .l-left{flex:none;display:grid;grid-template-columns:36px 52px minmax(0,1fr) auto;align-items:center;column-gap:11px;
-    padding:calc(12px + var(--inset-top, env(safe-area-inset-top, 0px))) 12px 4px}
+  .l-left{flex:none;display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;column-gap:11px;
+    padding:calc(30px + var(--inset-top, env(safe-area-inset-top, 0px))) 12px 4px}
   .l-songrow{display:contents} /* 子元素直接参与顶部 grid 行 */
   #btn-lyrics-close{position:static}
   #lyrics-cover{width:52px;height:52px;border-radius:8px;corner-shape:superellipse(2);box-shadow:0 10px 26px rgba(0,0,0,.35)}
@@ -1019,16 +1020,20 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .l-song b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px}
   .l-song b,.l-song span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .l-song span{font-size:12px;margin-top:3px}
-  .ly-morerow{width:auto;padding:0}
-  #ly-more{width:38px;height:38px}
+  .ly-morerow{width:auto;padding:0;gap:4px}
+  .ly-morerow #ly-retry{display:none} /* 右上角只留收藏与 ··· */
+  /* 顶栏右上角：收藏与 ··· 放大并对齐（同一 44×44 盒 + 居中，字重一致） */
+  #ly-star{width:44px;height:44px;font-size:24px;line-height:1;display:grid;place-items:center}
+  #ly-more{width:44px;height:44px;font-size:24px;line-height:1;letter-spacing:1px;display:grid;place-items:center;
+    padding-bottom:4px} /* 中点字形的视觉中心比星形低 2px，补一点下内边距对齐 */
   #lyrics-scroll{flex:1;display:flex;flex-direction:column;padding:20px 30px 12px}
   #lyrics-scroll .l-line:first-child{margin-top:auto}
   #lyrics-scroll .l-line:last-child{margin-bottom:auto}
   #lyrics-scroll .l-empty{margin:auto}
   /* 歌词左对齐 + 当前行放大加粗、其余行缩小变淡（参考图排版） */
-  .l-line{font-size:17px;font-weight:600;line-height:1.45;padding:12px 0;text-align:left;
+  .l-line{font-size:27px;font-weight:600;line-height:1.45;padding:12px 0;text-align:left;
     opacity:.42;filter:none;transition:font-size .22s,opacity .22s,color .22s}
-  .l-line.on{font-size:23px;font-weight:800;opacity:1;filter:none}
+  .l-line.on{font-size:33px;font-weight:800;opacity:1;filter:none}
   /* min-width:0 + align-items:stretch：让三行各自撑满底栏内容宽，
      不用百分比宽度（这一层里百分比解析不稳，会把第四行右侧按钮挤出屏幕） */
   .l-bottom{flex:none;width:100%;min-width:0;align-items:stretch;gap:2px;
@@ -1039,8 +1044,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .ly-ctl button svg{width:28px;height:28px}
   .ly-ctl .big svg{width:68px;height:68px}
   .ly-ctl #ly-mode,.ly-ctl #ly-add{display:none}
-  /* 播放页不要左上角 ✕（返回手势/返回键即可退出） */
-  #lyrics-panel:not(.showlyrics) #btn-lyrics-close{display:none}
+  /* 手机端不要左上角 ✕（返回手势/返回键即可退出） */
+  #lyrics-panel #btn-lyrics-close{display:none}
   /* 手机端播放页封面视图：按参考图比例——封面 75% 宽居中，歌名行/进度条 84% 宽，
      底部两个图标内缩 15%（参考图里它们不在最边缘） */
   .l-hero{display:flex;flex-direction:column;flex:none;justify-content:flex-end;align-items:center;padding:6px 0 0}
@@ -1073,7 +1078,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #ly-star-big{flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;
     font-size:20px;line-height:1;color:var(--txt3);transition:.15s;margin-bottom:2px}
   #ly-star-big:active{transform:scale(.94)}
-  #ly-star-big.on{color:var(--pink)}
+  #ly-star-big.on{color:var(--pink-star,var(--pink))}
   #lyrics-panel.showlyrics #ly-bubble{color:var(--pink)}
   /* 视图切换：封面视图藏歌词、歌词视图藏封面 */
   #lyrics-panel.showlyrics .l-hero{display:none}
@@ -1170,10 +1175,11 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   body:has(#lyrics-panel:not(.hidden)) .sidebar,
   body:has(#lyrics-panel:not(.hidden)) .side-handle{display:none}
   body:has(#lyrics-panel:not(.hidden)) #lyrics-panel{padding-left:0}
-  body:has(#lyrics-panel:not(.hidden)) #btn-lyrics-close{left:28px}
-  /* #22（hover 显现方案）：桌面端关闭钮平时隐藏，鼠标移到其位置或键盘聚焦时显现；触屏无 hover 保持常显 */
-  #btn-lyrics-close{opacity:0;transition:opacity .25s}
-  #btn-lyrics-close:hover,#btn-lyrics-close:focus-visible{opacity:1}
+  body:has(#lyrics-panel:not(.hidden)) #btn-lyrics-close{left:28px;right:auto}
+  /* #23：PC 无返回手势，关闭钮常显（取代 #22 的 hover 显现方案） */
+  #btn-lyrics-close{opacity:1}
+  /* #23：歌词入口与「点封面打开歌词」重复，PC 播放条去掉歌词按钮 */
+  #btn-lyrics{display:none}
 }
 
 /* Albums reuse the library poster and detail surfaces. */

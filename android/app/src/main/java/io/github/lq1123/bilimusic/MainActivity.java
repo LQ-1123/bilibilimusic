@@ -38,6 +38,8 @@ public class MainActivity extends Activity {
     private TextView statusText;
     private int insTop, insBottom, insLeft, insRight;
     private static WebView activeWeb;
+    /** #25 反向分享：系统分享面板送来的文本，等页面就绪后再喂给前端。 */
+    private String pendingShare;
 
     /** 通知按钮回控页面播放器（MediaPlaybackService 调用，主线程执行）。 */
     static void evalInPage(String js) {
@@ -47,6 +49,7 @@ public class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        pendingShare = shareTextOf(getIntent());  // #25：冷启动就是「分享到 BiliMusic」的情况
         // 启动页：全屏铺 loading_mobile.png 插画 + 底部细字状态行（失败信息也显示在这里）
         float dp = getResources().getDisplayMetrics().density;
         android.widget.FrameLayout splash = new android.widget.FrameLayout(this);
@@ -194,7 +197,49 @@ public class MainActivity extends Activity {
             @JavascriptInterface public void openBilibiliApp() {
                 runOnUiThread(MainActivity.this::launchBilibili);
             }
+            /** #25 正向分享：拉起系统分享面板（微信/QQ/复制…），内容是真 B 站链接。 */
+            @JavascriptInterface public void shareText(String title, String text, String url) {
+                runOnUiThread(() -> {
+                    Intent send = new Intent(Intent.ACTION_SEND);
+                    send.setType("text/plain");
+                    if (title != null && !title.isEmpty()) send.putExtra(Intent.EXTRA_SUBJECT, title);
+                    String body = text == null ? "" : text.trim();
+                    if (url != null && !url.isEmpty()) body = body.isEmpty() ? url : body + " " + url;
+                    send.putExtra(Intent.EXTRA_TEXT, body);
+                    Intent chooser = Intent.createChooser(send, "分享到");
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    try { startActivity(chooser); } catch (Exception e) { toast("没有可用的分享应用"); }
+                });
+            }
         };
+    }
+
+    /** #25 反向分享：取出 ACTION_SEND 的文本（B 站分享文本把链接放在正文里）。 */
+    private static String shareTextOf(Intent intent) {
+        if (intent == null || !Intent.ACTION_SEND.equals(intent.getAction())) return null;
+        String text = intent.getStringExtra(Intent.EXTRA_TEXT);
+        if (text == null) text = intent.getStringExtra(Intent.EXTRA_SUBJECT);
+        if (text == null) return null;
+        text = text.trim();
+        return text.isEmpty() ? null : text;
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String text = shareTextOf(intent);
+        if (text == null) return;
+        pendingShare = text;  // 已在后台时被分享进来：直接喂给已就绪的页面
+        flushShare();
+    }
+
+    /** 把待处理的分享文本交给前端（share.js 的 __receiveShare → POST /api/imports/batch）。 */
+    private void flushShare() {
+        String text = pendingShare;
+        if (text == null || web == null) return;
+        pendingShare = null;
+        web.evaluateJavascript(
+            "window.__receiveShare&&window.__receiveShare(" + org.json.JSONObject.quote(text) + ")", null);
     }
 
     /** 登录二维码存进系统相册：B 站 App 的「扫一扫 → 相册」能选到它（单机扫码登录）。 */
@@ -292,6 +337,7 @@ public class MainActivity extends Activity {
                         android.util.Log.i("BiliMusic", "BILIMUSIC_WEB_READY");
                         // 页面导航会清掉内联样式：就绪后按当前 insets 重推 CSS 变量
                         pushInsets(insTop, insBottom, insLeft, insRight);
+                        flushShare();  // #25：冷启动带进来的分享文本，页面就绪后再交前端
                     }
                 });
             }

@@ -22,6 +22,9 @@ class Album(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     kind: str = "paged"
     source_bvid: str = Field(index=True)
+    # #25：系列合集的来源 UP mid——拼分享链接（collectiondetail?sid=）需要它；
+    # 老数据为 0，分享时用合集中任一曲目的 bvid 反查回填。
+    mid: int = 0
     title: str
     artist: str = ""
     cover_url: str = ""

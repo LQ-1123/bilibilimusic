@@ -356,3 +356,27 @@ id 415《Ich tu dir weh》候选 `['Ich tu dir weh', 'Ich', 'tu']`，同样命�
 **踩坑**：`.m-tab{flex:1 1 78px}` 时 Chrome 把容器 intrinsic 宽度算成内容宽度（84px），
 必须写 `flex:0 0 var(--nav-tabw)`；`.m-tabs` 还要加 `padding` 让 tab 盒与选中块完全重合，
 否则最左/最右格圆角与容器内缘不同心。
+
+---
+
+## FEAT-003 分享能力：正向系统分享面板 + 反向「分享到 BiliMusic」｜ 已实现（Web/桌面已验证，Android 待打包）
+
+**诉求**：台账 #25（用户点单）——分享不该只有「复制链接」一种形态；反过来，在 B 站 App 点分享
+时希望系统面板里能选 BiliMusic，一步入库。
+
+**改动**（详见 `docs/issue-ledger.md` §4.5.1）：
+
+| 层 | 落点 |
+|---|---|
+| 新增 | `app/core/share_links.py`（纯函数拼链接，缺字段返回空串）、`app/web/static/share.js`（`__share` / `__copyText` / `__receiveShare`） |
+| 后端 | `Album.mid` + 幂等迁移；`_album_out` 下发 `mid`/`shareUrl`；`GET /api/albums/{id}/share-link`（系列缺 mid 用任一曲目 bvid 反查 UP 回填）；`/api/imports/batch` 的解析失败改 400 可读文案 |
+| 前端 | 单曲 ··· 菜单 / 歌单详情 / 专辑合集详情 / UP 主页 / 导出弹窗 五处入口统一走降级链：原生桥 → `navigator.share` → 剪贴板 → `execCommand` → 弹窗展示 |
+| Android | 桥 `shareText(title,text,url)`；`SEND text/plain` intent-filter + `launchMode=singleTop`；`EXTRA_TEXT` → 页面就绪后 `__receiveShare()` |
+
+**顺带修掉的真 bug**：系列合集（`source_bvid = "sid:777"`）此前会被前端当成 bvid，拼出
+`https://www.bilibili.com/video/sid%3A777` 这种打不开的链接——现在系列一律走
+`space.bilibili.com/{mid}/channel/collectiondetail?sid=777`，拿不到 mid 就明确报「拿不到合集来源 UP」。
+
+**验证**：`tests/test_share.py` 7 例 + `tests/test_share.js` 13 例；无头 Chrome 驱动真实页面
+（单曲/专辑/歌单三处分享拿到的都是真链接；垃圾文本、未登录、全链路失败三种异常路径都有可读反馈）；
+`pytest` 163 passed / 2 skipped，`node --test` 35 passed。Android 侧代码就绪，**需重新打包 APK 后真机验收**。
