@@ -225,7 +225,7 @@ event: transferIn       data: {queue,index,position,revision}   → 发给接收
 | 场景 | 结果 |
 |---|---|
 | 控制器态 | B（空闲）打开即见远端歌名 + 进度条 + 三键 + 「转到此设备播放」 |
-| 命令通道 | B 点暂停 → A 执行 `toggle`（经 `sessionCommand` SSE）✅ |
+| 命令通道 | B 点暂停 → A 执行 `toggle`；B 点下一首 → A `skip(1)`；B 点远端进度条 50% 处 → A `currentTime=150`（队列项带 `duration` 才能算比例）/ 全部经 `sessionCommand` SSE ✅ |
 | 移交成功 | B 点「转到此设备」→ A 现报 `currentTime=42.5`（不是缓存心跳 33s）→ B `prepare`+`resume`+`claimed` → 会话 active 变 B、位置 = **42.5**，A 随后淡出暂停并提示「已在「Mac」上继续播放」✅ |
 | 移交失败回滚 | 接收端 `prepare` 拒绝（模拟 canplay 超时/自动播放被拦）→ **不 claim**、发送端继续播、接收端出现「点一下继续播放」；点它 → resume + claimed 完成接管 ✅ |
 

@@ -1243,7 +1243,8 @@
     queue: function () {
       return playlist.map(function (s) {
         return { songId: s.id || 0, bvid: s.bvid, cid: s.cid || 0,
-                 title: s.title, artist: s.artist, coverUrl: s.coverUrl };
+                 title: s.title, artist: s.artist, coverUrl: s.coverUrl,
+                 duration: s.duration || 0 };   // 控制器端算进度比例 / 发 seek 要用
       });
     },
     adopt: function (items, index, at) {

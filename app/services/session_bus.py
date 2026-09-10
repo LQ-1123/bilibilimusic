@@ -234,6 +234,7 @@ class SessionBus:
                             "title": str(item.get("title") or "")[:200],
                             "artist": str(item.get("artist") or "")[:120],
                             "coverUrl": str(item.get("coverUrl") or "")[:400],
+                            "duration": max(0, int(item.get("duration") or 0)),
                         }
                         for item in queue[:MAX_QUEUE]
                         if item.get("bvid")

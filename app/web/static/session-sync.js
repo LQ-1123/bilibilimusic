@@ -217,7 +217,7 @@
       // 控制器态：能看到对方在放什么、放到哪，并能直接控制它
       extra += '<div class="q-remote">' +
         '<div class="q-remote-line">' + escapeHtml(song2.title || "—") + "</div>" +
-        '<div class="q-remote-bar"><i style="width:' + pct(remote) + '%"></i></div>' +
+        '<div class="q-remote-bar" id="q-remote-bar" title="点一下让对端跳到对应位置"><i style="width:' + pct(remote) + '%"></i></div>' +
         '<div class="q-remote-times"><span>' + fmtTime(livePosition(remote)) + "</span><span>" +
         fmtTime(song2.duration || 0) + "</span></div>" +
         '<div class="q-remote-ctl">' +
@@ -240,6 +240,15 @@
     if (tr) tr.addEventListener("click", startTransfer);
     var ng = $("q-needgesture");
     if (ng) ng.addEventListener("click", function () { claimNow(); });
+    var bar = $("q-remote-bar");
+    if (bar) bar.addEventListener("click", function (ev) {
+      var s2 = snapshot && snapshot.session;
+      var dur = Number(s2 && s2.song && s2.song.duration) || 0;
+      if (!dur) return;
+      var r = bar.getBoundingClientRect();
+      var ratio = Math.min(1, Math.max(0, (ev.clientX - r.left) / Math.max(1, r.width)));
+      sendCommand("seek", { position: Math.round(dur * ratio) });
+    });
     [].slice.call(box.querySelectorAll("[data-cmd]")).forEach(function (b) {
       b.addEventListener("click", function () { sendCommand(b.dataset.cmd); });
     });
