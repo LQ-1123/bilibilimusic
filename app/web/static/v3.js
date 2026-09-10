@@ -56,6 +56,13 @@
       document.body.classList.remove("in-detail");
       if (window.switchView) switchView("up");
       if (mainEl) mainEl.scrollTop = 0;
+    } else if (nav === "devices") {
+      collapseOverlays();
+      $("app").dataset.view = "devices";
+      document.body.classList.remove("in-detail");
+      if (window.switchView) switchView("devices");
+      if (window.__sessionSync) window.__sessionSync.renderPage();   // #26：进来立即渲染，不等 1s tick
+      if (mainEl) mainEl.scrollTop = 0;
     } else {
       return; // 未接行为的导航项
     }
@@ -1750,6 +1757,15 @@
     });
     // Tab 切换不压栈且清空已压栈（#1）；任何 Tab 都先退出详情态（#17：原来到不了曲库的根因）
     if (name === "library") { window.openLibraryTab(); return; } // #34：资料库有自己的视图
+    if (name === "devices") {                                    // #26：设备页（遥控/串流/局域网电脑端）
+      collapseOverlays();
+      document.body.classList.remove("in-detail");
+      $("app").dataset.view = "devices";
+      if (window.switchView) switchView("devices");
+      if (window.__sessionSync) window.__sessionSync.renderPage();
+      if (mainEl) mainEl.scrollTop = 0;
+      return;
+    }
     goHome();
     if (mainEl) mainEl.scrollTop = 0;
   };

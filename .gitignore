@@ -27,3 +27,6 @@ out/
 .dsh-paste/
 android/out/
 docs/superpowers/
+
+# 本地构建产物（发布产物在 CI 里生成，不入库）
+*.apk

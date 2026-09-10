@@ -753,3 +753,25 @@ Android 侧 Chaquopy 装的是 **pydantic==1.10.22**（`android/app/build.gradle
 
 **教训**：Android 侧是 **pydantic 1.10** —— 别用 v2-only 写法（`model_dump` / `model_validate` /
 list 字段上的 `max_length` / `pattern=`）。改后端后先在本机构建 debug APK 跑一次 smoke，比等 CI 快。
+
+---
+
+## BUG-024 暂停时队列面板设备区出现一条空的粉色胶囊条 ｜ 已修（2026-09-10）
+
+**现象**：暂停播放后打开播放队列面板，「设备 · 同账号跨端」里本机（已暂停）下方横着一条
+**空的粉色全宽胶囊条**，什么都不干；播放中则不出现。
+
+**根因**：`session-sync.js:247` 在「无远端在放且本机未在播」时渲染占位按钮
+`<button class="q-resume" id="q-resume" hidden></button>`（留给 JS 绑定续播事件）。但
+`style.css` 的 `.q-resume{display:block;...}` 是类选择器显式 `display`，**特异性盖过了
+`hidden` 属性的 UA 样式 `[hidden]{display:none}`** → 空按钮按粉色胶囊（`background:var(--pink)`）
+完整渲染。播放中 `adopting()` 为真根本不渲染这个按钮，所以只有暂停时能看到。
+
+**修复**：`style.css` 补 `.q-resume[hidden]{display:none}`；`base.html` 样式版本 `?v=219 → ?v=220`
+（WebView 缓存按新号失效）。
+
+**验证**：无头 Chrome 挂真实 `style.css?v=220` 渲染最小页面：`button.q-resume[hidden]`
+computed `display:none`、高度 0；去掉 `hidden` 的同类按钮仍正常 `display:block`（需要显示时不受影响）。
+
+**后续（2026-09-10 晚些）**：#26 把设备区整体迁到独立「设备」页（桌面侧栏 + 手机底部 Tab 入口），
+队列面板里的 `q-resume` 占位按钮随 `#q-devices` 一并移除，本修复被结构性方案取代（留档）。

@@ -35,11 +35,17 @@ import java.net.URL;
 public class MainActivity extends Activity {
     private WebView web;
     private String origin;
+    /** #26 当前页面实际加载的 origin：内嵌后端或局域网发现的电脑后端（导航放行/登录跳转都认它）。 */
+    private volatile String pageOrigin;
     private TextView statusText;
     private int insTop, insBottom, insLeft, insRight;
     private static WebView activeWeb;
     /** #25 反向分享：系统分享面板送来的文本，等页面就绪后再喂给前端。 */
     private String pendingShare;
+
+    private android.content.SharedPreferences prefs() {
+        return getSharedPreferences("bm", MODE_PRIVATE);
+    }
 
     /** 通知按钮回控页面播放器（MediaPlaybackService 调用，主线程执行）。 */
     static void evalInPage(String js) {
@@ -83,6 +89,10 @@ public class MainActivity extends Activity {
                 Python py = Python.getInstance();
                 py.getModule("os").get("environ").callAttr("__setitem__", "BM_WEB_DIR", assets.getAbsolutePath());
                 origin = py.getModule("app.embedded").callAttr("start", new File(getFilesDir(), "data").getAbsolutePath()).toString();
+                // #26：上次连过的电脑后端还活着就直接回连（无感接力）；死了回落手机内嵌，稍后由自动扫描兜底
+                pageOrigin = origin;
+                String saved = prefs().getString("server", null);
+                if (saved != null && BackendDiscovery.alive(saved)) pageOrigin = saved;
                 boolean ready = false;
                 for (int i = 0; i < 120; i++) {
                     HttpURLConnection conn = null;
@@ -164,9 +174,36 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> applySystemBarTheme("light".equals(theme)));
             }
             @JavascriptInterface public void openExternalLogin() {
-                String url = (origin == null ? "" : origin) + "/?login=1";
+                String url = (pageOrigin == null ? "" : pageOrigin) + "/?login=1";
                 runOnUiThread(() -> {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
+                });
+            }
+            /** #26：异步扫局域网 /24 网段的约定端口，结果经 window.__bmBackendsFound 推回页面。 */
+            @JavascriptInterface public void scanBackends() {
+                new Thread(() -> nativeScan(), "backend-scan").start();
+            }
+            /** #26：连接到扫到的电脑后端（校验确为 BiliMusic 再切，防止填错地址白屏）。 */
+            @JavascriptInterface public void connectBackend(String url) {
+                if (url == null || !url.startsWith("http://")) { toast("地址无效"); return; }
+                new Thread(() -> {
+                    if (!BackendDiscovery.alive(url)) {
+                        runOnUiThread(() -> toast("那台电脑没有响应"));
+                        return;
+                    }
+                    prefs().edit().putString("server", url).apply();
+                    runOnUiThread(() -> {
+                        pageOrigin = url;
+                        if (web != null) web.loadUrl(url);
+                    });
+                }, "backend-connect").start();
+            }
+            /** #26：断开电脑后端，回到手机本机内嵌（手机自己的曲库/登录还在）。 */
+            @JavascriptInterface public void useEmbeddedBackend() {
+                prefs().edit().remove("server").apply();
+                runOnUiThread(() -> {          // 桥跑在 JS 线程：loadUrl 必须回 UI 线程，否则静默失效
+                    pageOrigin = origin;
+                    if (web != null) web.loadUrl(origin);
                 });
             }
             @JavascriptInterface public void playbackStarted(String title, String artist, String coverUrl) {
@@ -212,6 +249,25 @@ public class MainActivity extends Activity {
                 });
             }
         };
+    }
+
+    /** #26：执行扫描并把结果推给当前页面（后台线程调用）。 */
+    private void nativeScan() {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        for (BackendDiscovery.Backend b : BackendDiscovery.scan()) {
+            try {
+                arr.put(new org.json.JSONObject()
+                    .put("url", b.url).put("name", b.name).put("loggedIn", b.loggedIn));
+            } catch (Exception ignored) {}
+        }
+        pushBackends(arr.toString());
+    }
+
+    /** #26：把扫描结果推给页面（session-sync.js 的 __bmBackendsFound 接住并渲染）。 */
+    private void pushBackends(String jsonArray) {
+        if (web == null) return;
+        web.post(() -> web.evaluateJavascript(
+            "window.__bmBackendsFound&&window.__bmBackendsFound(" + jsonArray + ")", null));
     }
 
     /** #25 反向分享：取出 ACTION_SEND 的文本（B 站分享文本把链接放在正文里）。 */
@@ -338,12 +394,18 @@ public class MainActivity extends Activity {
                         // 页面导航会清掉内联样式：就绪后按当前 insets 重推 CSS 变量
                         pushInsets(insTop, insBottom, insLeft, insRight);
                         flushShare();  // #25：冷启动带进来的分享文本，页面就绪后再交前端
+                        // #26：手机本机模式下页面每次就绪都自动扫一次局域网电脑端（1~2s 后台线程，
+                        // 结果只出现在设备面板；断开回本机后也会自动重扫，列表不用手动刷新）
+                        if (pageOrigin == null || pageOrigin.equals(origin)) {
+                            new Thread(() -> nativeScan(), "backend-autoscan").start();
+                        }
                     }
                 });
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri uri = request.getUrl();
-                if (uri.toString().startsWith(origin + "/")) return false;
+                String current = pageOrigin;
+                if (current != null && uri.toString().startsWith(current + "/")) return false;
                 if ("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, uri)); } catch (Exception ignored) {}
                 }
@@ -394,7 +456,8 @@ public class MainActivity extends Activity {
         // 后端就绪：WebView 200ms 淡入，替代硬切（#9）
         web.setAlpha(0f);
         web.animate().alpha(1f).setDuration(200).start();
-        web.loadUrl(origin);
+        // #26：上次连过且仍在线的电脑后端直接回连，否则手机内嵌
+        web.loadUrl(pageOrigin != null ? pageOrigin : origin);
     }
     @Override public void onBackPressed() {
         // WebView 的 canGoBack()/goBack() 不认 pushState 的同文档历史（skippable entry），

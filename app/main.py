@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import select
 
-from app.api.routes import auth_router, router as api_router
+from app.api.routes import auth_router, discovery_router, router as api_router
 from app.bili.client import BiliClient
 from app.config import settings
 from app.core.cookies import CookieStore
@@ -154,6 +154,7 @@ async def static_no_cache(request, call_next):
 
 app.include_router(api_router)
 app.include_router(auth_router)
+app.include_router(discovery_router)
 app.include_router(web_router)
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 

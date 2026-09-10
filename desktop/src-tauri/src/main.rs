@@ -85,6 +85,8 @@ fn start_backend(app: &tauri::AppHandle, runtime: &Arc<Runtime>) -> Result<Strin
         .args(["--data-dir"])
         .arg(root.join("data"))
         .arg("--watch-parent-stdin")
+        // #26：绑 0.0.0.0 固定端口（端口被占自动回退 loopback），手机端可在局域网发现本机
+        .arg("--lan")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::from(log.try_clone().map_err(|e| e.to_string())?));

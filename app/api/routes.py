@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import platform
 import re
 import urllib.parse
 from pathlib import Path
@@ -63,6 +64,20 @@ router = APIRouter(
 )
 # 登录流程自身不能被登录门禁挡住
 auth_router = APIRouter(prefix="/api/auth", dependencies=[Depends(_require_token)])
+# #26 局域网发现：手机端扫到约定端口后用 /ping 识别「这是 BiliMusic 后端」。
+# 不设登录门禁（探测发生在选定后端之前、对方账号未知），但保留 token 门禁：
+# 配了 BM_API_TOKEN 的后端不会被同网段陌生设备发现。
+discovery_router = APIRouter(prefix="/api/discovery", dependencies=[Depends(_require_token)])
+
+
+@discovery_router.get("/ping")
+def discovery_ping(request: Request) -> dict:
+    store: CookieStore = request.state.cookies
+    return {
+        "app": "bilimusic",
+        "name": platform.node() or "BiliMusic",
+        "loggedIn": bool(store.logged_in),
+    }
 
 STATUS_LABELS = {
     "pending": "排队中",

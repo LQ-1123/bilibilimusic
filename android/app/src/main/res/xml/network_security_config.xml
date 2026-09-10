@@ -1,4 +1,6 @@
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true"><domain includeSubdomains="false">127.0.0.1</domain></domain-config>
+    <!-- #26 局域网发现：手机 WebView 要能加载 http://192.168.x.x:8000 的电脑后端。
+         NSC 的 domain 不支持网段写法，只能整体放开明文；后端仍是唯一内容源，
+         B 站资源已全量走 https（#打包端 https_media_url 修复），实际明文流量只有局域网后端。 -->
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

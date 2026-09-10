@@ -25,12 +25,33 @@ def loopback_socket():
     return sock
 
 
-def start(directory: str) -> str:
+DISCOVERY_PORT_DEFAULT = 8000   # #26：局域网发现的约定端口（Android 扫描端同此值）
+
+
+def lan_socket() -> socket.socket:
+    """#26 桌面端：绑 0.0.0.0 + 固定端口，手机在同网段扫该端口即可发现本机。
+
+    端口被占用（第二实例/别的应用）时回退 loopback 随机端口——本机照常可用，
+    只是当局域网不可发现。Android 侧不用本函数（手机后端不对外暴露）。
+    """
+    port = int(os.getenv("BM_PORT", str(DISCOVERY_PORT_DEFAULT)))
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("0.0.0.0", port))
+        sock.listen(128)
+        return sock
+    except OSError:
+        sock.close()
+        return loopback_socket()
+
+
+def start(directory: str, lan: bool = False) -> str:
     with _start_lock:
-        return _start(directory)
+        return _start(directory, lan)
 
 
-def _start(directory: str) -> str:
+def _start(directory: str, lan: bool = False) -> str:
     global _server, _thread, _url
     if _thread and _thread.is_alive():
         return _url
@@ -38,7 +59,9 @@ def _start(directory: str) -> str:
     import uvicorn
     from app.main import app
 
-    sock = loopback_socket()
+    sock = lan_socket() if lan else loopback_socket()
+    # 对本机 Web/桌面壳永远宣告 127.0.0.1 形式（0.0.0.0 绑定同样接受 loopback 连接；
+    # desktop 壳的 policy.rs 也只认 127.0.0.1 宣告）
     _url = f"http://127.0.0.1:{sock.getsockname()[1]}"
     _server = uvicorn.Server(uvicorn.Config(
         app, host="127.0.0.1", loop="asyncio", http="h11", ws="none",
@@ -81,8 +104,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", required=True)
     parser.add_argument("--watch-parent-stdin", action="store_true")
+    # #26：桌面壳传 --lan，绑 0.0.0.0 固定端口，手机端可在局域网发现本机
+    parser.add_argument("--lan", action="store_true")
     args = parser.parse_args()
-    url = start(args.data_dir)
+    url = start(args.data_dir, lan=args.lan)
     if args.watch_parent_stdin:
         threading.Thread(target=watch_parent, args=(sys.stdin,), daemon=True).start()
     print("BILIMUSIC_URL=" + url, flush=True)

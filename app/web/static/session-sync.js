@@ -4,10 +4,9 @@
  * 放到哪、队列是什么。本文件负责：
  *   - 设备注册（localStorage.bmDeviceId，同浏览器多标签算一台）；
  *   - 上报本机状态（切歌/播放暂停/每 5 秒心跳/切回前台）；
- *   - 在播放队列面板里展示各设备在放什么（进度实时外推，±1s）；
- *   - 「从别台设备的进度继续」——把远端队列搬到本机并从同一进度开始。
- *
- * Phase 2 的命令通道（远端 play/pause/next/seek）与移交握手不在这里。
+ *   - 「设备」页（#view-devices）实时渲染：各设备在放什么、遥控在放的设备、
+ *     把播放串流到本机（#26：设备 UI 已从播放队列面板迁到独立页）；
+ *   - Android 端展示局域网内可连接的电脑后端（扫描/连接/断开）。
  */
 (function () {
   "use strict";
@@ -69,6 +68,9 @@
   var ME = deviceId();
   var NAME = deviceName();
   var KIND = deviceKind();
+  var NATIVE = window.BiliMusicNative || null;   // Android 原生桥（#26 局域网发现只有手机端有）
+  var REMOTE_BACKEND = NATIVE && !/^(127\.0\.0\.1|localhost)$/.test(location.hostname || "");
+  var backends = [];        // #26 最近一次扫描到的局域网电脑后端 [{url,name,loggedIn}]
   var snapshot = null;      // 最近一次快照 {session, devices}
   var lastReport = "";      // 上次上报指纹（去重）
   var lastReportAt = 0;
@@ -161,7 +163,12 @@
     wasActive = nowActive;
     snapshot = { session: session, transfer: snap.transfer || null,
                  devices: snap.devices || (snapshot && snapshot.devices) || [] };
-    render();
+    if (pageOn()) renderPage();
+  }
+
+  function pageOn() {
+    var v = $("view-devices");
+    return !!(v && v.classList.contains("on"));
   }
 
   /** 让出播放（点移交 / 被抢占都走这里）：#23 Phase 3 交叉淡出——接收端此时正好在淡入，
@@ -187,76 +194,121 @@
     return Math.min(100, Math.max(0, Math.round((livePosition(session) / dur) * 100)));
   }
 
-  function remotePlaying() {
+  /** 会话 active 在别的设备上（在放或暂停都算）→ 本机是控制器态。 */
+  function remoteActive() {
     var s = snapshot && snapshot.session;
-    if (!s || !s.playing) return null;
-    if (s.activeDeviceId === ME) return null;   // 本机就是那个在放的设备
+    if (!s || !s.activeDeviceId || s.activeDeviceId === ME) return null;
     return s;
   }
 
   function adopting() { return !!(window.BiliPlayer && BiliPlayer.isPlaying && BiliPlayer.isPlaying()); }
 
-  function render() {
-    var box = $("q-devices");
-    if (!box) return;
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  var esc = escapeHtml;
+
+  // ---------- 设备页渲染（#26：从播放队列面板迁出的整页版） ----------
+
+  function devRow(d) {
+    var me = d.id === ME;
+    var session = snapshot && snapshot.session;
+    var isActive = d.active && session && session.activeDeviceId === d.id;
+    var state;
+    if (isActive && session && session.playing) state = "正在播放";
+    else if (isActive && session) state = "已暂停";
+    else if (d.playing) state = "在线 · 未接管";
+    else state = d.online ? "空闲" : (d.idleFor != null ? "离线 · " + Math.round(d.idleFor / 60) + " 分钟前" : "离线");
+    return '<div class="dv-row' + (me ? " me" : "") + (d.online ? "" : " off") + '">' +
+      '<span class="dot' + (isActive ? " on" : "") + '"></span>' +
+      '<span class="nm">' + esc(d.name || d.kind) + (me ? "（本机）" : "") + "</span>" +
+      '<span class="st">' + esc(state) + "</span></div>";
+  }
+
+  function controllerCard(session) {
+    var song = session.song || {};
+    var playing = !!session.playing;
+    return '<div class="dv-sec"><div class="dv-title">正在播放 · ' +
+        esc(session.activeDeviceName || "其他设备") + (playing ? "" : " · 已暂停") + '</div>' +
+      '<div class="dv-now">' +
+        (song.coverUrl ? '<img class="dv-cover" src="' + esc(song.coverUrl) + '" alt="" referrerpolicy="no-referrer">' : '<div class="dv-cover dv-nocov">♪</div>') +
+        '<div class="dv-main">' +
+          '<div class="dv-song">' + esc(song.title || "—") + '</div>' +
+          '<div class="dv-artist">' + esc(song.artist || "") + '</div>' +
+          '<div class="dv-bar" id="dv-bar" title="点一下让对端跳到对应位置"><i style="width:' + pct(session) + '%"></i></div>' +
+          '<div class="dv-times"><span>' + fmtTime(livePosition(session)) + "</span><span>" + fmtTime(song.duration || 0) + "</span></div>" +
+          '<div class="dv-ctl">' +
+            '<button type="button" data-cmd="prev" title="上一首">⏮</button>' +
+            '<button type="button" data-cmd="toggle" class="big" title="播放/暂停">' + (playing ? "⏸" : "▶") + "</button>" +
+            '<button type="button" data-cmd="next" title="下一首">⏭</button>' +
+          "</div>" +
+        "</div>" +
+      "</div>" +
+      '<button type="button" class="dv-stream" id="dv-stream">⇢ 串流到本机播放</button>' +
+      "</div>";
+  }
+
+  function renderBackends() {
+    if (!NATIVE || !NATIVE.scanBackends) return "";
+    var html = '<div class="dv-sec"><div class="dv-title">局域网 · 电脑端</div>';
+    if (REMOTE_BACKEND) {
+      html += '<div class="dv-note">当前连接 <b>' + esc(location.hostname) + '</b> —— 界面与曲库来自电脑后端，播放从本机出声。</div>' +
+        '<button type="button" class="dv-scan" id="dv-use-embedded">断开，回到手机本机</button>';
+    } else if (backends.length) {
+      backends.slice(0, 6).forEach(function (b, i) {
+        html += '<div class="dv-row lan"><span class="dot on"></span>' +
+          '<span class="nm">' + esc(b.name || b.url) + '</span>' +
+          '<button type="button" class="dv-link" data-bem="' + i + '">连接</button></div>';
+      });
+      html += '<button type="button" class="dv-scan" id="dv-scan">重新扫描局域网</button>';
+    } else {
+      html += '<div class="dv-note">没扫到电脑端——确认电脑 BiliMusic 正在运行、手机与电脑连同一 Wi-Fi。</div>' +
+        '<button type="button" class="dv-scan" id="dv-scan">扫描局域网</button>';
+    }
+    return html + "</div>";
+  }
+
+  function renderPage() {
+    var body = $("dev-body");
+    if (!body) return;
     var devices = (snapshot && snapshot.devices) || [];
     var session = snapshot && snapshot.session;
-    if (!devices.length) { box.hidden = true; box.innerHTML = ""; return; }
-    box.hidden = false;
+    var remote = remoteActive();
+    var html = "";
 
-    var rows = devices.map(function (d) {
-      var me = d.id === ME;
-      var isActive = d.active && session && session.activeDeviceId === d.id;
-      var state;
-      if (isActive && session && session.playing) {
-        var song = session.song || {};
-        state = "正在播放 · " + (song.title || "—") + " · " + fmtTime(livePosition(session));
-      } else if (isActive && session) {
-        var s2 = session.song || {};
-        state = "已暂停 · " + (s2.title || "—") + " · " + fmtTime(livePosition(session));
-      } else if (d.playing) {
-        state = "在线 · 未接管";   // 非 active 设备的上报不改会话，别显示成「正在播放」误导
-      } else {
-        state = d.online ? "空闲" : (d.idleFor != null ? "离线 · " + Math.round(d.idleFor / 60) + " 分钟前" : "离线");
-      }
-      return '<div class="q-dev' + (me ? " me" : "") + (d.online ? "" : " off") + '" data-device="' + d.id + '">' +
-        '<span class="dot"></span>' +
-        '<span class="nm">' + escapeHtml(d.name || d.kind) + (me ? "（本机）" : "") + "</span>" +
-        '<span class="st">' + escapeHtml(state) + "</span>" +
-        "</div>";
-    });
-
-    var extra = "";
-    var remote = remotePlaying();
     if (remote) {
-      var song2 = remote.song || {};
-      // 控制器态：能看到对方在放什么、放到哪，并能直接控制它
-      extra += '<div class="q-remote">' +
-        '<div class="q-remote-line">' + escapeHtml(song2.title || "—") + "</div>" +
-        '<div class="q-remote-bar" id="q-remote-bar" title="点一下让对端跳到对应位置"><i style="width:' + pct(remote) + '%"></i></div>' +
-        '<div class="q-remote-times"><span>' + fmtTime(livePosition(remote)) + "</span><span>" +
-        fmtTime(song2.duration || 0) + "</span></div>" +
-        '<div class="q-remote-ctl">' +
-        '<button type="button" data-cmd="prev" title="上一首">⏮</button>' +
-        '<button type="button" data-cmd="toggle" title="播放/暂停">' + (remote.playing ? "⏸" : "▶") + "</button>" +
-        '<button type="button" data-cmd="next" title="下一首">⏭</button>' +
-        "</div>" +
-        '<button type="button" class="q-resume" id="q-transfer">转到此设备播放</button>' +
-        "</div>";
-    } else if (!adopting()) {
-      extra += '<button type="button" class="q-resume" id="q-resume" hidden></button>';
+      html += controllerCard(remote);
+    } else if (session && session.activeDeviceId === ME) {
+      var mine = session.song || {};
+      html += '<div class="dv-sec"><div class="dv-title">正在播放 · 本机</div>' +
+        '<div class="dv-row me"><span class="dot on"></span><span class="nm">' + esc(mine.title || "—") + "</span>" +
+        '<span class="st">' + (session.playing ? "播放中" : "已暂停") + "</span></div></div>";
+    } else if (adopting()) {
+      html += '<div class="dv-sec"><div class="dv-title">正在播放 · 本机</div>' +
+        '<div class="dv-row me"><span class="dot on"></span><span class="nm">本机</span><span class="st">播放中</span></div></div>';
+    } else {
+      html += '<div class="dv-sec"><div class="dv-empty">没有设备在播放。<br>任一设备开始播放后，可以在这里遥控它，或把播放串流到本机。</div></div>';
     }
+
+    if (devices.length) {
+      html += '<div class="dv-sec"><div class="dv-title">此账号的设备</div>' +
+        devices.map(devRow).join("") + "</div>";
+    }
+
+    html += renderBackends();
+
     if (needGesture && pending) {
-      extra += '<button type="button" class="q-resume" id="q-needgesture">点一下继续播放</button>';
+      html += '<div class="dv-sec"><button type="button" class="dv-stream" id="dv-needgesture">点一下继续播放</button></div>';
     }
-    box.innerHTML = '<div class="q-dev-title">设备 · 同账号跨端</div>' + rows.join("") + extra;
-    var btn = $("q-resume");
-    if (btn) btn.addEventListener("click", function () { resumeHere(); });
-    var tr = $("q-transfer");
-    if (tr) tr.addEventListener("click", startTransfer);
-    var ng = $("q-needgesture");
-    if (ng) ng.addEventListener("click", function () { claimNow(); });
-    var bar = $("q-remote-bar");
+
+    body.innerHTML = html;
+    bindPage(body);
+  }
+
+  function bindPage(body) {
+    var bar = $("dv-bar");
     if (bar) bar.addEventListener("click", function (ev) {
       var s2 = snapshot && snapshot.session;
       var dur = Number(s2 && s2.song && s2.song.duration) || 0;
@@ -265,14 +317,48 @@
       var ratio = Math.min(1, Math.max(0, (ev.clientX - r.left) / Math.max(1, r.width)));
       sendCommand("seek", { position: Math.round(dur * ratio) });
     });
-    [].slice.call(box.querySelectorAll("[data-cmd]")).forEach(function (b) {
+    [].slice.call(body.querySelectorAll("[data-cmd]")).forEach(function (b) {
       b.addEventListener("click", function () { sendCommand(b.dataset.cmd); });
+    });
+    var stream = $("dv-stream");
+    if (stream) stream.addEventListener("click", startTransfer);
+    var ng = $("dv-needgesture");
+    if (ng) ng.addEventListener("click", function () { claimNow(); });
+    bindBackends(body);
+  }
+
+  // ---------- 局域网电脑端（Android 原生扫描，#26） ----------
+
+  function bindBackends(body) {
+    if (!NATIVE || !NATIVE.scanBackends) return;
+    var scan = $("dv-scan");
+    if (scan) scan.addEventListener("click", function () {
+      scan.textContent = "扫描中…"; scan.disabled = true;
+      NATIVE.scanBackends();
+      setTimeout(function () { if (document.body.contains(scan)) { scan.textContent = "重新扫描局域网"; scan.disabled = false; } }, 3000);
+    });
+    var emb = $("dv-use-embedded");
+    if (emb) emb.addEventListener("click", function () { NATIVE.useEmbeddedBackend(); });
+    [].slice.call(body.querySelectorAll("[data-bem]")).forEach(function (b) {
+      b.addEventListener("click", function () {
+        var item = backends[Number(b.dataset.bem)];
+        if (item && NATIVE.connectBackend) { window.__toast && window.__toast("正在连接 " + (item.name || item.url) + "…"); NATIVE.connectBackend(item.url); }
+      });
     });
   }
 
-  function escapeHtml(s) {
-    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+  // 原生扫描完成（MainActivity.pushBackends → evaluateJavascript）
+  window.__bmBackendsFound = function (list) {
+    backends = Array.isArray(list) ? list : [];
+    if (pageOn()) renderPage();
+  };
+
+  /** 程序化切到设备页（needGesture 兜底按钮出现在这里）。 */
+  function showDevicesView() {
+    if (!window.switchView) return;
+    switchView("devices");
+    [].slice.call(document.querySelectorAll(".side-nav .side-item")).forEach(function (b) {
+      b.classList.toggle("on", b.dataset.nav === "devices");
     });
   }
 
@@ -291,7 +377,7 @@
     });
   }
 
-  /** 移交：请对方把播放交到本机（对方现报进度 → 本机预加载 → canplay → claimed）。 */
+  /** 串流：请对方把播放交到本机（对方现报进度 → 本机预加载 → canplay → claimed）。 */
   function startTransfer() {
     var s = snapshot && snapshot.session;
     if (pending) { window.__toast && window.__toast("正在接管中…"); return Promise.resolve(null); }
@@ -371,7 +457,8 @@
 
   function showResumeFallback() {
     needGesture = true;
-    render();   // 走渲染而不是 appendChild：设备区每秒重画，append 出来的按钮会被冲掉
+    showDevicesView();   // 兜底按钮长在设备页：把用户带过去
+    renderPage();
   }
 
   /** 用户点「点一下继续播放」：这一次点击就是手势，play 与 claimed 一起完成。 */
@@ -383,21 +470,21 @@
       return post("/api/session/claimed", { deviceId: ME, position: at });
     }).then(function (res) {
       if (res && res.__err) {
-        needGesture = false; pending = null; render();
-        window.__toast && window.__toast("接管已超时，请再点一次「转到此设备播放」");
+        needGesture = false; pending = null; renderPage();
+        window.__toast && window.__toast("接管已超时，请再点一次「串流到本机」");
         return;
       }
       needGesture = false;
       pending = null;
       fade(media, 1, HANDOFF_FADE_MS);
-      render();
+      renderPage();
       window.__toast && window.__toast("已在本机继续播放");
     }).catch(function () { window.__toast && window.__toast("仍然无法播放，请重试"); });
   }
 
   /** 打开即续播：把远端队列搬到本机，从同一进度开始（点击即用户手势，不会被拦自动播放）。 */
   function resumeHere() {
-    var remote = remotePlaying();
+    var remote = remoteActive();
     if (!remote || !window.BiliPlayer || !BiliPlayer.adopt) return;
     fetch("/api/session", { cache: "no-store" })
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -429,9 +516,12 @@
   function start() {
     if (!document.body.dataset.auth || document.body.dataset.auth !== "1") return; // 未登录不参与
     hello().then(function () { report(true); });
+    var idleTick = 0;
     setInterval(function () {
       var s = localState();
       if (s && s.playing) report(false);
+      // #26 设备页主界面化：空闲（未播放）也要保活在位状态，否则 30s 后其他端把本机显示成离线
+      else if ((idleTick = (idleTick + 1) % 4) === 0) report(false);
     }, HEARTBEAT_MS);
     ["audio", "audio2"].forEach(function (id) {
       var el = $(id);
@@ -471,16 +561,14 @@
     document.addEventListener("bm:transferPosition", function (e) {
       if (pending && e.detail && isFinite(e.detail.position)) { pending.position = e.detail.position; pending.live = true; }
     });
-    // 面板打开时每秒重画一次（进度外推），平时不动
-    setInterval(function () {
-      var qp = $("queue-panel");
-      if (qp && !qp.classList.contains("hidden")) render();
-    }, 1000);
+    // 设备页可见时每秒重画一次（进度外推），不可见不动
+    setInterval(function () { if (pageOn()) renderPage(); }, 1000);
     window.__sessionSync = {
       deviceId: ME, name: NAME, snapshot: function () { return snapshot; },
       report: report, hello: hello, resumeHere: resumeHere,
       sendCommand: sendCommand, startTransfer: startTransfer, pending: function () { return pending; },
       needGesture: function () { return needGesture; },
+      renderPage: renderPage,
     };
   }
 

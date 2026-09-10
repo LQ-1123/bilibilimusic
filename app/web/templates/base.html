@@ -12,15 +12,15 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=219">
+  <link rel="stylesheet" href="/static/style.css?v=225">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
   <script src="/static/app.js?v=71" defer></script>
   <script src="/static/export.js?v=8" defer></script>
-  <script src="/static/v3.js?v=83" defer></script>
-  <script src="/static/nav-liquid.js?v=12" defer></script>
-  <script src="/static/session-sync.js?v=6" defer></script>
+  <script src="/static/v3.js?v=84" defer></script>
+  <script src="/static/nav-liquid.js?v=13" defer></script>
+  <script src="/static/session-sync.js?v=8" defer></script>
   <script src="/static/back-stack.js?v=4" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
@@ -28,6 +28,7 @@
   <defs>
     <symbol id="i-home" viewBox="0 0 24 24"><path fill="currentColor" d="M10 20v-6h4v6h5v-8.5h3.2L12 2.7 1.8 11.5H5V20z"/></symbol>
     <symbol id="i-compass" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm4.2 4.6l-2.6 6-6 2.6 2.6-6z"/></symbol>
+  <symbol id="i-devices" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 4H5a2.5 2.5 0 0 0-2.5 2.5v8A2.5 2.5 0 0 0 5 17h3.5"/><rect x="13.5" y="7.5" width="8" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><path fill="currentColor" d="M10.2 3.6a6.6 6.6 0 104.7 11.3l5 5 1.4-1.4-5-5A6.6 6.6 0 0010.2 3.6zm0 2a4.6 4.6 0 110 9.2 4.6 4.6 0 010-9.2z"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path fill="currentColor" d="M9 3v11.1A3.8 3.8 0 1011 17.6V7.6l8-1.8v7.3A3.8 3.8 0 1021 15.6V2z"/></symbol>
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 20.5c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/></symbol>
@@ -83,6 +84,7 @@
       <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
       <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg><use href="#i-compass"/></svg>推荐</button>
       <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg><use href="#i-user"/></svg>UP 主</button>
+      <button class="side-item" type="button" data-nav="devices" onclick="navGo(this)"><svg><use href="#i-devices"/></svg>设备</button>
     </nav>
     <div class="side-sec" style="margin-top:2px">
       <span class="lb">我的歌单</span>
@@ -159,7 +161,6 @@
         </label>
       </div>
     </div>
-    <div class="q-devices" id="q-devices" hidden></div><!-- #23：同账号各设备在放什么 -->
     <ul id="queue-list"></ul>
   </div>
 
@@ -277,6 +278,7 @@
     <div class="m-tabs">
       <button type="button" class="m-tab on" data-mtab="home" onclick="mTab('home',this)"><svg><use href="#i-home"/></svg>主页</button>
       <button type="button" class="m-tab" data-mtab="library" onclick="mTab('library',this)"><svg><use href="#i-note"/></svg>资料库</button>
+      <button type="button" class="m-tab" data-mtab="devices" onclick="mTab('devices',this)"><svg><use href="#i-devices"/></svg>设备</button>
       <button type="button" class="m-tab" data-mtab="account" onclick="mTab('account',this)"><svg><use href="#i-user"/></svg>账号</button>
     </div>
     <button type="button" class="m-orb" onclick="orbSearch(event)" title="搜索"><svg><use href="#i-search"/></svg></button>
