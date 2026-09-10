@@ -303,6 +303,7 @@
 | 09-10 | #23 跨端会话 Phase 1 | 单测 + 双浏览器端到端（CDP） | ✅ | A 在播 → B 打开即见「Mac · 正在播放 · 歌名 · 0:45」；A 推进到 88s，B 不刷新自动变 1:28（SSE）；B 点「继续」→ 本机接管同一首歌与进度；B 起播后会话切到 B、A 收到抢占提示；单测 12 例 + 回归 181 passed / 2 skipped |
 | 09-10 | #23 跨端会话 Phase 2 | 无头 Chrome + CDP（双设备真跑） | ✅ | 控制器态显示远端歌名/进度/三键；B 点暂停 → A 执行；移交：A 现报 42.5s → B prepare/claim → 会话切到 B 且位置=42.5、A 淡出并提示；失败回滚：不 claim、发送端继续播、出现「点一下继续播放」且点击后接管成功 |
 | 09-10 | #23 跨端接力 Phase 3（预加载 + 交叉淡入） | 无头 Chrome + CDP（双设备，采样音量） | ✅ | 点击后 5ms 即发起预加载；接收端音量 0→1、发送端 1→0 落在同一 350ms 窗口（无静音缝）；发送端随后暂停、音量归位；会话归属于接收端（并修掉「发送端淡出期间抢回会话」的竞态） |
+| 09-10 | BUG-023 Android 内嵌后端启动 | 本机 AVD BM35 + debug APK（CI 同款 smoke） | ✅ | 修复前 3s `Startup failed`（pydantic v1 不认 list 上的 max_length，建模阶段就抛）；修复后 36s `BILIMUSIC_WEB_READY` |
 **进度汇总**：通过 27 / 27 组——**v0.4.0 验收闭环（2026-09-09 真机抽查全过，无新增待修项）**。遗留仅剩增量项：#3 深段（Media3 迁移，按需）· #14 series 二期（下一大项，见 next-steps §2）。
 
 > **模拟器验收环境（2026-09-08 搭建）**：Android Studio SDK + `emulator` 包 + `system-images;android-35;default;arm64-v8a`，AVD 名 `BM35`（Pixel 6，三键导航）。项目侧需：`android/local.properties`（sdk.dir）、Gradle wrapper 8.11.1、`brew install python@3.11`（Chaquopy buildPython，构建时 PATH 前置）、`PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。种子数据：`adb push` 曲库 DB/cookies/active_mid 到 `/data/local/tmp` 后 `run-as` 拷入 `files/data/`。WebView 调试：debug 构建已开 `setWebContentsDebuggingEnabled`，`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后可用 CDP（websocket 需 `suppress_origin=True`）。

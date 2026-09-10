@@ -715,3 +715,41 @@ bvid 相同，于是播放后者时也命中了收藏表，星星被点亮。**�
 
 **验证**：重启后端 6 次（含一次真实抖动：日志出现重试记录后仍成功恢复），`/api/songs` 稳定 200，
 未再出现「被登出」。
+
+---
+
+## BUG-023 Android 端内嵌后端起不来（pydantic v1 不兼容）｜ 已修
+
+**现象**：v1.3.0 的 CI（run#20）三端 desktop 全过，**android job 的模拟器 smoke 测试失败**：
+脚本在 240s 内等不到 `BILIMUSIC_WEB_READY`，最后 dump 出 `BiliMusic: Startup failed`。
+
+**根因**（本机用同一个 debug APK 在 AVD 上 100% 复现）：
+
+```
+com.chaquo.python.PyException: ValueError: On field "queue" the following field constraints
+are set but not enforced: max_length.
+    at <python>.app.api.routes.<module>(routes.py:628)
+    at <python>.app.main.<module>(main.py:20)
+```
+
+Android 侧 Chaquopy 装的是 **pydantic==1.10.22**（`android/app/build.gradle`），而开发 venv 是 **2.x**。
+新加的 `SessionReport.queue: list[dict] = Field(default_factory=list, max_length=200)` 在 v1 上会在
+**建模阶段**直接抛错 → 整个 `app.api.routes` 导入失败 → 内嵌后端起不来。桌面端与 Web 端都是 pydantic 2，
+所以本地一切正常、只有 Android 崩。
+
+**修复**：
+
+- `queue` 去掉 `max_length`（上限本来就在 `session_bus` 里按 `MAX_QUEUE` 截断）；
+- 设备 id 的 `pattern` 去掉（v1 不认、静默忽略）→ 改在 `session_bus.clean_id()` 里做
+  `[A-Za-z0-9_-]` 清洗与限长（顺带堵住「设备 id 直接拼进 HTML」的口子），设备名同样去控制字符；
+- `body.model_dump()` → `body.model_dump() if hasattr(body, "model_dump") else body.dict()`
+  （v2/v1 都支持）。
+
+**验证**：
+
+- 本机 `AVD BM35` + `app-debug.apk`，跑 CI 同款步骤（install → am start → 轮询 logcat）：
+  修复前 3s 就 `Startup failed`；修复后 **36s 出现 `BILIMUSIC_WEB_READY`** ✅
+- 模型定义在 pydantic 1.10.22 下能正常导入（app 启动即证明）；`pytest` 193 passed / 2 skipped、`node --test` 37 passed。
+
+**教训**：Android 侧是 **pydantic 1.10** —— 别用 v2-only 写法（`model_dump` / `model_validate` /
+list 字段上的 `max_length` / `pattern=`）。改后端后先在本机构建 debug APK 跑一次 smoke，比等 CI 快。
