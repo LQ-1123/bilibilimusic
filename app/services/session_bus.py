@@ -88,6 +88,7 @@ class PlaybackSession:
     position: float = 0.0
     reported_at: float = 0.0
     playing: bool = False
+    volume: int = 100        # 播放设备的音量（0-100）：其他设备可读，也可经 volume 命令改写
     repeat: str = "off"
     shuffle: bool = False
     revision: int = 0
@@ -115,6 +116,7 @@ class PlaybackSession:
             "song": self.song(),
             "position": self.position_now(now),
             "playing": self.playing,
+            "volume": self.volume,
             "repeat": self.repeat,
             "shuffle": self.shuffle,
             "revision": self.revision,
@@ -245,6 +247,12 @@ class SessionBus:
 
         # 只让 active 设备改写队列/进度；其他设备的上报仅刷新在线状态
         if session.active_device_id == device_id:
+            # 音量不参与 revision（拖滑条会连发，别把别的设备的命令打成 409）
+            if payload.get("volume") is not None:
+                try:
+                    session.volume = max(0, min(100, int(round(float(payload.get("volume"))))))
+                except (TypeError, ValueError):
+                    pass
             key = (mid, device_id)
             last = self._last_report.get(key, 0.0)
             fresh = (now - last) >= REPORT_MIN_GAP
@@ -302,7 +310,7 @@ class SessionBus:
 
     # ---- Phase 2：命令通道与移交握手 ----
 
-    COMMAND_TYPES = {"play", "pause", "toggle", "next", "prev", "seek"}
+    COMMAND_TYPES = {"play", "pause", "toggle", "next", "prev", "seek", "volume"}
 
     def command(self, mid: str, device_id: str, ctype: str, payload: dict | None = None,
                 revision: int | None = None) -> dict:

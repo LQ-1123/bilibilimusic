@@ -211,3 +211,31 @@ def test_handover_grace_prevents_sender_from_stealing_session_back():
     bus._sessions["m"].takeover_at = time.time() - (TAKEOVER_GRACE + 1)
     again = bus.report("m", "dev-mac1", {"playing": True, "position": 50, "index": 0, "queue": _queue("A")})
     assert again["accepted"] is True and again["preemptedDeviceId"] == "dev-iph1"
+
+
+def test_volume_reported_and_clamped():
+    """#27 遥控音量：active 上报的音量进会话快照，越界值收敛到 0-100。"""
+    bus = SessionBus()
+    bus.report("m", "dev-a", {"playing": True, "position": 1, "queue": _queue("A"), "volume": 42})
+    assert bus.snapshot("m")["session"]["volume"] == 42
+    bus.report("m", "dev-a", {"playing": True, "position": 2, "queue": _queue("A"), "volume": 150})
+    assert bus.snapshot("m")["session"]["volume"] == 100
+    bus.report("m", "dev-a", {"playing": True, "position": 3, "queue": _queue("A"), "volume": -5})
+    assert bus.snapshot("m")["session"]["volume"] == 0
+
+
+def test_volume_change_does_not_bump_revision():
+    """拖音量会连发：不能把别的设备的下一条命令打成 409。"""
+    bus = SessionBus()
+    bus.report("m", "dev-a", {"playing": True, "position": 1, "queue": _queue("A"), "volume": 30})
+    rev = bus.snapshot("m")["session"]["revision"]
+    bus.report("m", "dev-a", {"playing": True, "position": 1, "queue": _queue("A"), "volume": 80})
+    session = bus.snapshot("m")["session"]
+    assert session["revision"] == rev and session["volume"] == 80
+
+
+def test_volume_command_forwarded_to_active_device():
+    bus = _two_devices(SessionBus())
+    out = bus.command("m", "dev-iph1", "volume", {"volume": 20})
+    assert out["accepted"] is True and out["targetDeviceId"] == "dev-mac1"
+    assert out["command"]["type"] == "volume" and out["command"]["payload"] == {"volume": 20}

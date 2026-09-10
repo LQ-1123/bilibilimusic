@@ -170,3 +170,16 @@ def test_transfer_endpoint_rejects_offline_target(monkeypatch):
     with pytest.raises(HTTPException) as err:
         session_transfer(TransferStart(fromDeviceId="dev-mac1", toDeviceId="dev-nope00"), _req("mid-t"))
     assert err.value.status_code == 409
+
+
+def test_report_carries_volume_to_snapshot(monkeypatch):
+    """#27：音量随上报入会话，另一台设备才能在抽屉里看到并改写。"""
+    monkeypatch.setattr(bus_module, "bus", SessionBus())
+    from app.api import routes
+
+    monkeypatch.setattr(routes, "session_bus", bus_module.bus)
+    report_playback_session(SessionReport(
+        deviceId="dev-aaa", name="Mac", playing=True, position=3, index=0,
+        queue=[{"bvid": "BV1yN4y1H7XX", "cid": 1, "title": "A"}], volume=35,
+    ), _req("mid-vol"))
+    assert get_playback_session(_req("mid-vol"))["session"]["volume"] == 35

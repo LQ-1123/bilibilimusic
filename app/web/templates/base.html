@@ -12,15 +12,15 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=225">
+  <link rel="stylesheet" href="/static/style.css?v=232">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
-  <script src="/static/app.js?v=71" defer></script>
+  <script src="/static/app.js?v=78" defer></script>
   <script src="/static/export.js?v=8" defer></script>
-  <script src="/static/v3.js?v=84" defer></script>
+  <script src="/static/v3.js?v=88" defer></script>
   <script src="/static/nav-liquid.js?v=13" defer></script>
-  <script src="/static/session-sync.js?v=8" defer></script>
+  <script src="/static/session-sync.js?v=20" defer></script>
   <script src="/static/back-stack.js?v=4" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
@@ -28,16 +28,18 @@
   <defs>
     <symbol id="i-home" viewBox="0 0 24 24"><path fill="currentColor" d="M10 20v-6h4v6h5v-8.5h3.2L12 2.7 1.8 11.5H5V20z"/></symbol>
     <symbol id="i-compass" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2a8 8 0 110 16 8 8 0 010-16zm4.2 4.6l-2.6 6-6 2.6 2.6-6z"/></symbol>
-  <symbol id="i-devices" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 4H5a2.5 2.5 0 0 0-2.5 2.5v8A2.5 2.5 0 0 0 5 17h3.5"/><rect x="13.5" y="7.5" width="8" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><path fill="currentColor" d="M10.2 3.6a6.6 6.6 0 104.7 11.3l5 5 1.4-1.4-5-5A6.6 6.6 0 0010.2 3.6zm0 2a4.6 4.6 0 110 9.2 4.6 4.6 0 010-9.2z"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path fill="currentColor" d="M9 3v11.1A3.8 3.8 0 1011 17.6V7.6l8-1.8v7.3A3.8 3.8 0 1021 15.6V2z"/></symbol>
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 20.5c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M21.3 13.2A9.2 9.2 0 1110.8 2.7a7.3 7.3 0 0010.5 10.5z"/></symbol>
+    <symbol id="i-devices" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 4H5a2.5 2.5 0 0 0-2.5 2.5v8A2.5 2.5 0 0 0 5 17h3.5"/><rect x="13.5" y="7.5" width="8" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3" fill="currentColor"/><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></g></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
     <symbol id="a-prev" viewBox="0 0 24 24"><path fill="currentColor" d="M11.6 12 20 6.2v11.6zM2.8 12l8.4-5.8v11.6z"/></symbol>
     <symbol id="a-next" viewBox="0 0 24 24"><path fill="currentColor" d="M12.4 12 4 17.8V6.2zM21.2 12l-8.4 5.8V6.2z"/></symbol>
-    <symbol id="a-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7.5 4.8c0-1 1.1-1.6 2-1.1l11 6.4c.9.5.9 1.8 0 2.3l-11 6.4c-.9.5-2-.1-2-1.1z"/></symbol>
+  <symbol id="a-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7.5 4.8c0-1 1.1-1.6 2-1.1l11 6.4c.9.5.9 1.8 0 2.3l-11 6.4c-.9.5-2-.1-2-1.1z"/></symbol>
+  <!-- #27 串流到本设备：AirPlay 风（描边矩形 + 底部三角），与相邻字形同视觉重量 -->
+  <symbol id="a-stream" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" d="M9 18.1H6.1a2 2 0 0 1-2-2V7.6a2 2 0 0 1 2-2h11.8a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H15"/><path fill="currentColor" d="M12 12.4 8.5 18.1h7z"/></symbol>
     <symbol id="a-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6.5 4h3.6c.6 0 1 .4 1 1v14c0 .6-.4 1-1 1H6.5c-.6 0-1-.4-1-1V5c0-.6.4-1 1-1zm7.4 0h3.6c.6 0 1 .4 1 1v14c0 .6-.4 1-1 1h-3.6c-.6 0-1-.4-1-1V5c0-.6.4-1 1-1z"/></symbol>
     <symbol id="i-queue" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M4 12h10M4 18h7"/></g><path fill="currentColor" d="M17 11.5l5 3.2c.6.4.6 1.4 0 1.8l-5 3.2c-.7.4-1.5-.1-1.5-.9v-6.4c0-.8.8-1.3 1.5-.9z"/></symbol>
     <symbol id="i-rep" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 12V9.5A3.5 3.5 0 016.5 6H21"/><path d="M7 22l-4-4 4-4"/><path d="M21 12v2.5a3.5 3.5 0 01-3.5 3.5H3"/></g></symbol>
@@ -84,7 +86,6 @@
       <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
       <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg><use href="#i-compass"/></svg>推荐</button>
       <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg><use href="#i-user"/></svg>UP 主</button>
-      <button class="side-item" type="button" data-nav="devices" onclick="navGo(this)"><svg><use href="#i-devices"/></svg>设备</button>
     </nav>
     <div class="side-sec" style="margin-top:2px">
       <span class="lb">我的歌单</span>
@@ -121,6 +122,7 @@
       <button id="btn-prev" type="button" title="上一首" aria-label="上一首"><svg aria-hidden="true"><use href="#a-prev"/></svg></button>
       <button id="btn-toggle" type="button" class="big" title="播放" aria-label="播放"><svg aria-hidden="true"><use href="#a-play"/></svg></button>
       <button id="btn-next" type="button" title="下一首" aria-label="下一首"><svg aria-hidden="true"><use href="#a-next"/></svg></button>
+      <button id="btn-device" type="button" title="连接至装置" aria-label="连接至装置"><svg aria-hidden="true"><use href="#i-devices"/></svg></button>
     </div>
     <div class="p-meta">
       <img id="player-cover" alt="" referrerpolicy="no-referrer" title="点封面打开歌词">
@@ -141,6 +143,7 @@
         <span class="vol"><input id="vol" type="range" min="0" max="100" value="100" aria-label="音量"></span>
       </span>
     </div>
+    <em id="puck-title"></em><!-- #29：上滑串流时条子缩成球，歌名跟在小球下方 -->
     <span class="p-time" id="t-dur">0:00</span>
   </footer>
 
@@ -151,6 +154,16 @@
 
   <!-- 任务区首拉在登录后开启；每 2s 轮询改由 v3.js 按页面可见性驱动（后台零请求，#5） -->
   <div id="task-list" {% if logged_in %}hx-get="/partials/tasks" hx-trigger="load"{% endif %}></div>
+
+  <!-- #29 串流浮层：手机＝把播放条往上拖（条子缩成一颗小球跟手、设备以圆球排在页面中央，拖到哪颗就串到哪颗；
+       往下拉＝回到本机）；桌面＝点播放条上的设备图标，出设备列表 -->
+  <section id="dev-pick" hidden>
+    <div class="dp-scrim" data-dp-close></div>
+    <div class="dp-panel" role="dialog" aria-label="串流到设备">
+      <div class="dp-head"><span class="dp-title" id="dp-title">串流到</span><em class="dp-hint" id="dp-hint">按住滑动，松手即切</em></div>
+      <div class="dp-body" id="dev-body"></div>
+    </div>
+  </section>
 
   <div id="queue-panel" class="hidden">
     <div class="q-head">
@@ -278,7 +291,6 @@
     <div class="m-tabs">
       <button type="button" class="m-tab on" data-mtab="home" onclick="mTab('home',this)"><svg><use href="#i-home"/></svg>主页</button>
       <button type="button" class="m-tab" data-mtab="library" onclick="mTab('library',this)"><svg><use href="#i-note"/></svg>资料库</button>
-      <button type="button" class="m-tab" data-mtab="devices" onclick="mTab('devices',this)"><svg><use href="#i-devices"/></svg>设备</button>
       <button type="button" class="m-tab" data-mtab="account" onclick="mTab('account',this)"><svg><use href="#i-user"/></svg>账号</button>
     </div>
     <button type="button" class="m-orb" onclick="orbSearch(event)" title="搜索"><svg><use href="#i-search"/></svg></button>

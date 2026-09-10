@@ -332,18 +332,43 @@
     if (!sessionRestored) { sessionRestored = true; restoreSession(); planChain(); }
   }
 
+  /** 点歌入口（#29 第二轮）：串流态（别的设备在放）下点歌＝把这首推给在放的那台，本机不出声也不抢会话；
+   *  对面没接（离线/没会话）才回退成本机播放。 */
   function playSong(song) {
+    if (mirror && window.__sessionSync && window.__sessionSync.playOnRemote) {
+      var idx = -1;
+      for (var i = 0; i < playlist.length; i++) { if (playlist[i].id === song.id) { idx = i; break; } }
+      if (idx >= 0) {
+        var sent = window.__sessionSync.playOnRemote(window.BiliPlayer.queue(), idx, 0);
+        if (sent) { sent.then(function (ok) { if (!ok) playLocalSong(song); }); return; }
+      }
+    }
+    playLocalSong(song);
+  }
+
+  function playLocalSong(song) {
+    exitMirror();   // 本机开始放歌 = 自己接管会话，播放条立刻回到本地态
     stopTrial();
     cancelTransition();
     naturalPlan = null;
-    playlist.forEach(function (s, i) { if (s.id === song.id) current = i; });
+    // #29 第二轮：跨端来的「试听队列」每条 songId 都是 0（未收藏的歌没有曲库 id），
+    // 原来按 `s.id === song.id` 找下标会把 current 定到**最后一条** → 放的就不是点的那首。
+    // 改成先按对象本体（引用）定位，再退化到「非 0 的 id」匹配。
+    var at = playlist.indexOf(song);
+    if (at < 0) {
+      for (var si = 0; si < playlist.length; si++) {
+        if (playlist[si].id && playlist[si].id === song.id) { at = si; break; }
+      }
+    }
+    if (at >= 0) current = at;
     ensureGraph();
     setGain(audioA, audioA === audio ? 1 : 0);
     setGain(audioB, audioB === audio ? 1 : 0);
     audio.src = song.audioUrl;
     audio.play().catch(function () {});
     updateNowPlaying(song);
-    pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
+    if (song.id) pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
+    else if (song.bvid) pushHistory({ k: "v" + song.bvid, kind: "stream", bvid: song.bvid, title: song.title, artist: song.artist, cover: song.coverUrl });
     if (smartEnabled()) prefetchAnalyses();
     planChain(); // 以新歌为起点重排自动决策链
   }
@@ -362,6 +387,16 @@
 
   function updateNowPlaying(song) {
     $("player-bar").classList.remove("hidden");
+    if (!mirror) paintLocalBar(song);   // 镜像态由远端会话驱动播放条，本地只更新状态
+    syncMediaMetadata(song.title, song.artist, song.coverUrl);
+    markPlayingCard(song.id);
+    saveSession();
+    renderQueue();
+    if (!$("lyrics-panel").classList.contains("hidden")) loadLyrics(libLyricsMeta(song)); // 面板开着：切歌即刷新
+  }
+
+  /** 本地态播放条的 DOM 绘制（镜像态走 BiliBarMirror.paint，两者互斥）。 */
+  function paintLocalBar(song) {
     $("player-cover").src = song.coverUrl;
     var pt = $("player-title");
     pt.textContent = song.title;
@@ -376,11 +411,6 @@
     }
     $("t-cur").textContent = "0:00";
     $("t-dur").textContent = "0:00";
-    syncMediaMetadata(song.title, song.artist, song.coverUrl);
-    markPlayingCard(song.id);
-    saveSession();
-    renderQueue();
-    if (!$("lyrics-panel").classList.contains("hidden")) loadLyrics(libLyricsMeta(song)); // 面板开着：切歌即刷新
   }
 
   function syncMediaMetadata(title, artist, cover) {
@@ -418,6 +448,11 @@
   }
 
   function skip(delta) {
+    // 镜像态（#29 第二轮）：切歌作用在「在放的那台」上，本机不接管
+    if (mirror && window.__sessionSync && window.__sessionSync.remoteCommand) {
+      window.__sessionSync.remoteCommand(delta < 0 ? "prev" : "next");
+      return;
+    }
     // 试听态：在同列表组成的试听队列内切换（推荐/搜索/UP 页的歌）
     var q = window.__trialQueue;
     if (recActive && recAudio && q && q.items && q.items.length && window.playStream) {
@@ -532,20 +567,36 @@
       if (playEl.dataset.album) { playAlbum(playEl.dataset.album, playEl.dataset.play); return; }
       var wasAlbum = albumQueueId !== null;
       albumQueueId = null; ++queueGeneration;
-      var ready = playlist.length && !wasAlbum ? Promise.resolve() : refreshPlaylist();
-      ready.then(function () {
+      var want = playEl.dataset.play, gen = queueGeneration;
+      var playFound = function () {
         for (var i = 0; i < playlist.length; i++) {
-          if (String(playlist[i].id) === playEl.dataset.play) {
+          if (String(playlist[i].id) === want) {
             if (playlist[i].albumId) playAlbum(playlist[i].albumId, playlist[i].id);
             else playSongSmart(playlist[i]);
-            return;
+            return true;
           }
         }
+        return false;
+      };
+      var ready = playlist.length && !wasAlbum ? Promise.resolve() : refreshPlaylist();
+      ready.then(function () {
+        if (playFound()) return;
+        // #29 第二轮：跨端接管后本机 playlist 换成了对面的队列（试听队列 songId 全是 0），
+        // 曲库卡片的 id 在里面匹配不到 → 点了没反应。这里补一次「拉本机曲库再找」。
+        if (gen !== queueGeneration) return;
+        refreshPlaylist().then(function () {
+          if (gen !== queueGeneration) return;
+          playFound();
+        });
       });
     }
   });
 
   $("btn-toggle").addEventListener("click", function () {
+    if (mirror) {   // 镜像态：中键 = 遥控对面播放/暂停（要换设备＝把播放条往上拖）
+      if (window.__sessionSync) window.__sessionSync.barAction();
+      return;
+    }
     if (recActive && recAudio) { // 发现池试听接管胶囊
       if (recAudio.paused || recAudio.ended) { recAudio.play().catch(function () {}); }
       else { recAudio.pause(); }
@@ -554,14 +605,22 @@
     if (!audio.src) return;
     if (audio.paused) { audio.play().catch(function () {}); } else { audio.pause(); }
   });
-  $("btn-prev").addEventListener("click", function () { skip(-1); });
-  $("btn-next").addEventListener("click", function () { skip(1); });
+  $("btn-prev").addEventListener("click", function () {
+    if (mirror) { window.__sessionSync && window.__sessionSync.remoteCommand("prev"); return; }
+    skip(-1);
+  });
+  $("btn-next").addEventListener("click", function () {
+    if (mirror) { window.__sessionSync && window.__sessionSync.remoteCommand("next"); return; }
+    skip(1);
+  });
 
   function setPlayerToggle(paused) {
     var button = $("btn-toggle");
-    button.querySelector("use").setAttribute("href", paused ? "#a-play" : "#a-pause");
-    button.title = paused ? "播放" : "暂停";
-    button.setAttribute("aria-label", button.title);
+    if (!mirror) {   // 镜像态中键由 BiliBarMirror.paint 负责（显示对面那台的播放状态）
+      button.querySelector("use").setAttribute("href", paused ? "#a-play" : "#a-pause");
+      button.title = paused ? "播放" : "暂停";
+      button.setAttribute("aria-label", button.title);
+    }
     // 壳层通知的播放/暂停图标跟随（#3 第一段）
     try { if (window.BiliMusicNative && BiliMusicNative.playbackPaused) BiliMusicNative.playbackPaused(!!paused); } catch (e) {}
   }
@@ -583,7 +642,7 @@
   }
   function onTimeUpdate(e) {
     if (e.target !== audio) return;
-    if (audio.duration && !seekDragging) {
+    if (!mirror && audio.duration && !seekDragging) {   // 镜像态：播放条归远端会话驱动
       seek.value = Math.round((audio.currentTime / audio.duration) * 1000);
       syncSeekFill();
       $("t-cur").textContent = fmt(audio.currentTime);
@@ -624,12 +683,19 @@
   seek.addEventListener("input", function () {
     seekDragging = true;
     syncSeekFill();
-    if (audio.duration) {
-      $("t-cur").textContent = fmt((seek.value / 1000) * audio.duration);
+    var dur = mirror ? mirrorDuration() : audio.duration;
+    if (dur) {
+      $("t-cur").textContent = fmt((seek.value / 1000) * dur);
     }
   });
   seek.addEventListener("change", function () {
-    if (audio.duration) audio.currentTime = (seek.value / 1000) * audio.duration;
+    if (mirror) {
+      // 镜像态：拖动进度 = 让在放的那台设备跳过去
+      var mdur = mirrorDuration();
+      if (mdur && window.__sessionSync) window.__sessionSync.remoteSeek((seek.value / 1000) * mdur);
+    } else if (audio.duration) {
+      audio.currentTime = (seek.value / 1000) * audio.duration;
+    }
     syncSeekFill();
     seekDragging = false;
   });
@@ -998,6 +1064,38 @@
     else panel.classList.toggle("hidden");
     $("btn-lyrics").classList.toggle("on", opening);
     if (!opening) return;
+    openLyricsForCurrent();
+  };
+
+  /** 歌曲详情页（播放页/歌词页）当前该显示哪首：镜像态＝远端在放的那首（#29 第二轮：
+   *  串流时点进详情页必须同步，本机 audio 不动）；否则＝本机当前曲目/试听流。 */
+  function mirrorLyricsMeta() {
+    var m = window.BiliBarMirror && BiliBarMirror.song ? BiliBarMirror.song() : null;
+    if (!m || !m.bvid) return null;
+    return {
+      key: "mirror:" + m.bvid,
+      title: m.title || "远端曲目", artist: m.artist || "", cover: m.coverUrl || "",
+      isMirror: true,
+      fetchUrl: "/api/lyrics/preview",
+      fetchInit: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bvid: m.bvid, title: m.title || "", artist: m.artist || "",
+                               duration: Math.round(m.duration || 0) }),
+      },
+    };
+  }
+  function openLyricsForCurrent() {
+    if (mirror) {                                  // 串流中：详情页跟着远端那首
+      var mm = mirrorLyricsMeta();
+      if (mm) {
+        var live = BiliBarMirror.live ? BiliBarMirror.live() : null;
+        setLyricsCover(mm.cover);
+        if (lyricSongId === mm.key && lyricLines.length) updateLyricHighlight(live ? live.position : 0, true);
+        else loadLyrics(mm);
+        return;
+      }
+    }
     if (recActive && recAudio) { // 试听歌：bvid 直接取词
       var tm = trialLyricsMeta();
       setLyricsCover(tm.cover);
@@ -1014,6 +1112,12 @@
       setLyricsText("—", "");
       renderLyrics();
     }
+  }
+  /** 镜像态进出 / 换歌时，详情页开着就跟过去（BiliBarMirror 里调）。 */
+  window.__lyricsRefresh = function () {
+    var panel = $("lyrics-panel");
+    if (!panel || panel.classList.contains("hidden")) return;
+    openLyricsForCurrent();
   };
   $("btn-lyrics").addEventListener("click", window.toggleLyrics);
   $("ly-retry").addEventListener("click", retryLyrics);
@@ -1205,6 +1309,155 @@
     });
   };
   // 登出处理见 export.js（账号相关杂项）
+
+  // ---------- #27 镜像播放条：别的设备在放时，本机播放条显示「它在放什么」 ----------
+  // 详见 docs/issue-ledger.md §7。规则：中键=⇢ 串流到本设备；⏮/⏭/进度/音量都作用于在放的那台设备。
+  var mirror = null;        // {song, deviceName, playing, volume, pos, at}
+  var mirrorTimer = 0;
+  var lastMirrorSongKey = "";   // 上一次绘制时远端那首的指纹：换歌要联动歌词页（#29 第二轮）
+  var localVol = null;      // 进入镜像前的本机音量（退出时还原到音量条）
+
+  function exitMirror() {
+    if (mirror) window.BiliBarMirror.off();
+  }
+  function mirrorPosition() {
+    if (!mirror) return 0;
+    var pos = mirror.pos;
+    if (mirror.playing) pos += (Date.now() - mirror.at) / 1000;
+    return Math.max(0, pos);
+  }
+  function mirrorDuration() {
+    return Number(mirror && mirror.song && mirror.song.duration) || 0;
+  }
+  /** 退出镜像：播放条还原本机曲目（本机没有曲目就收起）。 */
+  function restoreLocalBar() {
+    var song = playlist[current];
+    var bar = $("player-bar");
+    if (!song || !audio.src) { bar.classList.add("hidden"); setPlayerToggle(true); return; }
+    paintLocalBar(song);
+    if (audio.duration) {
+      seek.value = Math.round((audio.currentTime / audio.duration) * 1000);
+      syncSeekFill();
+      $("t-cur").textContent = fmt(audio.currentTime);
+      $("t-dur").textContent = fmt(audio.duration);
+    }
+    setPlayerToggle(audio.paused);
+    var vol = $("vol");
+    if (vol && localVol != null) { vol.value = localVol; vol.style.setProperty("--p", vol.value + "%"); }
+    localVol = null;
+  }
+
+  window.BiliBarMirror = {
+    isOn: function () { return !!mirror; },
+    /** 进入/刷新镜像态：每次远端快照进来都调一次（重新对时，进度不漂）。 */
+    on: function (session) {
+      if (!session || !session.song || !session.song.bvid) return;
+      var first = !mirror;
+      if (first) {
+        localVol = $("vol") ? $("vol").value : null;
+        $("player-bar").classList.add("mirror");
+      }
+      var action = mirror && mirror.action;
+      mirror = {
+        song: { bvid: session.song.bvid, title: session.song.title || "", artist: session.song.artist || "",
+                coverUrl: session.song.coverUrl || "", duration: Number(session.song.duration) || 0 },
+        deviceName: session.activeDeviceName || "其他设备",
+        playing: !!session.playing,
+        volume: Number(session.volume),
+        pos: Number(session.position) || 0,
+        at: Date.now(),
+        action: action || "transfer",
+      };
+      $("player-bar").classList.remove("hidden");
+      this.setAction(mirror.action);
+      this.paint();
+      if (first) mirrorTimer = setInterval(function () { window.BiliBarMirror.paint(); }, 500);
+      if (first) window.__lyricsRefresh && window.__lyricsRefresh();   // 刚进镜像：歌词页若开着就换成远端那首
+    },
+    off: function () {
+      if (!mirror) return;
+      mirror = null;
+      lastMirrorSongKey = "";
+      if (mirrorTimer) { clearInterval(mirrorTimer); mirrorTimer = 0; }
+      $("player-bar").classList.remove("mirror");
+      restoreLocalBar();
+      window.__lyricsRefresh && window.__lyricsRefresh();   // 回到本机：歌词页跟着换回本机那首
+    },
+    /** 远端正在放的那首（歌词/详情页在镜像态要用）。 */
+    song: function () { return mirror ? mirror.song : null; },
+    deviceName: function () { return mirror ? mirror.deviceName : ""; },
+    /** 镜像态的实时进度（含本地补时），供歌词页/详情页跟随。 */
+    live: function () {
+      if (!mirror) return null;
+      return { position: mirrorPosition(), duration: mirrorDuration(), playing: !!mirror.playing };
+    },
+    /** 中键两种语义（#29）：toggle=遥控对面播放/暂停（长按弹串流浮层）；resume=点一下继续播放。 */
+    setAction: function (mode) {
+      if (mirror) mirror.action = mode;
+      this.paint();
+    },
+    paint: function () {
+      if (!mirror) return;
+      var song = mirror.song;
+      var pos = mirrorPosition(), dur = mirrorDuration();
+      var cover = $("player-cover");
+      if (cover.getAttribute("src") !== (song.coverUrl || "")) cover.src = song.coverUrl || "";
+      var pt = $("player-title");
+      if (pt.textContent !== song.title) {
+        pt.textContent = song.title;
+        pt.title = song.title;
+        if (window.BiliTicker) BiliTicker.set(pt);
+      }
+      // #29 第二轮：up 主位不再被「在 X 上播放」顶掉（点了还会跳到 up 主页，语义错位）。
+      // 串流中改用播放条的粉色光晕（.mirror 的溜边光）表示；设备名只留在 hover 提示里。
+      var line = song.artist || "未知歌手";
+      var pa = $("player-artist");
+      if (pa.textContent !== line) pa.textContent = line;
+      var tip = "正在「" + mirror.deviceName + "」上播放" + (mirror.playing ? "" : "（已暂停）");
+      if (pa.title !== tip) pa.title = tip;
+      if (!seekDragging) {
+        seek.value = dur ? Math.round((Math.min(pos, dur) / dur) * 1000) : 0;
+        syncSeekFill();
+      }
+      $("t-cur").textContent = fmt(pos);
+      $("t-dur").textContent = fmt(dur);
+      var vol = $("vol");
+      if (vol && isFinite(mirror.volume) && document.activeElement !== vol) {
+        var v = String(Math.round(mirror.volume));
+        if (vol.value !== v) { vol.value = v; vol.style.setProperty("--p", v + "%"); }
+      }
+      // #29 中键：短按＝遥控对面播放/暂停，长按＝弹串流浮层（提示写进 title）
+      var btn = $("btn-toggle");
+      if (btn) {
+        var resume = mirror.action === "resume";
+        var icon = resume ? "#a-play" : (mirror.playing ? "#a-pause" : "#a-play");
+        var tip = resume ? "点一下继续播放" : (mirror.playing ? "暂停" : "播放") + "（在 " + mirror.deviceName + " 上）";
+        var use = btn.querySelector("use");
+        if (use.getAttribute("href") !== icon) use.setAttribute("href", icon);
+        if (btn.title !== tip) { btn.title = tip; btn.setAttribute("aria-label", tip); }
+      }
+      // 串流中换歌：歌词页（歌曲详情页）跟着换
+      var key = song.bvid + "|" + song.title;
+      if (key !== lastMirrorSongKey) {
+        var firstPaint = !lastMirrorSongKey;
+        lastMirrorSongKey = key;
+        if (!firstPaint) window.__lyricsRefresh && window.__lyricsRefresh();
+      }
+      // 歌词页开着时：进度/时间/高亮按远端走（本机 audio 在镜像态是不动的）
+      var lp = $("lyrics-panel");
+      if (lp && !lp.classList.contains("hidden")) {
+        updateLyricHighlight(pos, false);
+        var lcur = $("ly-cur"), lrem = $("ly-rem"), lseek = $("ly-seek");
+        if (lcur) lcur.textContent = fmt(pos);
+        if (lrem && dur) lrem.textContent = "-" + fmt(Math.max(0, dur - pos));
+        if (lseek && !window.__lySeekDragging && dur) {
+          lseek.value = Math.round((Math.min(pos, dur) / dur) * 1000);
+          lseek.style.setProperty("--p", (lseek.value / 10) + "%");
+        }
+      }
+    },
+  };
+
   // ---------- 供外部调用的播放器 API ----------
   window.BiliPlayer = {
     playAlbum: playAlbum,
@@ -1261,9 +1514,9 @@
         } catch (e) {}
       };
       audio.addEventListener("loadedmetadata", onMeta);
-      playSong(playlist[current]);
-      return true;
-    },
+      playLocalSong(playlist[current]);   // #29 第二轮：这里必须直落本地播放——
+      return true;                        // 走 playSong 分发的话，控制器收到「play 命令」时若自己也以为在镜像态，
+    },                                    // 会把命令再转发回去（A→B→A 互相踢皮球，两台都不出声）
     // #23 Phase 2：移交接收端——预加载 + seek，**不出声**；canplay 后由调用方决定 play / claimed
     prepare: function (items, index, at) {
       var list = buildQueue(items);
@@ -1304,6 +1557,19 @@
     position: function () { // 队列位置（1 基），用于播放页封面上的「3 / 30」；无队列返回 null
       if (!playlist.length || !playlist[current]) return null;
       return { index: current + 1, total: playlist.length };
+    },
+    // #29 第二轮：试听态（未收藏的推荐/最近播放）也当成一套队列上报/移交，未收藏的歌因此可串流
+    trialState: function () {
+      if (!recActive || !recAudio) return null;
+      var items = trialQueueItems({ bvid: recAudio.dataset.bvid, title: recAudio.dataset.title,
+                                    artist: recAudio.dataset.artist, cover: recAudio.dataset.cover });
+      if (!items.length) return null;
+      var idx = 0;
+      for (var i = 0; i < items.length; i++) { if (items[i].bvid === recAudio.dataset.bvid) { idx = i; break; } }
+      var dur = (isFinite(recAudio.duration) && recAudio.duration) ? Math.round(recAudio.duration) : 0;
+      if (dur) items[idx].duration = dur;   // 试听流的真实时长要等 metadata，补进队列里给对面算进度
+      return { items: items, index: idx, position: recAudio.currentTime || 0,
+               playing: !recAudio.paused && !recAudio.ended };
     },
     trialInfo: function () { // 试听歌元数据（bvid/title/artist/cover），非试听返回 null
       return (recActive && recAudio)
@@ -1442,6 +1708,17 @@
     document.body.classList.remove("trial");
   }
 
+  /** 试听接管播放胶囊前，主音轨必须先让位（#29 第二轮：原来只在「换一条试听」时让位，
+   *  同一条试听再点一次会直接 play()，于是主音轨那首和试听两首一起放）。 */
+  function pauseMainTracks() {
+    try { audioA.pause(); audioB.pause(); } catch (e) {}
+  }
+
+  /** 试听（未收藏的推荐/最近播放）也进会话：让别人能看到/接到这首，而不是只刷新在线状态。 */
+  function reportTrial() {
+    if (window.__sessionSync && window.__sessionSync.report) window.__sessionSync.report(true);
+  }
+
   function syncTrialUI() {
     if (!recActive || !recAudio) return;
     syncMediaMetadata(recAudio.dataset.title, recAudio.dataset.artist, recAudio.dataset.cover);
@@ -1474,11 +1751,37 @@
     });
   }
 
+  /** 试听架 → 会话/串流用的队列项（未收藏的歌没有曲库 id，只能靠 bvid 取流）。 */
+  function trialQueueItems(fallback) {
+    var q = window.__trialQueue;
+    var items = (q && q.items && q.items.length) ? q.items : [fallback];
+    return items.filter(function (it) { return it && it.bvid; }).map(function (it) {
+      return { songId: 0, bvid: it.bvid, cid: 0, title: it.title || "", artist: it.artist || "",
+               coverUrl: it.cover || "", duration: Number(it.duration) || 0 };
+    });
+  }
+
   // 通用实时流试听：接管播放胶囊（meta: {title, artist, cover}）
+  // #29 第二轮：串流态（别的设备在放）下点推荐/最近播放＝把这首推给在放的那台，本机不出声。
   window.playStream = function (bvid, meta, btn) {
+    if (mirror && window.__sessionSync && window.__sessionSync.playOnRemote) {
+      var queue = trialQueueItems({ bvid: bvid, title: (meta || {}).title || "", artist: (meta || {}).artist || "",
+                                    cover: (meta || {}).cover || "" });
+      var idx = 0;
+      for (var i = 0; i < queue.length; i++) { if (queue[i].bvid === bvid) { idx = i; break; } }
+      if (queue.length) {
+        var sent = window.__sessionSync.playOnRemote(queue, idx, 0);
+        if (sent) { sent.then(function (ok) { if (!ok) playStreamLocal(bvid, meta, btn); }); return; }
+      }
+    }
+    playStreamLocal(bvid, meta, btn);
+  };
+
+  function playStreamLocal(bvid, meta, btn) {
     ++queueGeneration; // A new trial selection cancels any pending album preparation.
     if (recAudio && recAudio.dataset.bvid === bvid) {
       if (recAudio.paused || recAudio.ended) {
+        pauseMainTracks();   // ← 让主音轨停：否则「主音轨那首 + 这条试听」两首一起放（用户报的 bug）
         recActive = true;
         document.body.classList.add("trial");
         syncTrialUI();
@@ -1487,12 +1790,13 @@
       } else {
         recAudio.pause();
         setRecBtn(btn, "▶ 试听");
+        reportTrial();
       }
       return;
     }
     if (recAudio) recAudio.pause();
     resetRecButtons();
-    try { audioA.pause(); audioB.pause(); } catch (e) {} // 主音轨让位（不动会话，主播放器随时可切回）
+    pauseMainTracks(); // 主音轨让位（主音轨那首随时可切回；试听态会如实上报会话）
     recAudio = new Audio("/api/stream/" + bvid);
     recAudio.dataset.bvid = bvid;
     recAudio.dataset.title = meta.title || "实时流试听";
@@ -1523,6 +1827,7 @@
       setPlayerToggle(false);
       document.body.classList.add("playing");
       syncTrialUI();
+      reportTrial();
       document.querySelectorAll(".trk-rec, .rec-card").forEach(function (row) {
         row.classList.toggle("playing", row.dataset.bvid === bvid);
       });
@@ -1539,6 +1844,7 @@
     recAudio.addEventListener("pause", function () {
       setPlayerToggle(true);
       if (audioA.paused && audioB.paused) document.body.classList.remove("playing");
+      reportTrial();
     });
     recAudio.play().catch(resetRecButtons);
     setRecBtn(btn, "⏳ 缓冲");

@@ -19,6 +19,7 @@ function setup(search) {
   const scope = { querySelectorAll: () => rows };
   const context = vm.createContext({
     window: {}, recActive: true, recAudio: {},
+    mirror: null,   // app.js 的镜像态开关（#29）；skip() 切片执行时需要这个初始值
     stopTrial() { throw new Error("Unexpected switch to library"); },
   });
   context.window.playStream = (bvid, meta) => { context.playing = { bvid, ...meta }; };

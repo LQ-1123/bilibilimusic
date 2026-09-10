@@ -366,6 +366,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 /* ---------- 播放胶囊 ---------- */
 #player-bar{position:absolute;left:calc(var(--side) + 24px);right:24px;bottom:18px;max-width:850px;margin-inline:auto;
   z-index:96;min-height:56px;border-radius:999px;display:grid;align-items:center;
+  touch-action:none;   /* #29：整条可拖（手机端上拖选设备 / 下拖回本机），拖动时页面不许跟着滚 */
   grid-template-columns:44px auto minmax(120px,1fr) auto 44px;gap:8px 14px;padding:6px 20px;
   border:1px solid var(--stroke);box-shadow:var(--shadow)}
 /* Shared translucent material; inset highlights stay clear of interactive content. */
@@ -579,51 +580,119 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
 .toast .h{color:var(--pink);font-size:15px}
 body.trial #seek,body.trial .p-time{visibility:hidden}
 
-/* ---------- 设备页（#26：跨端设备 + 局域网电脑端；session-sync.js 渲染到 #view-devices） ---------- */
-.dev-wrap{max-width:560px;margin:0 auto;padding:6px 24px 120px}   /* 底部让位悬浮播放条 */
-@media (max-width:900px){ .dev-wrap{padding:6px 18px calc(var(--nav-h, 84px) + 30px)} }   /* 手机让位底部 Tab 栏 */
-.dv-sec{margin:0 0 26px}
-.dv-title{font-size:11px;letter-spacing:.8px;color:var(--txt3);padding:0 2px 8px}
-.dv-empty{font-size:12.5px;color:var(--txt3);line-height:1.7;padding:14px 2px}
-.dv-note{font-size:12px;color:var(--txt3);line-height:1.6;padding:2px 2px 10px}
-.dv-note b{color:var(--txt2)}
-/* 在放卡片：封面 + 歌名 + 可点进度 + 遥控键 */
-.dv-now{display:flex;gap:14px;align-items:center;padding:14px;border-radius:16px;corner-shape:superellipse(2);
-  background:var(--card);border:1px solid var(--stroke)}
-.dv-cover{width:76px;height:76px;border-radius:10px;corner-shape:superellipse(2);object-fit:cover;flex:none;background:var(--raise)}
-.dv-cover.dv-nocov{display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--txt3)}
-.dv-main{flex:1;min-width:0}
-.dv-song{font-size:14.5px;font-weight:700;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dv-artist{font-size:12px;color:var(--txt3);margin:2px 0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dv-bar{height:5px;border-radius:3px;background:var(--stroke2);overflow:hidden;cursor:pointer}
-.dv-bar i{display:block;height:100%;background:var(--pink);border-radius:3px;transition:width .4s linear}
-.dv-times{display:flex;justify-content:space-between;font-size:10.5px;color:var(--txt3);font-variant-numeric:tabular-nums;margin:4px 0 2px}
-.dv-ctl{display:flex;align-items:center;justify-content:center;gap:26px;margin-top:2px}
-.dv-ctl button{width:36px;height:36px;border-radius:50%;font-size:15px;color:var(--txt2);background:none;border:none;cursor:pointer;transition:.15s}
-.dv-ctl button:hover{background:var(--raise);color:var(--txt)}
-.dv-ctl button.big{width:44px;height:44px;font-size:17px;color:var(--txt)}
-/* 串流主按钮 */
-.dv-stream{display:block;width:100%;margin-top:12px;height:38px;border-radius:999px;font-size:13px;font-weight:600;
-  color:#fff;background:var(--pink);border:none;cursor:pointer}
-.dv-stream:hover{filter:brightness(1.06)}
-/* 设备行 */
-.dv-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;corner-shape:superellipse(2);
-  font-size:12.5px;color:var(--txt2)}
-.dv-row.me{color:var(--txt)}
-.dv-row.off{opacity:.45}
-.dv-row .dot{width:7px;height:7px;border-radius:50%;background:var(--txt3);flex:none}
-.dv-row .dot.on{background:var(--pink)}
-.dv-row .nm{flex:none;font-weight:600;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dv-row .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt3);font-variant-numeric:tabular-nums}
-.dv-row.lan .nm{flex:1;max-width:none}
-.dv-link{flex:none;height:26px;padding:0 14px;border-radius:999px;font-size:11.5px;font-weight:600;
-  color:var(--pink);background:none;border:1px solid var(--pink);cursor:pointer;transition:.15s}
-.dv-link:hover{color:#fff;background:var(--pink)}
-/* 次要动作：幽灵按钮 */
-.dv-scan{display:block;width:100%;margin-top:10px;height:30px;border-radius:999px;font-size:11.5px;
-  color:var(--txt2);background:transparent;border:1px solid var(--stroke);cursor:pointer}
-.dv-scan:hover{color:var(--txt);border-color:var(--txt3)}
-.dv-scan[disabled]{opacity:.5;cursor:default}
+/* ---------- 设备抽屉（#27：播放条上一枚图标 → 贴条抽屉；设备列表/推送/遥控/远端音量/局域网） ---------- */
+/* ---------- #29 串流浮层：长按播放条中键弹出，手指滑到哪台设备、松手就串流到哪台 ---------- */
+#dev-pick{position:fixed;inset:0;z-index:120}
+#dev-pick[hidden]{display:none}
+/* 极淡的遮罩：只为接住「点空白关闭」，不再整屏压暗（旧抽屉那层灰玻璃观感太重） */
+.dp-scrim{position:absolute;inset:0;background:rgba(0,0,0,.10)}
+.dp-panel{position:absolute;left:var(--dp-left,50%);transform:translateX(-50%);bottom:var(--dp-bottom,96px);
+  width:min(320px,calc(100vw - 28px));padding:12px 12px 10px;border-radius:22px;corner-shape:superellipse(2);
+  background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);
+  border:1px solid var(--stroke);box-shadow:var(--shadow);touch-action:none;
+  /* #29：浮层「从播放键的位置冒出来」——横向锚在播放键、纵向贴着它上沿，缩放原点也落在播放键那一侧 */
+  transform-origin:var(--dp-origin-x,50%) 100%;
+  animation:dpIn .18s cubic-bezier(.3,.85,.3,1)}
+@keyframes dpIn{from{opacity:.3;transform:translateX(-50%) translateY(10px) scale(.97)}to{opacity:1;transform:translateX(-50%)}}
+@media (prefers-reduced-motion: reduce){ .dp-panel{animation:none} }
+.dp-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:2px 6px 9px}
+.dp-title{font-size:12px;font-weight:800;letter-spacing:.5px;color:var(--txt2)}
+.dp-hint{font-size:10.5px;font-style:normal;color:var(--txt3)}
+.dp-body{display:flex;flex-direction:column;gap:2px;max-height:min(50vh,380px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain}
+/* 设备行：整行是滑动手势的落点，选中态＝粉色实底（跟手高亮） */
+.dp-row{display:flex;align-items:center;gap:10px;width:100%;height:46px;padding:0 12px;border-radius:14px;
+  background:none;border:none;color:var(--txt2);font-family:inherit;font-size:13px;text-align:left;cursor:pointer;
+  transition:background .14s,color .14s,transform .14s}
+.dp-row .dot{width:7px;height:7px;border-radius:50%;background:var(--txt3);flex:none;transition:.14s}
+.dp-row .dot.on{background:var(--pink)}
+.dp-row .nm{font-weight:600;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-row .st{margin-left:auto;flex:none;font-size:11.5px;color:var(--txt3);font-variant-numeric:tabular-nums}
+.dp-row.cur{color:var(--txt)}
+.dp-row.me .nm{color:var(--txt)}
+.dp-row.off{opacity:.45}
+.dp-row.hi,.dp-row:active{background:var(--pink);color:#fff;transform:scale(1.02)}
+.dp-row.hi .nm,.dp-row:active .nm,.dp-row.hi .st,.dp-row:active .st{color:#fff}
+.dp-row.hi .dot,.dp-row:active .dot{background:#fff}
+.dp-sep{height:1px;background:var(--stroke);margin:9px 6px 7px;flex:none}
+/* 远端音量（手机端唯一的「调对面音量」入口；桌面播放条上另有竖条） */
+.dp-volrow{display:flex;align-items:center;gap:10px;padding:0 8px 4px}
+.dp-volrow .lb{flex:none;max-width:52%;font-size:11.5px;color:var(--txt3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-volrow input[type=range]{flex:1;min-width:0;height:22px;accent-color:var(--pink)}
+/* 局域网连接状态（Android）：一行说明 + 一个切换动作，不再是「必须先点连接」的大按钮 */
+.dp-status{display:flex;align-items:center;gap:8px;padding:2px 8px 2px;font-size:11.5px;color:var(--txt3);line-height:1.5}
+.dp-status .txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-status button{flex:none;height:26px;padding:0 12px;border-radius:999px;font-size:11.5px;font-weight:600;
+  color:var(--pink);background:none;border:1px solid var(--stroke);cursor:pointer;font-family:inherit;transition:.15s}
+.dp-status button:hover{color:#fff;background:var(--pink);border-color:var(--pink)}
+/* #29 手机端：把播放条往上拖 → 条子缩成一颗小球、**就落在手指按下的位置**（不做位移过渡，避免「球从旁边飘过来」），
+   整屏背景糊掉，设备以圆球排在页面中央；松手落在哪颗球上就串到哪台 */
+#player-bar.dragging{width:62px;height:62px;min-height:0;padding:0;border-radius:50%;
+  transform:translate(var(--drag-x,0px),var(--drag-y,0px));pointer-events:none;z-index:130;
+  box-shadow:0 18px 42px rgba(0,0,0,.32);transition:none;animation:puckIn .18s ease-out}
+#player-bar.dragging>*:not(#puck-title){opacity:0}
+#player-bar.dragging::after{content:"";position:absolute;inset:15px;border-radius:50%;
+  background:var(--pink);box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+@keyframes puckIn{from{scale:.4;opacity:.5}to{scale:1;opacity:1}}
+#puck-title{display:none}
+#player-bar.dragging #puck-title{display:block;position:absolute;left:50%;top:calc(100% + 8px);transform:translateX(-50%);
+  max-width:64vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-style:normal;font-size:12px;font-weight:800;
+  padding:5px 11px;border-radius:999px;color:#fff;background:rgba(20,20,24,.72);box-shadow:0 8px 20px rgba(0,0,0,.24)}
+/* 往下拉＝回到本机播放：条子被拉下来一点 + 一颗提示胶囊 */
+#player-bar.want-local{transform:translateY(var(--drag-down,0px))}
+#player-bar.want-local::after{content:"松手回到本机播放";position:absolute;left:50%;top:-30px;transform:translateX(-50%);
+  white-space:nowrap;font-size:11.5px;font-weight:700;padding:6px 12px;border-radius:999px;color:#fff;background:var(--pink);
+  box-shadow:0 8px 20px rgba(0,0,0,.22)}
+/* #29 第二轮：串流中（镜像态）的播放条＝粉色光晕溜边，一眼区分「这是别人的播放 / 我在遥控」。
+   光点用 @property 角度做 conic 旋转；不支持 @property 的引擎降级为静止的粉边（依旧一眼可辨）。 */
+@property --bmrim{syntax:"<angle>";inherits:false;initial-value:0deg}
+#player-bar.mirror{border-color:rgba(251,114,153,.55);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.32),inset 0 -1px 1px rgba(255,255,255,.09),
+    0 0 18px rgba(251,114,153,.34),0 0 42px rgba(251,114,153,.16),0 8px 28px rgba(0,0,0,.2)}
+#player-bar.mirror::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1.6px;
+  pointer-events:none;z-index:1;
+  background:conic-gradient(from var(--bmrim,0deg),rgba(251,114,153,0) 0deg,rgba(255,190,214,.95) 62deg,
+    rgba(251,114,153,.9) 96deg,rgba(251,114,153,0) 168deg,rgba(251,114,153,0) 360deg);
+  -webkit-mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000,#000) content-box,linear-gradient(#000,#000);mask-composite:exclude;
+  animation:bmRimRun 3.4s linear infinite}
+html[data-theme="light"] #player-bar.mirror{border-color:rgba(240,80,127,.5);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.6),0 0 18px rgba(240,80,127,.3),0 0 40px rgba(240,80,127,.14),0 8px 24px rgba(0,0,0,.12)}
+@keyframes bmRimRun{to{--bmrim:360deg}}
+@media (prefers-reduced-motion:reduce){
+  #player-bar.mirror::before{animation:none;
+    background:linear-gradient(115deg,rgba(251,114,153,0),rgba(255,190,214,.9),rgba(251,114,153,.85),rgba(251,114,153,0))}}
+/* 串流中把条子缩成小球时，光晕收成球边一圈（别出现方形边） */
+#player-bar.mirror.dragging::before{border-radius:50%}
+
+/* 拖动选设备时遮罩加重并糊掉背景（静止打开时仍是很淡的一层） */
+#dev-pick.blur .dp-scrim{background:rgba(0,0,0,.22);backdrop-filter:blur(18px) saturate(1.15);-webkit-backdrop-filter:blur(18px) saturate(1.15)}
+/* 手机端球阵：不要卡片，球排在页面正中（用户口径：只要两个球在中央，不是列表） */
+#dev-pick.balls .dp-panel{position:absolute;inset:0;left:0;width:auto;padding:0;border:0;border-radius:0;background:none;
+  box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;transform:none;animation:none;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+#dev-pick.balls .dp-head{display:none}
+.dp-balls{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:34px 38px;max-width:100%}
+.dp-ball{display:flex;flex-direction:column;align-items:center;gap:7px;background:none;border:0;padding:0;font-family:inherit;
+  color:var(--txt);cursor:pointer;transition:.15s}
+.dp-ball .bc{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;color:var(--txt2);
+  background:color-mix(in srgb,var(--glass-strong) 62%,transparent);backdrop-filter:blur(16px) saturate(1.4);
+  -webkit-backdrop-filter:blur(16px) saturate(1.4);border:1.5px solid var(--stroke);box-shadow:var(--shadow);transition:.15s}
+.dp-ball .bc svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.9}
+.dp-ball .bn{font-size:13.5px;font-weight:700;max-width:132px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dp-ball .bs{font-size:11px;color:var(--txt3)}
+.dp-ball.cur .bc{border-color:var(--pink);color:var(--pink);box-shadow:0 0 0 3px color-mix(in srgb,var(--pink) 22%,transparent),var(--shadow)}
+.dp-ball.cur .bs{color:var(--pink);font-weight:700}
+.dp-ball.off{opacity:.5}
+.dp-ball.hi,.dp-ball:active{transform:scale(1.06)}
+.dp-ball.hi .bc,.dp-ball:active .bc{background:var(--pink);border-color:var(--pink);color:#fff}
+.dp-ball.hi .bn,.dp-ball.hi .bs{color:var(--pink)}
+.dp-empty{text-align:center;font-size:13px;line-height:1.9;color:var(--txt2)}
+.dp-empty em{font-style:normal;font-size:11.5px;color:var(--txt3)}
+#dev-pick.balls .dp-body{display:flex;flex-direction:column;align-items:center;gap:18px;max-height:none;overflow:visible}
+.dp-low{display:flex;flex-direction:column;align-items:center;gap:10px;width:min(340px,86vw)}
+.dp-low .dp-volrow{width:100%}
+.dp-low .dp-status{padding:0 4px;justify-content:center}
+.dp-low .dp-status .txt{flex:none;max-width:70%;text-align:center}
 #queue-panel{position:absolute;top:14px;right:14px;bottom:100px;width:min(344px,calc(100vw - 28px));z-index:90;border-radius:18px; /* 高于歌词面板(80)，否则从歌词页点播放列表会被盖住 */
   background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
@@ -831,7 +900,7 @@ body.playing #up-panel .i-pause{display:block}
 /* UP 名可点（曲目行/歌词页/播放条） */
 .trk .t2{cursor:pointer;width:fit-content;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} /* 点击判定收缩到文字实际宽度 */
 .trk .t2:hover{color:var(--pink-txt)}
-#lyrics-artist,#player-artist{cursor:pointer}
+#lyrics-artist,#player-artist{cursor:pointer;width:fit-content;max-width:100%} /* #29：判定范围收成文字宽度，右侧空白不再可点 */
 #lyrics-artist:hover,#player-artist:hover{color:var(--pink-txt)}
 
 /* ---------- 界面切换过渡 ----------
@@ -1022,7 +1091,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
      否则在手机上结果列表会被键盘盖住。
      宽度与上方播放条完全对齐（同一条公式 + 居中），手机端搜索框与播放条左右齐平（#39） */
   .topbar.searching{display:flex;position:fixed;left:12px;right:12px;margin-inline:auto;
-    width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
+    width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
     max-width:calc(100% - 24px);
     bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--kb, 0px));top:auto;z-index:130;
     border-width:1px;border-style:solid;border-radius:999px;padding:8px 10px;gap:8px;
@@ -1043,7 +1112,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   /* 结果面板从胶囊上方展开（导航条高 66px + 底距 14px + 8px 间隙）。
      max-height 里再减去 --kb：键盘弹起时面板同样收窄，保证整块都在键盘之上 */
   .search-drop{top:auto;left:12px;right:12px;margin-inline:auto;
-    width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
+    width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
     max-width:calc(100% - 24px);
     bottom:calc(88px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--kb, 0px));
     /* 面板高度预算里给「播放条(66) + 两个 10px 间隙 + 顶部留白」留位置：
@@ -1067,7 +1136,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
      进度条、上一首、收藏/歌词/队列都不显示（歌词仍可点封面打开） */
   #player-bar{left:12px;right:12px;bottom:calc(96px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));
     /* 与下方悬浮组同宽同高（导航条 + 间距 + 圆钮），居中 */
-    width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
+    width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
     max-width:calc(100% - 24px);min-height:var(--nav-h);
     grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"meta ctl";padding:8px 14px;gap:10px;
     transition:bottom .26s cubic-bezier(.3,.85,.3,1)}  /* 搜索时被顶到结果面板之上，动起来别跳 */
@@ -1077,6 +1146,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #player-bar .p-ctl button{width:32px;height:32px;font-size:14px}
   #player-bar .p-ctl .big{width:42px;height:42px;font-size:15px}
   #player-bar .p-ctl #btn-prev{display:none}
+  #player-bar .p-ctl #btn-device{display:none} /* #29：手机端用手势（长按中键 / 上拖播放条），不留图标 */
   #player-bar .p-acts{display:none}
   .volhost{display:none}
   #player-cover{width:44px;height:44px;border-radius:12px}
@@ -1143,7 +1213,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .hs-txt{flex:1;min-width:0}
   .hs-txt b{display:block;font-size:21px;font-weight:800;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .hs-txt span{display:block;font-size:14px;color:var(--txt2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  #ly-artist-big{cursor:pointer} /* #38：播放页点 UP 名进 UP 主页 */
+  #ly-artist-big{display:inline-block;max-width:100%;cursor:pointer} /* #38：播放页点 UP 名进 UP 主页；#29：不再整行可点 */
   #ly-artist-big:active{color:var(--pink-txt)}
   #ly-bubble,#ly-queue{display:grid;place-items:center;flex:none;width:52px;height:52px;color:var(--txt2);transition:.15s}
   #ly-bubble svg,#ly-queue svg{width:28px;height:28px;display:block}
@@ -1201,11 +1271,13 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .dt-title{font-size:24px}
   .dt-info{flex-basis:100%}
   /* 底部悬浮组的公共尺寸：导航条与上方播放条共用，保证两条宽度/高度相当 */
-  body{--nav-pad:6px;--nav-tabw:63px;--nav-gap:10px;--nav-orb:64px;--nav-h:66px}
+  body{--nav-pad:6px;--nav-tabw:84px;--nav-gap:10px;--nav-orb:64px;--nav-h:66px}
   #m-dock{display:flex;align-items:center;justify-content:center;gap:var(--nav-gap);position:absolute;left:12px;right:12px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));z-index:65}
   /* 导航条：只包住内容（不再撑满屏宽），更高更「胖」；--nav-pad 是选中块四周留白，
      nav-liquid.js 会读同一个变量来算位移，改这里就能整体缩放留白 */
-  .m-tabs{--nav-pad:6px;--nav-tabw:63px;flex:none;width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px);max-width:100%;height:var(--nav-h);border-radius:999px;
+  /* #29：导航条尺寸只认 body 上的 --nav-*（此前这里又写死了一份 84px，窄屏 ≤370px 的响应式收窄被盖掉，
+     播放条与「导航条 + 搜索圆钮」宽度就对不齐了）。 */
+  .m-tabs{flex:none;width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px);max-width:100%;height:var(--nav-h);border-radius:999px;
     display:flex;align-items:center;position:relative;isolation:isolate;
     border-width:1px;border-style:solid;padding:var(--nav-pad);box-sizing:border-box;touch-action:pan-y}
   /* 选中块（液态玻璃）：位置与形变由 nav-liquid.js 写入
@@ -1223,8 +1295,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
     transform:translate3d(var(--pill-x,0px),0,0) scale(var(--pill-sx,1),var(--pill-sy,1))}
   .m-tabs:not(.liquid)::before{transform:translateX(0);transition:transform .55s cubic-bezier(.22,1.28,.36,1)}
   .m-tabs:not(.liquid):has([data-mtab="library"].on)::before{transform:translateX(100%)}
-  .m-tabs:not(.liquid):has([data-mtab="devices"].on)::before{transform:translateX(200%)}
-  .m-tabs:not(.liquid):has([data-mtab="account"].on)::before{transform:translateX(300%)}
+  .m-tabs:not(.liquid):has([data-mtab="account"].on)::before{transform:translateX(200%)}
   .m-tab{flex:0 0 var(--nav-tabw);min-width:0;height:52px;margin:0;display:flex;justify-content:center;flex-direction:column;align-items:center;gap:4px;
     color:var(--txt);font-size:10px;font-weight:700;padding:0;border-radius:999px;letter-spacing:0;
     transition:color .22s,transform .3s cubic-bezier(.22,1.28,.36,1);background:none;border:none;-webkit-tap-highlight-color:transparent}

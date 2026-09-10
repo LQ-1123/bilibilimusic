@@ -73,11 +73,25 @@ discovery_router = APIRouter(prefix="/api/discovery", dependencies=[Depends(_req
 @discovery_router.get("/ping")
 def discovery_ping(request: Request) -> dict:
     store: CookieStore = request.state.cookies
+    mid = store.get("mid") or ""
+    busy = False
+    if mid:
+        snap = session_bus.snapshot(str(mid))
+        busy = bool((snap.get("session") or {}).get("playing"))
     return {
         "app": "bilimusic",
         "name": platform.node() or "BiliMusic",
         "loggedIn": bool(store.logged_in),
+        # #29：手机端自动连接用——busy 让「正在放歌的那台」优先被选中；
+        # account 是与 Android 侧 BackendDiscovery.accountHash 同口径的账号指纹
+        # （sha256("bilimusic-lan:" + mid) 前 6 字节 hex），不传明文 mid。
+        "busy": busy,
+        "account": _account_hash(str(mid)) if mid else "",
     }
+
+
+def _account_hash(mid: str) -> str:
+    return hashlib.sha256(("bilimusic-lan:" + mid).encode("utf-8")).hexdigest()[:12]
 
 STATUS_LABELS = {
     "pending": "排队中",
@@ -648,6 +662,7 @@ class SessionReport(BaseModel):
     index: int = Field(default=0, ge=0)
     position: float = Field(default=0.0, ge=0)
     playing: bool = False
+    volume: int = Field(default=100, ge=0, le=100)   # 本机音量：其他设备据此显示/改写
     repeat: str = Field(default="off", max_length=8)
     shuffle: bool = False
 

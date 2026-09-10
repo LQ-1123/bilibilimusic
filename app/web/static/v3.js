@@ -56,13 +56,6 @@
       document.body.classList.remove("in-detail");
       if (window.switchView) switchView("up");
       if (mainEl) mainEl.scrollTop = 0;
-    } else if (nav === "devices") {
-      collapseOverlays();
-      $("app").dataset.view = "devices";
-      document.body.classList.remove("in-detail");
-      if (window.switchView) switchView("devices");
-      if (window.__sessionSync) window.__sessionSync.renderPage();   // #26：进来立即渲染，不等 1s tick
-      if (mainEl) mainEl.scrollTop = 0;
     } else {
       return; // 未接行为的导航项
     }
@@ -829,6 +822,11 @@
     }, true);
     // 歌词页 / 播放条的 UP 名点击
     function upFromPlayer() {
+      // #29 第二轮：串流态播放条上写的是「远端那首」的作者 → 点开也得是那首的 up 主页
+      if (window.BiliBarMirror && BiliBarMirror.isOn && BiliBarMirror.isOn()) {
+        var ms = BiliBarMirror.song ? BiliBarMirror.song() : null;
+        if (ms && ms.bvid) { openUp(ms.bvid); return; }
+      }
       var t = window.BiliPlayer && BiliPlayer.trialInfo ? BiliPlayer.trialInfo() : null;
       var s = window.BiliPlayer && BiliPlayer.currentSong ? BiliPlayer.currentSong() : null;
       var bvid = t ? t.bvid : (s ? s.bvid : null);
@@ -1286,6 +1284,12 @@
     syncFill(vol); syncFill(lyVol);
     if (lyVol) syncLy(vol.value / 100);
     vol.addEventListener("input", function () {
+      // #27 镜像态：这条音量条 = 在放的那台设备的音量（不是本机的）
+      if (window.BiliBarMirror && BiliBarMirror.isOn()) {
+        syncFill(vol);
+        if (window.__sessionSync) window.__sessionSync.setRemoteVolume(Number(vol.value));
+        return;
+      }
       var v = vol.value / 100;
       apply(v);
       syncLy(v);
@@ -1342,6 +1346,7 @@
 
     setInterval(function () {
       if (!panelOpen()) return;
+      if (remote()) return;   // 串流态：进度由远端会话驱动（app.js 的镜像绘制负责），别读本机 audio
       var m = BiliPlayer.activeMedia();
       if (!m || !m.duration || !isFinite(m.duration)) return;
       if (!dragging) {
@@ -1357,24 +1362,44 @@
     }
     seekEl.addEventListener("input", function () {
       dragging = true;
+      window.__lySeekDragging = true;   // app.js 镜像绘制据此别抢滑条
       syncFill();
       var m = BiliPlayer.activeMedia();
       if (m && m.duration) $("ly-cur").textContent = fmtTime((seekEl.value / 1000) * m.duration);
     });
     seekEl.addEventListener("change", function () {
-      var m = BiliPlayer.activeMedia();
-      if (m && m.duration) {
-        try { m.currentTime = (seekEl.value / 1000) * m.duration; } catch (e) {}
+      if (remote()) {   // 串流态：拖的是远端的进度
+        var lv = BiliBarMirror && BiliBarMirror.live ? BiliBarMirror.live() : null;
+        if (lv && lv.duration && window.__sessionSync) {
+          window.__sessionSync.remoteSeek((seekEl.value / 1000) * lv.duration);
+        }
+      } else {
+        var m = BiliPlayer.activeMedia();
+        if (m && m.duration) {
+          try { m.currentTime = (seekEl.value / 1000) * m.duration; } catch (e) {}
+        }
       }
       syncFill();
       dragging = false;
+      window.__lySeekDragging = false;
     });
+    // #29 第二轮：串流态下详情页的控制条＝遥控「在放的那台」（本机不出声、不改本机状态）
+    var remote = function () { return window.BiliBarMirror && BiliBarMirror.isOn && BiliBarMirror.isOn(); };
     var lt = $("ly-toggle");
-    if (lt) lt.addEventListener("click", function () { BiliPlayer.toggle(); });
+    if (lt) lt.addEventListener("click", function () {
+      if (remote() && window.__sessionSync) { window.__sessionSync.barAction(); return; }
+      BiliPlayer.toggle();
+    });
     var lp = $("ly-prev");
-    if (lp) lp.addEventListener("click", function () { BiliPlayer.skip(-1); });
+    if (lp) lp.addEventListener("click", function () {
+      if (remote() && window.__sessionSync) { window.__sessionSync.remoteCommand("prev"); return; }
+      BiliPlayer.skip(-1);
+    });
     var ln = $("ly-next");
-    if (ln) ln.addEventListener("click", function () { BiliPlayer.skip(1); });
+    if (ln) ln.addEventListener("click", function () {
+      if (remote() && window.__sessionSync) { window.__sessionSync.remoteCommand("next"); return; }
+      BiliPlayer.skip(1);
+    });
 
     // 播放模式钮：顺序 → 列表循环 → 随机 循环切换（引擎行为见 app.js playMode()）
     var MODES = [
@@ -1757,15 +1782,6 @@
     });
     // Tab 切换不压栈且清空已压栈（#1）；任何 Tab 都先退出详情态（#17：原来到不了曲库的根因）
     if (name === "library") { window.openLibraryTab(); return; } // #34：资料库有自己的视图
-    if (name === "devices") {                                    // #26：设备页（遥控/串流/局域网电脑端）
-      collapseOverlays();
-      document.body.classList.remove("in-detail");
-      $("app").dataset.view = "devices";
-      if (window.switchView) switchView("devices");
-      if (window.__sessionSync) window.__sessionSync.renderPage();
-      if (mainEl) mainEl.scrollTop = 0;
-      return;
-    }
     goHome();
     if (mainEl) mainEl.scrollTop = 0;
   };

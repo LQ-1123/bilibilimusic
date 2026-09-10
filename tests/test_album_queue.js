@@ -18,6 +18,7 @@ function harness(pages) {
     planChain() { context.chainOrder = context.playlist.map(song => song.id); },
     playSong(song) {context.current = context.playlist.findIndex(item => item.id === song.id); played.push(song.id); context.planChain();},
     stopTrial() {}, smartEnabled: () => false,
+    mirror: null,   // app.js 的镜像态开关（#29）；skip() 切片执行时需要这个初始值
   });
   vm.runInContext(source.slice(source.indexOf('  function orderedAlbumSongs('), source.indexOf('  function playSong(song)')), context);
   vm.runInContext(source.slice(source.indexOf('  function playMode()'), source.indexOf('  // ---------- 会话记忆')), context);

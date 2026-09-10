@@ -42,6 +42,10 @@ public class MainActivity extends Activity {
     private static WebView activeWeb;
     /** #25 反向分享：系统分享面板送来的文本，等页面就绪后再喂给前端。 */
     private String pendingShare;
+    /** #29 自动连接：扫描去重、看门狗、连续探测失败计数。 */
+    private volatile boolean autoScanning;
+    private android.os.Handler watch;
+    private int watchMiss;
 
     private android.content.SharedPreferences prefs() {
         return getSharedPreferences("bm", MODE_PRIVATE);
@@ -104,7 +108,12 @@ public class MainActivity extends Activity {
                     Thread.sleep(500);
                 }
                 if (!ready) throw new Exception("Local backend startup timed out");
-                runOnUiThread(() -> { if (!isFinishing() && !isDestroyed()) showPlayer(); });
+                runOnUiThread(() -> {
+                    if (!isFinishing() && !isDestroyed()) {
+                        showPlayer();
+                        startServerWatch();   // #29：连着电脑端时探活，断了自动回落本机
+                    }
+                });
             } catch (Exception error) {
                 android.util.Log.e("BiliMusic", "Startup failed", error);
                 runOnUiThread(() -> { if (!isFinishing()) statusText.setText("启动失败 / Startup failed\n" + error.getMessage()); });
@@ -179,11 +188,35 @@ public class MainActivity extends Activity {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) {}
                 });
             }
-            /** #26：异步扫局域网 /24 网段的约定端口，结果经 window.__bmBackendsFound 推回页面。 */
-            @JavascriptInterface public void scanBackends() {
-                new Thread(() -> nativeScan(), "backend-scan").start();
+            /** #29：自动发现并连接「同一账号」的电脑后端（页面启动/回前台时调用，不再要求用户点连接）。 */
+            @JavascriptInterface public void autoConnect(String mid) {
+                if (mid == null || mid.isEmpty() || autoScanning) return;
+                if (!prefs().getBoolean("autoConnect", true)) {
+                    pushAutoState(false, false, "", "自动连接已关闭");
+                    return;
+                }
+                if (prefs().contains("server")) return;      // 已经连在电脑端上
+                autoScanning = true;
+                String want = BackendDiscovery.accountHash(mid);
+                new Thread(() -> {
+                    java.util.List<BackendDiscovery.Backend> found = BackendDiscovery.scan(want);
+                    autoScanning = false;
+                    if (found.isEmpty()) {
+                        pushAutoState(true, false, "", "没找到同一账号的电脑端");
+                        return;
+                    }
+                    BackendDiscovery.Backend best = found.get(0);
+                    for (BackendDiscovery.Backend b : found) { if (b.busy) { best = b; break; } }  // 有人在放的那台优先
+                    connectTo(best, true);
+                }, "backend-auto").start();
             }
-            /** #26：连接到扫到的电脑后端（校验确为 BiliMusic 再切，防止填错地址白屏）。 */
+            /** #29：浮层里的「关闭 / 开启自动连接」。 */
+            @JavascriptInterface public void setAutoConnect(boolean on) {
+                prefs().edit().putBoolean("autoConnect", on).apply();
+                pushAutoState(on, prefs().contains("server"), "",
+                    on ? "正在自动查找同一账号的电脑端…" : "自动连接已关闭");
+            }
+            /** #26（沿用）：连接到指定的电脑后端（校验确为 BiliMusic 再切，防止填错地址白屏）。 */
             @JavascriptInterface public void connectBackend(String url) {
                 if (url == null || !url.startsWith("http://")) { toast("地址无效"); return; }
                 new Thread(() -> {
@@ -251,23 +284,50 @@ public class MainActivity extends Activity {
         };
     }
 
-    /** #26：执行扫描并把结果推给当前页面（后台线程调用）。 */
-    private void nativeScan() {
-        org.json.JSONArray arr = new org.json.JSONArray();
-        for (BackendDiscovery.Backend b : BackendDiscovery.scan()) {
-            try {
-                arr.put(new org.json.JSONObject()
-                    .put("url", b.url).put("name", b.name).put("loggedIn", b.loggedIn));
-            } catch (Exception ignored) {}
-        }
-        pushBackends(arr.toString());
+    /** #29：切到电脑后端（自动发现/手动共用）。 */
+    private void connectTo(BackendDiscovery.Backend b, boolean auto) {
+        prefs().edit().putString("server", b.url).apply();
+        runOnUiThread(() -> {
+            pageOrigin = b.url;
+            if (web != null) web.loadUrl(b.url);
+            toast(auto ? "已自动连接到「" + b.name + "」" : "已连接到「" + b.name + "」");
+        });
+        pushAutoState(true, true, b.name, "已连接 " + b.name);
     }
 
-    /** #26：把扫描结果推给页面（session-sync.js 的 __bmBackendsFound 接住并渲染）。 */
-    private void pushBackends(String jsonArray) {
-        if (web == null) return;
-        web.post(() -> web.evaluateJavascript(
-            "window.__bmBackendsFound&&window.__bmBackendsFound(" + jsonArray + ")", null));
+    /** #29：把自动连接状态推给页面（session-sync.js 的 __bmAutoState 接住并渲染进浮层）。 */
+    private void pushAutoState(boolean enabled, boolean connected, String name, String msg) {
+        WebView view = web;
+        if (view == null) return;
+        String js = "window.__bmAutoState&&window.__bmAutoState({enabled:" + enabled +
+            ",connected:" + connected + ",name:" + org.json.JSONObject.quote(name == null ? "" : name) +
+            ",msg:" + org.json.JSONObject.quote(msg == null ? "" : msg) + "})";
+        view.post(() -> view.evaluateJavascript(js, null));
+    }
+
+    /** #29：连着电脑端时每 12 秒探一次活，连续 3 次探不到就掉回手机本机（别把用户卡在打不开的页面）。 */
+    private void startServerWatch() {
+        watch = new android.os.Handler(android.os.Looper.getMainLooper());
+        watch.postDelayed(new Runnable() {
+            @Override public void run() {
+                String saved = prefs().getString("server", null);
+                if (saved != null) {
+                    new Thread(() -> {
+                        boolean ok = BackendDiscovery.alive(saved);
+                        runOnUiThread(() -> {
+                            if (ok) { watchMiss = 0; return; }
+                            if (++watchMiss < 3) return;
+                            watchMiss = 0;
+                            prefs().edit().remove("server").apply();
+                            pageOrigin = origin;
+                            toast("电脑端已断开，已回到本机");
+                            if (web != null) web.loadUrl(origin);
+                        });
+                    }, "server-watch").start();
+                }
+                watch.postDelayed(this, 12000);
+            }
+        }, 12000);
     }
 
     /** #25 反向分享：取出 ACTION_SEND 的文本（B 站分享文本把链接放在正文里）。 */
@@ -394,11 +454,9 @@ public class MainActivity extends Activity {
                         // 页面导航会清掉内联样式：就绪后按当前 insets 重推 CSS 变量
                         pushInsets(insTop, insBottom, insLeft, insRight);
                         flushShare();  // #25：冷启动带进来的分享文本，页面就绪后再交前端
-                        // #26：手机本机模式下页面每次就绪都自动扫一次局域网电脑端（1~2s 后台线程，
-                        // 结果只出现在设备面板；断开回本机后也会自动重扫，列表不用手动刷新）
-                        if (pageOrigin == null || pageOrigin.equals(origin)) {
-                            new Thread(() -> nativeScan(), "backend-autoscan").start();
-                        }
+                        // #29：局域网自动发现改由页面前端驱动（session-sync.js 就绪 1.5s 后调
+                        // BiliMusicNative.autoConnect(mid)，此后每 20s / 回前台再补扫）——那里拿得到
+                        // 当前登录 mid，能只连「同一账号」的电脑端，这里不再重复扫描。
                     }
                 });
             }

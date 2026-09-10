@@ -3,11 +3,11 @@ import socket
 import types
 
 from app import embedded
-from app.api.routes import discovery_ping
+from app.api.routes import _account_hash, discovery_ping
 
 
-def _req(logged_in=True):
-    cookies = types.SimpleNamespace(logged_in=logged_in)
+def _req(logged_in=True, mid=None):
+    cookies = types.SimpleNamespace(logged_in=logged_in, get=lambda key: mid if key == "mid" else None)
     return types.SimpleNamespace(state=types.SimpleNamespace(cookies=cookies))
 
 
@@ -16,6 +16,23 @@ def test_ping_identifies_app_and_login_state():
     assert out["app"] == "bilimusic"
     assert out["loggedIn"] is True and out["name"]
     assert discovery_ping(_req(logged_in=False))["loggedIn"] is False
+
+
+def test_ping_reports_busy_and_account_hash(monkeypatch):
+    """#29：自动连接靠 account 指纹认亲、靠 busy 优先连「正在放歌的那台」。"""
+    from app.api import routes
+
+    monkeypatch.setattr(routes.session_bus, "snapshot",
+                        lambda mid: {"session": {"playing": True}})
+    out = discovery_ping(_req(mid="12345"))
+    assert out["busy"] is True
+    assert out["account"] == _account_hash("12345")
+    assert len(out["account"]) == 12 and out["account"] != "12345"
+
+
+def test_ping_offline_when_not_logged_in():
+    out = discovery_ping(_req(logged_in=False, mid=None))
+    assert out["busy"] is False and out["account"] == ""
 
 
 def test_ping_router_has_no_login_gate():
