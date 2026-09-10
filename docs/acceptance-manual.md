@@ -301,6 +301,7 @@
 | 09-10 | BUG-020 播放条星串台 | 无头 Chrome + CDP（1440） | ✅ | 同 bvid 不同分集：未收藏分集星不亮、已收藏分集星亮；点星发 POST /api/songs/{id}/collect 且状态即时正确；（测试误删的专辑已重新导入复原：60 分 P、277 行、19 收藏） |
 | 09-10 | BUG-021 真机播放卡顿 | 单测 + 无头 Chrome/CDP（Android 待打包） | ✅ 部分 | /api/stream 换源重试 5 例单测；前端停顿自愈四项实测通过（3s 重开/冷却/健康不动/暂停不动）；Android WakeLock+WifiLock 已写码，待重新打包真机验证 |
 | 09-10 | #23 跨端会话 Phase 1 | 单测 + 双浏览器端到端（CDP） | ✅ | A 在播 → B 打开即见「Mac · 正在播放 · 歌名 · 0:45」；A 推进到 88s，B 不刷新自动变 1:28（SSE）；B 点「继续」→ 本机接管同一首歌与进度；B 起播后会话切到 B、A 收到抢占提示；单测 12 例 + 回归 181 passed / 2 skipped |
+| 09-10 | #23 跨端会话 Phase 2 | 无头 Chrome + CDP（双设备真跑） | ✅ | 控制器态显示远端歌名/进度/三键；B 点暂停 → A 执行；移交：A 现报 42.5s → B prepare/claim → 会话切到 B 且位置=42.5、A 淡出并提示；失败回滚：不 claim、发送端继续播、出现「点一下继续播放」且点击后接管成功 |
 **进度汇总**：通过 27 / 27 组——**v0.4.0 验收闭环（2026-09-09 真机抽查全过，无新增待修项）**。遗留仅剩增量项：#3 深段（Media3 迁移，按需）· #14 series 二期（下一大项，见 next-steps §2）。
 
 > **模拟器验收环境（2026-09-08 搭建）**：Android Studio SDK + `emulator` 包 + `system-images;android-35;default;arm64-v8a`，AVD 名 `BM35`（Pixel 6，三键导航）。项目侧需：`android/local.properties`（sdk.dir）、Gradle wrapper 8.11.1、`brew install python@3.11`（Chaquopy buildPython，构建时 PATH 前置）、`PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。种子数据：`adb push` 曲库 DB/cookies/active_mid 到 `/data/local/tmp` 后 `run-as` 拷入 `files/data/`。WebView 调试：debug 构建已开 `setWebContentsDebuggingEnabled`，`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后可用 CDP（websocket 需 `suppress_origin=True`）。

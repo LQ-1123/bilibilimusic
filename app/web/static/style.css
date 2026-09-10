@@ -591,6 +591,14 @@ body.trial #seek,body.trial .p-time{visibility:hidden}
 .q-dev.me .dot{background:var(--pink)}
 .q-dev .nm{flex:none;font-weight:600;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .q-dev .st{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt3);font-variant-numeric:tabular-nums}
+.q-remote{margin-top:8px;padding:10px;border-radius:12px;background:var(--card)}
+.q-remote-line{font-size:12.5px;font-weight:600;color:var(--txt);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-remote-bar{height:4px;border-radius:3px;background:var(--stroke2);overflow:hidden;margin:8px 0 4px}
+.q-remote-bar i{display:block;height:100%;background:var(--pink);border-radius:3px;transition:width .4s linear}
+.q-remote-times{display:flex;justify-content:space-between;font-size:10.5px;color:var(--txt3);font-variant-numeric:tabular-nums}
+.q-remote-ctl{display:flex;align-items:center;justify-content:center;gap:20px;margin:8px 0 2px}
+.q-remote-ctl button{width:34px;height:34px;border-radius:50%;font-size:14px;color:var(--txt2);transition:.15s}
+.q-remote-ctl button:hover{background:var(--raise);color:var(--txt)}
 .q-resume{display:block;width:100%;margin-top:8px;height:34px;border-radius:999px;font-size:12.5px;font-weight:600;
   color:#fff;background:var(--pink);border:none;cursor:pointer}
 .q-resume:hover{filter:brightness(1.06)}

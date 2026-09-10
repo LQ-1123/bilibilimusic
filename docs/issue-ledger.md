@@ -25,7 +25,7 @@
 | #1 ~ #22 | 验收 | 系统壳/原生能力/播放控件/启动性能/内容数据 | 27/27 组通过，遗留 #3 深段、#14 series 二期 | `docs/acceptance-manual.md` |
 | BUG-001 ~ 005 | 缺陷 | 收藏夹翻页、极验滑块、验证码错误、计数口径、推荐卡 fab | 均已修 | `docs/bugs.md` |
 | FEAT-001 | 功能 | 登录改「二维码存相册 + 拉起 B 站 App」 | v1.0.1 已上线 | `docs/bugs.md:79-89` |
-| **#23** | **功能** | **多端同步与跨端接力（Spotify Connect 式）** | **Phase 1 已实现（2026-09-10）；Phase 2 待做** | **本文件 §2 / §2.12** |
+| **#23** | **功能** | **多端同步与跨端接力（Spotify Connect 式）** | **Phase 1+2 已实现（2026-09-10）；Phase 3（预加载交叉淡入）未做** | **本文件 §2 / §2.12** |
 | **#24** | **缺陷** | **多 P 专辑曲目名冗余（「专辑名 · 分集名」）** | **待排期（用户：先不改代码）** | **本文件 §3** |
 | **#25** | **功能** | **分享能力：正向原生分享面板 + 反向分享目标接收** | **已实现（Web/桌面已验证，Android 待重新打包验收）** | **本文件 §4** |
 
@@ -33,7 +33,7 @@
 
 ## 2. #23 多端同步与跨端接力（Spotify Connect 式）
 
-> 类型：功能 ｜ 状态：**Phase 1 已落地**（设备注册 + 服务端会话 + 只读展示 + 打开即续播，2026-09-10）｜ Phase 2（命令通道 + 移交握手）待做 ｜ 提出于 2026-09-09
+> 类型：功能 ｜ 状态：**Phase 1+2 已落地**（设备注册 + 服务端会话 + 只读展示 + 打开即续播 + 命令通道 + 移交握手 + 控制器态，2026-09-10）｜ Phase 3（预加载交叉淡入）未做 ｜ 提出于 2026-09-09
 > 一句话：同账号的多台设备共享一份权威播放会话，可在设备间查看对方在放什么，并把播放无缝接到自己这台设备上。
 
 ### 2.1 背景
@@ -210,9 +210,28 @@ event: transferIn       data: {queue,index,position,revision}   → 发给接收
 | 前端 | `app/web/static/app.js` | `BiliPlayer.queue()`（上报用队列快照）、`BiliPlayer.adopt(items, index, at)`（把远端队列搬到本机：按 bvid+cid 自建 `/api/stream` 地址、从同一进度开始） |
 | 前端 | `app/web/static/v3.js` | 复用现有 EventSource，把 `sessionChanged` 转成 DOM 事件 `bm:sessionChanged`（不再开第二条 SSE 连接） |
 
+**Phase 2 落点（命令通道 + 移交握手，2026-09-10）**
+
+| 层 | 内容 |
+|---|---|
+| 服务端 | `session_bus.py` 增 `PendingTransfer` + `command()` / `start_transfer()` / `live_position()` / `claim()`：命令只转发不执行；移交 12s 兜底超时（`TRANSFER_TIMEOUT`），快照里带 `transfer` 状态；非 active 设备发命令按 `target-offline` / `self-active` / `stale-revision` 分类拒绝 |
+| 服务端 | 接口 `POST /api/session/command`（409=revision 过期）、`POST /api/session/transfer`（409=对端不可用）、`POST /api/session/position`（**发送端现报**）、`POST /api/session/claimed`（接收端接管） |
+| SSE | 新增 `sessionCommand`（含 `targetDeviceId`）、`transferRequest`（发送端现报）、`transferIn`（接收端拿完整队列预加载）、`transferPosition`（现报的精确进度） |
+| 前端 | 控制器态：队列面板「设备」区显示对端歌名/进度条/三键 + 「转到此设备播放」；命令按钮 → `POST /api/session/command`（409 自动拉最新快照） |
+| 前端 | 移交：接收端等现报（≤800ms）→ `BiliPlayer.prepare()`（预加载 + seek，5s `canplay` 超时）→ `resume()` → `POST /api/session/claimed`；失败/自动播放被拦 → 渲染「点一下继续播放」（点击即手势，重试 claim）；发送端**收到 claimed 才** 300ms 淡出并暂停 |
+
+**Phase 2 验证**（无头 Chrome + CDP，两台设备真跑）：
+
+| 场景 | 结果 |
+|---|---|
+| 控制器态 | B（空闲）打开即见远端歌名 + 进度条 + 三键 + 「转到此设备播放」 |
+| 命令通道 | B 点暂停 → A 执行 `toggle`（经 `sessionCommand` SSE）✅ |
+| 移交成功 | B 点「转到此设备」→ A 现报 `currentTime=42.5`（不是缓存心跳 33s）→ B `prepare`+`resume`+`claimed` → 会话 active 变 B、位置 = **42.5**，A 随后淡出暂停并提示「已在「Mac」上继续播放」✅ |
+| 移交失败回滚 | 接收端 `prepare` 拒绝（模拟 canplay 超时/自动播放被拦）→ **不 claim**、发送端继续播、接收端出现「点一下继续播放」；点它 → resume + claimed 完成接管 ✅ |
+
 **与提案的差异（有意）**：① SSE 事件里**不带整条队列**（只带摘要 + `queueSize` + `queueChanged`），
 客户端点「继续」时再 `GET /api/session` 拉全量——否则每 5 秒推几十 KB；② Phase 1 用响应里的
-`accepted/preemptedDeviceId` 表达「你是不是 active、被谁抢了」，暂不用 409（Phase 2 做显式移交时再收紧）。
+`accepted/preemptedDeviceId` 表达「你是不是 active、被谁抢了」（Phase 2 保持这一形态，命令与移交接口该报 409 的都报了 409）；③ 控制器 UI 放在播放队列面板的「设备」区（不劫持主播放条，避免与本地播放互相打架）。
 
 **验证**：
 

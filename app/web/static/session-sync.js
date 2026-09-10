@@ -54,6 +54,22 @@
   var snapshot = null;      // 最近一次快照 {session, devices}
   var lastReport = "";      // 上次上报指纹（去重）
   var lastReportAt = 0;
+  var wasActive = false;    // 上一次快照里本机是否 active（判断「被接管」）
+  var pending = null;       // 进行中的移交 {queue,index,position,startedAt,live}
+  var liveTransferAt = 0;   // 收到发送端「现报进度」的时刻
+  var needGesture = false;  // 需要用户点一下才能出声（自动播放被拦 / canplay 失败）
+
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}), cache: "no-store",
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (r.ok) return d;
+        return { __err: r.status, detail: (d && d.detail) || "" };
+      });
+    });
+  }
 
   // ---------- 本机状态 ----------
 
@@ -119,8 +135,40 @@
 
   function applySnapshot(snap) {
     if (!snap) return;
-    snapshot = { session: snap.session || null, devices: snap.devices || snapshot && snapshot.devices || [] };
+    var session = snap.session || null;
+    var nowActive = !!(session && session.activeDeviceId === ME);
+    // 本机原本在放、现在会话归别人了（被移交走 或 被抢占）→ 淡出暂停，别两头出声
+    if (wasActive && !nowActive) handOverLocally(session);
+    wasActive = nowActive;
+    snapshot = { session: session, transfer: snap.transfer || null,
+                 devices: snap.devices || (snapshot && snapshot.devices) || [] };
     render();
+  }
+
+  /** 让出播放：300ms 淡出后暂停（点移交/被抢占都走这里）。 */
+  function handOverLocally(session) {
+    var media = window.BiliPlayer && BiliPlayer.activeMedia ? BiliPlayer.activeMedia() : null;
+    if (!media || media.paused) return;
+    var from = media.volume == null ? 1 : media.volume;
+    var steps = 8, i = 0;
+    var timer = setInterval(function () {
+      i += 1;
+      try { media.volume = Math.max(0, from * (1 - i / steps)); } catch (e) {}
+      if (i >= steps) {
+        clearInterval(timer);
+        try { media.pause(); media.volume = from; } catch (e) {}
+        if (window.__toast) {
+          window.__toast(session && session.activeDeviceName
+            ? "已在「" + session.activeDeviceName + "」上继续播放" : "已在另一台设备上继续播放");
+        }
+      }
+    }, 38);
+  }
+
+  function pct(session) {
+    var dur = Number(session && session.song && session.song.duration) || 0;
+    if (!dur) return 0;
+    return Math.min(100, Math.max(0, Math.round((livePosition(session) / dur) * 100)));
   }
 
   function remotePlaying() {
@@ -162,22 +210,140 @@
         "</div>";
     });
 
-    var resume = "";
+    var extra = "";
     var remote = remotePlaying();
-    if (remote && !adopting()) {
+    if (remote) {
       var song2 = remote.song || {};
-      resume = '<button type="button" class="q-resume" id="q-resume">从 ' +
-        escapeHtml(remote.activeDeviceName || "另一台设备") + " 的 " + fmtTime(livePosition(remote)) + " 继续</button>";
+      // 控制器态：能看到对方在放什么、放到哪，并能直接控制它
+      extra += '<div class="q-remote">' +
+        '<div class="q-remote-line">' + escapeHtml(song2.title || "—") + "</div>" +
+        '<div class="q-remote-bar"><i style="width:' + pct(remote) + '%"></i></div>' +
+        '<div class="q-remote-times"><span>' + fmtTime(livePosition(remote)) + "</span><span>" +
+        fmtTime(song2.duration || 0) + "</span></div>" +
+        '<div class="q-remote-ctl">' +
+        '<button type="button" data-cmd="prev" title="上一首">⏮</button>' +
+        '<button type="button" data-cmd="toggle" title="播放/暂停">' + (remote.playing ? "⏸" : "▶") + "</button>" +
+        '<button type="button" data-cmd="next" title="下一首">⏭</button>' +
+        "</div>" +
+        '<button type="button" class="q-resume" id="q-transfer">转到此设备播放</button>' +
+        "</div>";
+    } else if (!adopting()) {
+      extra += '<button type="button" class="q-resume" id="q-resume" hidden></button>';
     }
-    box.innerHTML = '<div class="q-dev-title">设备 · 同账号跨端</div>' + rows.join("") + resume;
+    if (needGesture && pending) {
+      extra += '<button type="button" class="q-resume" id="q-needgesture">点一下继续播放</button>';
+    }
+    box.innerHTML = '<div class="q-dev-title">设备 · 同账号跨端</div>' + rows.join("") + extra;
     var btn = $("q-resume");
     if (btn) btn.addEventListener("click", function () { resumeHere(); });
+    var tr = $("q-transfer");
+    if (tr) tr.addEventListener("click", startTransfer);
+    var ng = $("q-needgesture");
+    if (ng) ng.addEventListener("click", function () { claimNow(); });
+    [].slice.call(box.querySelectorAll("[data-cmd]")).forEach(function (b) {
+      b.addEventListener("click", function () { sendCommand(b.dataset.cmd); });
+    });
   }
 
   function escapeHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
     });
+  }
+
+  /** 控制器：把命令发给当前 active 的那台设备（经服务端 SSE 转发）。 */
+  function sendCommand(type, payload) {
+    var s = snapshot && snapshot.session;
+    if (!s || !s.activeDeviceId || s.activeDeviceId === ME) return Promise.resolve(null);
+    return post("/api/session/command", {
+      deviceId: ME, type: type, payload: payload || {}, revision: s.revision,
+    }).then(function (res) {
+      if (res && res.__err === 409) return hello();               // 版本过期：拉最新快照
+      if (res && res.accepted === false && res.reason === "target-offline" && window.__toast) {
+        window.__toast("设备未响应");
+      }
+      return res;
+    });
+  }
+
+  /** 移交：请对方把播放交到本机（对方现报进度 → 本机预加载 → canplay → claimed）。 */
+  function startTransfer() {
+    var s = snapshot && snapshot.session;
+    if (pending) { window.__toast && window.__toast("正在接管中…"); return Promise.resolve(null); }
+    pending = { queue: null, index: 0, position: s ? livePosition(s) : 0, startedAt: Date.now(), live: false };
+    return post("/api/session/transfer", {
+      fromDeviceId: (s && s.activeDeviceId) || "", toDeviceId: ME,
+    }).then(function (res) {
+      if (res && res.__err) {
+        pending = null;
+        window.__toast && window.__toast(res.__err === 409 ? "设备未响应或没有可播会话" : "发起移交失败");
+      }
+    });
+  }
+
+  /** 我是发送端：现场读进度现报（规则①），并**先不暂停**——等 claimed（规则②）。 */
+  function onTransferRequest(d) {
+    if (!d || d.toDeviceId === ME) return;
+    var media = window.BiliPlayer && BiliPlayer.activeMedia ? BiliPlayer.activeMedia() : null;
+    var pos = media && isFinite(media.currentTime) ? Math.max(0, media.currentTime) : 0;
+    post("/api/session/position", { deviceId: ME, position: pos }).catch(function () {});
+  }
+
+  /** 我是接收端：等发送端现报（最多 800ms）→ 预加载 seek → canplay → 出声 → claimed。 */
+  function onTransferIn(d) {
+    if (!d || d.toDeviceId !== ME || !window.BiliPlayer || !BiliPlayer.prepare) return;
+    pending = pending || { startedAt: Date.now() };
+    pending.queue = d.queue || [];
+    pending.index = d.index || 0;
+    pending.position = Math.max(pending.position || 0, Number(d.position) || 0);
+    var waitLive = setInterval(function () {
+      if (pending && pending.live) { clearInterval(waitLive); go(); }
+    }, 60);
+    setTimeout(function () { clearInterval(waitLive); go(); }, 800);
+    var started = false;
+    function go() {
+      if (started || !pending) return;
+      started = true;
+      window.__toast && window.__toast("正在接管播放…");
+      BiliPlayer.prepare(pending.queue, pending.index, pending.position)
+        .then(function () { return BiliPlayer.resume(); })   // 用户点按钮触发 → 算手势
+        .then(function () {
+          return post("/api/session/claimed", { deviceId: ME, position: pending ? pending.position : 0 });
+        })
+        .then(function (res) {
+          if (res && res.__err) { window.__toast && window.__toast("接管失败，请重试"); pending = null; needGesture = false; return; }
+          pending = null;
+          needGesture = false;
+          window.__toast && window.__toast("已在本机继续播放");
+        })
+        .catch(function () {
+          // canplay 超时 / 自动播放被拦：发送端继续播，这里给一个「点一下继续」
+          showResumeFallback();
+        });
+    }
+  }
+
+  function showResumeFallback() {
+    needGesture = true;
+    render();   // 走渲染而不是 appendChild：设备区每秒重画，append 出来的按钮会被冲掉
+  }
+
+  /** 用户点「点一下继续播放」：这一次点击就是手势，play 与 claimed 一起完成。 */
+  function claimNow() {
+    var at = pending ? pending.position : 0;
+    BiliPlayer.resume().then(function () {
+      return post("/api/session/claimed", { deviceId: ME, position: at });
+    }).then(function (res) {
+      if (res && res.__err) {
+        needGesture = false; pending = null; render();
+        window.__toast && window.__toast("接管已超时，请再点一次「转到此设备播放」");
+        return;
+      }
+      needGesture = false;
+      pending = null;
+      render();
+      window.__toast && window.__toast("已在本机继续播放");
+    }).catch(function () { window.__toast && window.__toast("仍然无法播放，请重试"); });
   }
 
   /** 打开即续播：把远端队列搬到本机，从同一进度开始（点击即用户手势，不会被拦自动播放）。 */
@@ -234,11 +400,27 @@
     });
     window.addEventListener("beforeunload", function () { report(true); });
     // 远端变化：v3.js 把 SSE 的 sessionChanged 转成 DOM 事件（避免第二条 EventSource）
-    document.addEventListener("bm:sessionChanged", function (e) {
+    document.addEventListener("bm:sessionChanged", function (e) { applySnapshot(e.detail || {}); });
+    document.addEventListener("bm:sessionCommand", function (e) {
       var d = e.detail || {};
-      applySnapshot(d);
-      var pre = d.preemptedDeviceId;
-      if (pre && pre === ME && window.__toast) window.__toast("已在另一台设备上继续播放");
+      if (d.targetDeviceId !== ME) return;                 // 命令是给 active 那台设备的
+      var P = window.BiliPlayer;
+      if (!P) return;
+      if (d.type === "toggle") P.toggle();
+      else if (d.type === "play") { if (!P.isPlaying()) P.toggle(); }
+      else if (d.type === "pause") { if (P.isPlaying()) P.toggle(); }
+      else if (d.type === "next") P.skip(1);
+      else if (d.type === "prev") P.skip(-1);
+      else if (d.type === "seek") {
+        var media = P.activeMedia ? P.activeMedia() : null;
+        if (media && d.payload && isFinite(d.payload.position)) media.currentTime = Math.max(0, d.payload.position);
+      }
+      setTimeout(function () { report(true); }, 400);
+    });
+    document.addEventListener("bm:transferRequest", function (e) { onTransferRequest(e.detail || {}); });
+    document.addEventListener("bm:transferIn", function (e) { onTransferIn(e.detail || {}); });
+    document.addEventListener("bm:transferPosition", function (e) {
+      if (pending && e.detail && isFinite(e.detail.position)) { pending.position = e.detail.position; pending.live = true; }
     });
     // 面板打开时每秒重画一次（进度外推），平时不动
     setInterval(function () {
@@ -248,6 +430,8 @@
     window.__sessionSync = {
       deviceId: ME, name: NAME, snapshot: function () { return snapshot; },
       report: report, hello: hello, resumeHere: resumeHere,
+      sendCommand: sendCommand, startTransfer: startTransfer, pending: function () { return pending; },
+      needGesture: function () { return needGesture; },
     };
   }
 

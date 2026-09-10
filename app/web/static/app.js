@@ -348,6 +348,18 @@
     planChain(); // 以新歌为起点重排自动决策链
   }
 
+  // #23：跨端队列项 → 本机播放条目（接收端自己向后端取流，B 站按视频+分 P 路由）
+  function buildQueue(items) {
+    return (items || []).map(function (it) {
+      return {
+        id: it.songId || 0, bvid: it.bvid, cid: it.cid || 0,
+        title: it.title || "", artist: it.artist || "",
+        qualityLabel: "在线", coverUrl: it.coverUrl || "", duration: it.duration || 0,
+        audioUrl: "/api/stream/" + encodeURIComponent(it.bvid) + (it.cid ? "?cid=" + it.cid : ""),
+      };
+    }).filter(function (x) { return !!x.bvid; });
+  }
+
   function updateNowPlaying(song) {
     $("player-bar").classList.remove("hidden");
     $("player-cover").src = song.coverUrl;
@@ -1235,15 +1247,8 @@
       });
     },
     adopt: function (items, index, at) {
-      var list = (items || []).map(function (it) {
-        return {
-          id: it.songId || 0, bvid: it.bvid, cid: it.cid || 0,
-          title: it.title || "", artist: it.artist || "",
-          qualityLabel: "在线", coverUrl: it.coverUrl || "", duration: it.duration || 0,
-          // 接收端自己向后端取流（B 站按视频+分 P 路由），跨端搬的只是会话状态
-          audioUrl: "/api/stream/" + encodeURIComponent(it.bvid) + (it.cid ? "?cid=" + it.cid : ""),
-        };
-      }).filter(function (x) { return !!x.bvid; });
+      // #23 Phase 1：把远端队列搬到本机并立刻出声（打开即续播）
+      var list = buildQueue(items);
       if (!list.length) return false;
       playlist = list;
       current = Math.min(Math.max(0, index | 0), list.length - 1);
@@ -1258,6 +1263,41 @@
       playSong(playlist[current]);
       return true;
     },
+    // #23 Phase 2：移交接收端——预加载 + seek，**不出声**；canplay 后由调用方决定 play / claimed
+    prepare: function (items, index, at) {
+      var list = buildQueue(items);
+      if (!list.length) return Promise.reject(new Error("empty-queue"));
+      playlist = list;
+      current = Math.min(Math.max(0, index | 0), list.length - 1);
+      var song = playlist[current];
+      stopTrial();
+      cancelTransition();
+      naturalPlan = null;
+      audio.src = song.audioUrl;
+      updateNowPlaying(song);
+      var seekTo = Math.max(0, Number(at) || 0);
+      return new Promise(function (resolve, reject) {
+        var timer = setTimeout(function () { cleanup(); reject(new Error("canplay-timeout")); }, 5000);
+        function cleanup() {
+          clearTimeout(timer);
+          audio.removeEventListener("loadedmetadata", onMeta);
+          audio.removeEventListener("canplay", onReady);
+          audio.removeEventListener("error", onErr);
+        }
+        function onMeta() {
+          try {
+            if (seekTo > 1 && isFinite(audio.duration) && seekTo < audio.duration - 2) audio.currentTime = seekTo;
+          } catch (e) {}
+        }
+        function onReady() { cleanup(); resolve({ song: song, position: seekTo }); }
+        function onErr() { cleanup(); reject(new Error("load-failed")); }
+        audio.addEventListener("loadedmetadata", onMeta);
+        audio.addEventListener("canplay", onReady);
+        audio.addEventListener("error", onErr);
+        try { audio.load(); } catch (e) { cleanup(); reject(e); }
+      });
+    },
+    resume: function () { return audio.play(); },
     activeMedia: function () { return (recActive && recAudio) ? recAudio : audio; }, // 歌词页进度条寻址
     currentSong: function () { return playlist[current] || null; }, // 含 bvid
     position: function () { // 队列位置（1 基），用于播放页封面上的「3 / 30」；无队列返回 null

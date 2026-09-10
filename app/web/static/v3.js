@@ -1890,12 +1890,16 @@
         }
       }, 600);
     };
-    // #23：跨端会话变化转成 DOM 事件给 session-sync.js（复用这一条 SSE，不再开第二条连接）
-    libEs.addEventListener("sessionChanged", function (e) {
-      var detail = {};
-      try { detail = JSON.parse(e.data || "{}"); } catch (err) {}
-      document.dispatchEvent(new CustomEvent("bm:sessionChanged", { detail: detail }));
-    });
+    // #23：跨端会话事件（Phase 1 快照 / Phase 2 命令与移交）转成 DOM 事件给 session-sync.js，
+    // 复用这一条 SSE，不再开第二条连接
+    ["sessionChanged", "sessionCommand", "transferRequest", "transferIn", "transferPosition"]
+      .forEach(function (evName) {
+        libEs.addEventListener(evName, function (e) {
+          var detail = {};
+          try { detail = JSON.parse(e.data || "{}"); } catch (err) {}
+          document.dispatchEvent(new CustomEvent("bm:" + evName, { detail: detail }));
+        });
+      });
     libEs.addEventListener("libraryChanged", libRefresh);
     libEs.addEventListener("playlistsChanged", libRefresh);
     // （重）连上即全量刷新：断线/服务重启期间错过的推送事件用一次拉取补齐

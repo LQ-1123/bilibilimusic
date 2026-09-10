@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 OFFLINE_AFTER = 30.0      # 秒：超过无上报即视为离线（前端据此置灰）
 DEVICE_TTL = 600.0        # 秒：离线这么久的设备从列表里清掉
 REPORT_MIN_GAP = 1.0      # 秒：同一设备的最小上报间隔（防刷）
+TRANSFER_TIMEOUT = 12.0   # 秒：移交握手的兜底时限（接收端自己的 canplay 超时是 5s）
 MAX_DEVICES = 12
 MAX_QUEUE = 200
 
@@ -41,6 +42,27 @@ class Device:
             "active": self.id == active_id,
             "playing": bool(self.playing),
             "preemptedAt": self.preempted_at or None,
+        }
+
+
+@dataclass
+class PendingTransfer:
+    """一次进行中的移交：发送端现报精确进度，接收端 canplay 后 claimed 才生效。"""
+
+    from_id: str
+    to_id: str
+    started_at: float = 0.0
+    position: float = 0.0     # 发送端现报的精确进度（不是缓存心跳）
+    live: bool = False        # 是否已收到现报
+    revision: int = 0
+
+    def out(self, now: float) -> dict:
+        return {
+            "fromDeviceId": self.from_id,
+            "toDeviceId": self.to_id,
+            "position": round(self.position, 1),
+            "live": self.live,
+            "ageSec": round(now - self.started_at, 1),
         }
 
 
@@ -94,6 +116,7 @@ class SessionBus:
         self._devices: dict[str, dict[str, Device]] = {}
         self._sessions: dict[str, PlaybackSession] = {}
         self._last_report: dict[tuple[str, str], float] = {}
+        self._transfers: dict[str, PendingTransfer] = {}
 
     # ---- 设备 ----
 
@@ -122,8 +145,10 @@ class SessionBus:
         devices = self._devices.get(mid, {})
         active_id = session.active_device_id if session else None
         active_name = devices[active_id].name if active_id in devices else ""
+        transfer = self._transfers.get(mid)
         return {
             "session": session.out(now, active_name) if session else None,
+            "transfer": transfer.out(now) if transfer else None,
             "devices": [d.out(now, active_id) for d in sorted(devices.values(), key=lambda d: d.last_seen, reverse=True)],
         }
 
@@ -138,8 +163,10 @@ class SessionBus:
         devices = self._devices.get(mid, {})
         active_id = session.active_device_id if session else None
         active_name = devices[active_id].name if active_id in devices else ""
+        transfer = self._transfers.get(mid)
         return {
             "session": session.out(now, active_name, with_queue=False) if session else None,
+            "transfer": transfer.out(now) if transfer else None,
             "devices": [d.out(now, active_id) for d in
                         sorted(devices.values(), key=lambda d: d.last_seen, reverse=True)],
         }
@@ -239,6 +266,94 @@ class SessionBus:
         if session and session.active_device_id and session.active_device_id not in devices:
             session.active_device_id = None
             session.playing = False
+        transfer = self._transfers.get(mid)
+        if transfer and (now - transfer.started_at) > TRANSFER_TIMEOUT:
+            self._transfers.pop(mid, None)   # 握手超时：发送端继续播，等于什么都没发生
+
+    # ---- Phase 2：命令通道与移交握手 ----
+
+    COMMAND_TYPES = {"play", "pause", "toggle", "next", "prev", "seek"}
+
+    def command(self, mid: str, device_id: str, ctype: str, payload: dict | None = None,
+                revision: int | None = None) -> dict:
+        """控制器 → active 设备的命令（经 SSE 转发；服务端不碰播放，只做转发与校验）。"""
+        now = time.time()
+        self._sweep(mid, now)
+        if ctype not in self.COMMAND_TYPES:
+            return {"accepted": False, "reason": "bad-command"}
+        session = self._sessions.get(mid)
+        if session is None or session.active_device_id is None:
+            return {"accepted": False, "reason": "no-session"}
+        if revision is not None and revision < session.revision:
+            return {"accepted": False, "reason": "stale-revision", "revision": session.revision,
+                    "session": session.out(now)}
+        target = session.active_device_id
+        if target == device_id:
+            return {"accepted": False, "reason": "self-active"}   # 本机就是 active：直接本地执行
+        dev = self._devices.get(mid, {}).get(target)
+        if dev is None or (now - dev.last_seen) > OFFLINE_AFTER:
+            return {"accepted": False, "reason": "target-offline", "targetDeviceId": target}
+        return {
+            "accepted": True,
+            "targetDeviceId": target,
+            "command": {"type": ctype, "payload": payload or {}, "fromDeviceId": device_id,
+                        "revision": session.revision},
+        }
+
+    def start_transfer(self, mid: str, from_id: str, to_id: str) -> dict:
+        """发起移交：先广播 transferRequest 让发送端现报进度，接收端再预加载。"""
+        now = time.time()
+        self._sweep(mid, now)
+        session = self._sessions.get(mid)
+        if session is None:
+            return {"ok": False, "reason": "no-session"}
+        devices = self._devices.get(mid, {})
+        to = devices.get(to_id)
+        if to is None or (now - to.last_seen) > OFFLINE_AFTER:
+            return {"ok": False, "reason": "target-offline"}
+        from_id = from_id or session.active_device_id or ""
+        if from_id and from_id not in devices:
+            from_id = session.active_device_id or ""
+        src = devices.get(from_id) if from_id else None
+        if src is None or (now - src.last_seen) > OFFLINE_AFTER:
+            return {"ok": False, "reason": "source-offline"}
+        pending = PendingTransfer(from_id=from_id, to_id=to_id, started_at=now,
+                                  position=session.position_now(now), revision=session.revision)
+        self._transfers[mid] = pending
+        return {
+            "ok": True,
+            "transfer": pending.out(now),
+            "session": session.out(now, src.name),
+        }
+
+    def live_position(self, mid: str, device_id: str, position: float) -> dict:
+        """发送端现报精确进度（规则①：不用缓存心跳，现场读 audio.currentTime）。"""
+        now = time.time()
+        pending = self._transfers.get(mid)
+        if pending is None or pending.from_id != device_id:
+            return {"ok": False, "reason": "no-pending-transfer"}
+        pending.position = max(0.0, float(position or 0.0))
+        pending.live = True
+        return {"ok": True, "transfer": pending.out(now)}
+
+    def claim(self, mid: str, device_id: str, position: float | None = None) -> dict:
+        """接收端 canplay 就绪 → 正式接管（规则②：到这一步发送端才淡出）。"""
+        now = time.time()
+        pending = self._transfers.get(mid)
+        if pending is None or pending.to_id != device_id:
+            return {"ok": False, "reason": "no-pending-transfer"}
+        session = self._sessions.get(mid)
+        if session is None:
+            return {"ok": False, "reason": "no-session"}
+        session.active_device_id = device_id
+        session.position = max(0.0, float(position if position is not None else pending.position))
+        session.reported_at = now
+        session.playing = True
+        session.revision += 1
+        self._transfers.pop(mid, None)
+        dev = self._devices.get(mid, {}).get(device_id)
+        return {"ok": True, "session": session.out(now, dev.name if dev else ""),
+                "fromDeviceId": pending.from_id}
 
 
 bus = SessionBus()  # 进程内单例（与 SyncState/ExportState 同一套路）

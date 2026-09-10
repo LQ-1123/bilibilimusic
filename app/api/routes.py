@@ -671,6 +671,99 @@ def report_playback_session(body: SessionReport, request: Request) -> dict:
     return result
 
 
+class SessionCommand(BaseModel):
+    deviceId: str = _DEVICE_ID
+    type: str = Field(min_length=3, max_length=16)
+    payload: dict = Field(default_factory=dict)
+    revision: int | None = Field(default=None, ge=0)
+
+
+class TransferStart(BaseModel):
+    fromDeviceId: str = Field(default="", max_length=64)
+    toDeviceId: str = _DEVICE_ID
+
+
+class TransferPosition(BaseModel):
+    deviceId: str = _DEVICE_ID
+    position: float = Field(default=0.0, ge=0)
+
+
+class TransferClaimed(BaseModel):
+    deviceId: str = _DEVICE_ID
+    position: float | None = Field(default=None, ge=0)
+
+
+@router.post("/session/command", status_code=202)
+def session_command(body: SessionCommand, request: Request) -> dict:
+    """控制器 → active 设备的命令（pause/next/seek…）。服务端只转发，不碰播放。"""
+    mid = request.state.mid
+    result = session_bus.command(mid, body.deviceId, body.type, body.payload, body.revision)
+    if not result.get("accepted"):
+        if result.get("reason") == "stale-revision":
+            raise HTTPException(status_code=409, detail={"reason": "stale-revision",
+                                                         "revision": result.get("revision")})
+        if result.get("reason") == "bad-command":
+            raise HTTPException(status_code=400, detail="不支持的命令")
+        return result   # self-active / no-session / target-offline：客户端据此直接本地执行或提示
+    events.publish(mid, "sessionCommand", {"targetDeviceId": result["targetDeviceId"],
+                                           **result["command"]})
+    return result
+
+
+@router.post("/session/transfer", status_code=202)
+def session_transfer(body: TransferStart, request: Request) -> dict:
+    """发起移交：广播给发送端（现报进度）与接收端（预加载）。"""
+    mid = request.state.mid
+    result = session_bus.start_transfer(mid, body.fromDeviceId, body.toDeviceId)
+    if not result.get("ok"):
+        code = 409 if result.get("reason") in ("no-session", "source-offline", "target-offline") else 400
+        raise HTTPException(status_code=code, detail=result.get("reason", "transfer-failed"))
+    session = result["session"]
+    transfer = result["transfer"]
+    events.publish(mid, "transferRequest", {"toDeviceId": transfer["toDeviceId"],
+                                            "fromDeviceId": transfer["fromDeviceId"],
+                                            "position": transfer["position"]})
+    # 接收端要队列才能预加载；队列表在这里一次性给全
+    full = session_bus.snapshot(mid)["session"] or {}
+    events.publish(mid, "transferIn", {
+        "fromDeviceId": transfer["fromDeviceId"],
+        "toDeviceId": transfer["toDeviceId"],
+        "queue": full.get("queue", []),
+        "index": full.get("index", 0),
+        "position": transfer["position"],
+        "revision": full.get("revision", 0),
+    })
+    return result
+
+
+@router.post("/session/position")
+def session_position(body: TransferPosition, request: Request) -> dict:
+    """发送端现报精确进度（规则①：现场读 currentTime，不用缓存心跳）。"""
+    mid = request.state.mid
+    result = session_bus.live_position(mid, body.deviceId, body.position)
+    if not result.get("ok"):
+        raise HTTPException(status_code=409, detail="没有进行中的移交")
+    events.publish(mid, "transferPosition", {"position": result["transfer"]["position"],
+                                             "fromDeviceId": body.deviceId})
+    return result
+
+
+@router.post("/session/claimed")
+def session_claimed(body: TransferClaimed, request: Request) -> dict:
+    """接收端 canplay 就绪 → 正式接管（规则②：到这一步发送端才淡出）。"""
+    mid = request.state.mid
+    result = session_bus.claim(mid, body.deviceId, body.position)
+    if not result.get("ok"):
+        raise HTTPException(status_code=409, detail="没有进行中的移交")
+    light = session_bus.summary(mid)
+    events.publish(mid, "sessionChanged", {
+        "session": light["session"], "devices": light["devices"],
+        "transfer": light["transfer"], "queueChanged": False,
+        "claimedBy": body.deviceId, "fromDeviceId": result["fromDeviceId"],
+    })
+    return result
+
+
 # ---- B 站搜索 ----
 
 def _fmt_duration(seconds: int) -> str:

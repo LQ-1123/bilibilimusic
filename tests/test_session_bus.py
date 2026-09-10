@@ -1,7 +1,7 @@
 """#23 Phase 1：跨端播放会话（设备注册 / 上报 / 只读快照）。"""
 import time
 
-from app.services.session_bus import MAX_DEVICES, OFFLINE_AFTER, SessionBus
+from app.services.session_bus import MAX_DEVICES, OFFLINE_AFTER, TRANSFER_TIMEOUT, SessionBus
 
 
 def _queue(*titles):
@@ -108,3 +108,82 @@ def test_accounts_are_isolated():
     bus.report("mid-1", "dev-a", {"playing": True, "position": 3, "index": 0, "queue": _queue("A")})
     assert bus.snapshot("mid-2")["session"] is None
     assert bus.devices("mid-2") == []
+
+
+# ---------- Phase 2：命令通道与移交握手 ----------
+
+
+def _two_devices(bus):
+    bus.hello("m", "dev-mac1", "Mac")
+    bus.hello("m", "dev-iph1", "iPhone", "android")
+    bus.report("m", "dev-mac1", {"playing": True, "position": 30, "index": 0, "queue": _queue("A", "B")})
+    return bus
+
+
+def test_command_is_forwarded_to_active_device():
+    bus = _two_devices(SessionBus())
+    out = bus.command("m", "dev-iph1", "pause")
+    assert out["accepted"] is True and out["targetDeviceId"] == "dev-mac1"
+    assert out["command"]["type"] == "pause" and out["command"]["fromDeviceId"] == "dev-iph1"
+
+
+def test_command_rejects_self_active_unknown_and_offline():
+    bus = _two_devices(SessionBus())
+    assert bus.command("m", "dev-mac1", "play")["reason"] == "self-active"
+    assert bus.command("m", "dev-iph1", "explode")["reason"] == "bad-command"
+    bus._devices["m"]["dev-mac1"].last_seen = time.time() - (OFFLINE_AFTER + 1)
+    assert bus.command("m", "dev-iph1", "next")["reason"] == "target-offline"
+    assert bus.command("m-other", "dev-iph1", "next")["reason"] == "no-session"
+
+
+def test_command_rejects_stale_revision():
+    bus = _two_devices(SessionBus())
+    rev = bus.snapshot("m")["session"]["revision"]
+    assert bus.command("m", "dev-iph1", "pause", revision=rev - 1)["reason"] == "stale-revision"
+    assert bus.command("m", "dev-iph1", "pause", revision=rev)["accepted"] is True
+
+
+def test_transfer_handshake_reports_live_position_then_claims():
+    bus = _two_devices(SessionBus())
+    started = bus.start_transfer("m", "dev-mac1", "dev-iph1")
+    assert started["ok"] is True
+    assert bus.snapshot("m")["transfer"]["toDeviceId"] == "dev-iph1"
+    assert bus.snapshot("m")["transfer"]["live"] is False
+
+    live = bus.live_position("m", "dev-mac1", 42.75)
+    assert live["ok"] is True and live["transfer"]["live"] is True
+    assert bus.snapshot("m")["transfer"]["position"] == 42.8   # 现报的精确进度
+
+    claimed = bus.claim("m", "dev-iph1")
+    assert claimed["ok"] is True and claimed["fromDeviceId"] == "dev-mac1"
+    session = bus.snapshot("m")["session"]
+    assert session["activeDeviceId"] == "dev-iph1"
+    assert session["position"] == 42.8 and session["playing"] is True
+    assert bus.snapshot("m")["transfer"] is None              # 握手结束
+    # 发送端仍在播 → 不再是 active
+    devices = {d["id"]: d for d in bus.devices("m")}
+    assert devices["dev-mac1"]["active"] is False and devices["dev-mac1"]["playing"] is True
+
+
+def test_transfer_rejects_offline_or_unknown_targets():
+    bus = _two_devices(SessionBus())
+    assert bus.start_transfer("m", "dev-mac1", "dev-nope")["reason"] == "target-offline"
+    assert bus.start_transfer("m-x", "dev-mac1", "dev-iph1")["reason"] == "no-session"
+    bus._devices["m"]["dev-mac1"].last_seen = time.time() - (OFFLINE_AFTER + 1)
+    assert bus.start_transfer("m", "dev-mac1", "dev-iph1")["reason"] == "source-offline"
+
+
+def test_transfer_expires_without_claim():
+    bus = _two_devices(SessionBus())
+    bus.start_transfer("m", "dev-mac1", "dev-iph1")
+    bus._transfers["m"].started_at = time.time() - (TRANSFER_TIMEOUT + 1)
+    assert bus.snapshot("m")["transfer"] is None              # 超时清掉：发送端继续播，等于没发生
+    assert bus.claim("m", "dev-iph1")["reason"] == "no-pending-transfer"
+
+
+def test_live_position_requires_pending_transfer_for_that_sender():
+    bus = _two_devices(SessionBus())
+    assert bus.live_position("m", "dev-mac1", 10)["reason"] == "no-pending-transfer"
+    bus.start_transfer("m", "dev-mac1", "dev-iph1")
+    assert bus.live_position("m", "dev-iph1", 10)["reason"] == "no-pending-transfer"
+    assert bus.live_position("m", "dev-mac1", 10)["ok"] is True
