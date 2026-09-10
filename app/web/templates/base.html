@@ -16,7 +16,7 @@
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
-  <script src="/static/app.js?v=69" defer></script>
+  <script src="/static/app.js?v=70" defer></script>
   <script src="/static/export.js?v=8" defer></script>
   <script src="/static/v3.js?v=81" defer></script>
   <script src="/static/nav-liquid.js?v=12" defer></script>
@@ -280,7 +280,7 @@
     <button type="button" class="m-orb" onclick="orbSearch(event)" title="搜索"><svg><use href="#i-search"/></svg></button>
   </div>
 
-  <audio id="audio" preload="none"></audio>
+  <audio id="audio" preload="auto"></audio><!-- #45：尽早开始缓冲当前曲目，减少首帧与抖动等待 -->
   <audio id="audio2" preload="none"></audio>
 
   <div class="toast" id="toast"><span class="h">♥</span><span id="toast-txt"></span></div>

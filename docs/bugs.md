@@ -661,3 +661,38 @@ bvid 相同，于是播放后者时也命中了收藏表，星星被点亮。**�
 > 已用 `POST /api/imports` 重新导入恢复：专辑（现 id=5，60/60 分 P）、曲库行数 277、
 > 已收藏 19 首（含原本单独收藏的《爱的初体验》《嗨嗨人生》，`fav_folder_id=4013781715` 说明 B 站收藏也已恢复）——与本轮开始前的库状态一致。
 > **顺带提醒**：合集子作品点「已收藏的星」会走「取消整张专辑」这条重路径，容易误伤；建议改成对子作品只做本地「移出曲库」。
+
+---
+
+## BUG-021 真机播放卡顿（锁屏/后台/切前台尤甚）｜ 已修（Android 部分待打包验证）
+
+**现象**（用户真机）：播放会卡顿；锁屏解锁、后台播放、切到其他 App 再回来时尤其明显。用户另附了一份外部
+优化方案（docx）——逐条核对代码后，结论如下（**它的 P0 项其实早已实现**）：
+
+| 方案里的说法 | 核对结果 | 证据 |
+|---|---|---|
+| ① 首次播放要等整文件下载完（应改流式代理） | ❌ **不成立**：现在就是流式代理 | `/api/stream/{bvid}?cid=` 直接把 CDN 流转发（`upstream.aiter_bytes(64KB)`），支持 Range/206，不落盘；`files.py::_download_segmented` 是旧的入库下载路径，在线版播歌不走它 |
+| ② CDN 多源 Fallback 缺失 | ✅ 成立，已修 | `AudioStream` 有 `backup_urls`，但流式路由只用 `base_url`（备用源仅旧下载路径在用） |
+| ③ httpx 连接未复用 | ❌ 不成立 | `BiliClient.http` 是实例级单例 `AsyncClient`（默认连接池 100/20），路由全程复用它 |
+| ④ 前端无预缓冲 | ✅ 部分成立，已修 | 主 `<audio>` 原为 `preload="none"`，且没有任何 `waiting/stalled` 恢复 |
+| ⑤ 重试太简单（`_SEG_RETRIES`） | ⚠️ 位置过时 | 那段属旧下载路径；流式路径此前**完全没有**重试 |
+
+**真正对应症状的根因**：Android 侧 `MediaPlaybackService` 只有前台服务 + MediaSession，
+**没有 WakeLock / WifiLock**——息屏后系统降频/进入省电，CPU 与 Wi-Fi 同时打盹，流式音频随即断供，
+解锁回来就是一段卡顿。这是「锁屏/后台/切前台才卡」的典型成因。
+
+**改动**：
+
+| 层 | 内容 |
+|---|---|
+| Android | `MediaPlaybackService` 播放期间持有 `PARTIAL_WAKE_LOCK` + `WIFI_MODE_FULL_HIGH_PERF`，暂停/停止/销毁即释放；`AndroidManifest` 加 `WAKE_LOCK` 权限 |
+| 后端 | `/api/stream` 按 `candidate_urls()`（base + backup CDN）换源重试，连接层失败或 4xx/5xx 都换下一个镜像，每次之间 0.3s 递增退避；全部失败才 502（文案说明「已尝试全部镜像」）；只在首字节之前换源，开始推流后不切 |
+| 前端 | 主 `<audio>` 改 `preload="auto"`；新增卡顿自愈：`waiting/stalled/error` 后若 3 秒仍未恢复（`readyState<3` 且未暂停），在当前进度重开一次，15 秒冷却、连续 5 次上限，正常 `playing` 即清零 |
+| 未采纳 | 换 howler.js / hls.js（会丢掉现役双轨交叉淡入与歌词联动，且 B 站给的是 m4s 直链，不是 HLS）；`Cache-Control: max-age=86400`（对 Range 代理有害，中间件已特意不给 `/api/stream` 加 no-store） |
+
+**验证**：
+
+- 后端换源：新增 `tests/test_stream_fallback.py` 5 例（首选正常不换、连接失败换源、5xx 换源、全挂才 502、Range 头透传）→ 全过。
+- 前端自愈：无头 Chrome + CDP 实测——停住 3s 重开 1 次、15s 冷却期内不重复、`readyState=4` 健康不乱动、暂停态不重开；`preload` 读到 `auto`。
+- Android WakeLock 需重新打包后在真机验证（代码已就位）。
+- 回归：`pytest` 168 passed / 2 skipped；`node --test` 37 passed。

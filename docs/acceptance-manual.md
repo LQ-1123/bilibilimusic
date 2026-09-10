@@ -299,6 +299,7 @@
 | 09-10 | BUG-018 账号页去解释小字 | 无头 Chrome + CDP（390） | ✅ | account 页 innerText 只剩 6 行主文案；`.sub` 计数 0；页脚说明句已移除；无 JS 异常 |
 | 09-10 | BUG-019 PC UP 视图右侧重排 | 无头 Chrome + CDP（1440/390） | ✅ | PC：行 = 封面+歌名+★（网格 44/646/44），表头「歌名｜收藏」；手机端维持原 7 列；星形点击拦截为 POST /api/songs/{id}/uncollect |
 | 09-10 | BUG-020 播放条星串台 | 无头 Chrome + CDP（1440） | ✅ | 同 bvid 不同分集：未收藏分集星不亮、已收藏分集星亮；点星发 POST /api/songs/{id}/collect 且状态即时正确；（测试误删的专辑已重新导入复原：60 分 P、277 行、19 收藏） |
+| 09-10 | BUG-021 真机播放卡顿 | 单测 + 无头 Chrome/CDP（Android 待打包） | ✅ 部分 | /api/stream 换源重试 5 例单测；前端停顿自愈四项实测通过（3s 重开/冷却/健康不动/暂停不动）；Android WakeLock+WifiLock 已写码，待重新打包真机验证 |
 **进度汇总**：通过 27 / 27 组——**v0.4.0 验收闭环（2026-09-09 真机抽查全过，无新增待修项）**。遗留仅剩增量项：#3 深段（Media3 迁移，按需）· #14 series 二期（下一大项，见 next-steps §2）。
 
 > **模拟器验收环境（2026-09-08 搭建）**：Android Studio SDK + `emulator` 包 + `system-images;android-35;default;arm64-v8a`，AVD 名 `BM35`（Pixel 6，三键导航）。项目侧需：`android/local.properties`（sdk.dir）、Gradle wrapper 8.11.1、`brew install python@3.11`（Chaquopy buildPython，构建时 PATH 前置）、`PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。种子数据：`adb push` 曲库 DB/cookies/active_mid 到 `/data/local/tmp` 后 `run-as` 拷入 `files/data/`。WebView 调试：debug 构建已开 `setWebContentsDebuggingEnabled`，`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后可用 CDP（websocket 需 `suppress_origin=True`）。

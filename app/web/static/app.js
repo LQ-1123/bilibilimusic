@@ -48,6 +48,40 @@
   var audioA = $("audio");
   var audioB = $("audio2");
   var audio = audioA;
+
+  // #45 卡顿自愈：弱网或锁屏后台时流会短暂断供，浏览器只会一直转圈、不会自己恢复。
+  // 这里加一层兜底——停住超过 3 秒就在当前进度重开一次（15 秒冷却、连续 5 次后放弃，
+  // 正常播放（playing）即清零计数），避免「解锁回来卡一下要手动点播放」。
+  (function () {
+    var cooldownAt = 0, tries = 0, timer = null;
+    function recover() {
+      var now = Date.now();
+      if (audio.paused || audio.readyState >= 3) return;
+      if (now - cooldownAt < 15000 || tries >= 5) return;
+      cooldownAt = now; tries += 1;
+      var at = audio.currentTime || 0;
+      var onMeta = function () {
+        audio.removeEventListener("loadedmetadata", onMeta);
+        try {
+          if (at > 1 && isFinite(audio.duration) && at < audio.duration - 1) audio.currentTime = at;
+        } catch (e) {}
+        audio.play().catch(function () {});
+      };
+      audio.addEventListener("loadedmetadata", onMeta);
+      try { audio.load(); } catch (e) {}
+    }
+    function arm() {
+      clearTimeout(timer);
+      timer = setTimeout(recover, 3000);
+    }
+    [audioA, audioB].forEach(function (el) {
+      el.addEventListener("waiting", arm);
+      el.addEventListener("stalled", arm);
+      el.addEventListener("error", arm);
+      el.addEventListener("playing", function () { clearTimeout(timer); tries = 0; });
+    });
+  })();
+
   var audioCtx = null, gains = null; // gains: {audioA: GainNode, audioB: GainNode}
   var transitionState = null;        // 进行中的过渡 {mainEl, timer}
   var naturalPlan = null;            // 自然播放结束前的预规划

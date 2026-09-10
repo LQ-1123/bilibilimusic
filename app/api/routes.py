@@ -785,21 +785,41 @@ async def stream_bvid(
     except BiliApiError as exc:
         raise HTTPException(status_code=502, detail=exc.message)
     best = pick_best_audio(streams)
-    url = best.base_url
-    try:
-        validate_bilibili_url(url)
-    except UnsafeUrlError:
-        raise HTTPException(status_code=502, detail="CDN 地址未通过安全校验")
 
     headers = {"Referer": BILIBILI_REFERER}
     if range_header:
         headers["Range"] = range_header
-    upstream = await bili.http.send(
-        bili.http.build_request("GET", url, headers=headers), stream=True
-    )
-    if upstream.status_code >= 400:
-        await upstream.aclose()
-        raise HTTPException(status_code=502, detail="B 站 CDN 拒绝了播放请求")
+
+    # #45 弱网：B 站同一路音频会给多个 CDN 镜像（base_url + backup_url），
+    # 以前只用 base_url，首选节点拥塞/故障就直接 502。这里按候选顺序换源重试，
+    # 每次之间留一点退避，全失败才报错（只在首字节之前换源，已经开始推流就不再切）。
+    upstream = None
+    candidates = bili.candidate_urls(best)
+    for idx, url in enumerate(candidates):
+        try:
+            validate_bilibili_url(url)
+        except UnsafeUrlError:
+            continue
+        try:
+            resp = await bili.http.send(
+                bili.http.build_request("GET", url, headers=headers), stream=True
+            )
+        except (httpx.HTTPError, OSError) as exc:  # 连接层失败 → 换下一个镜像
+            log.info("stream %s 取流失败（%s）：%s", bvid, idx, exc)
+            if idx + 1 < len(candidates):
+                await asyncio.sleep(0.3 * (idx + 1))
+            continue
+        if resp.status_code < 400:
+            upstream = resp
+            if idx:
+                log.info("stream %s 已切到备用 CDN #%d", bvid, idx)
+            break
+        await resp.aclose()
+        if idx + 1 < len(candidates):
+            await asyncio.sleep(0.3 * (idx + 1))
+
+    if upstream is None:
+        raise HTTPException(status_code=502, detail="B 站 CDN 拒绝了播放请求（已尝试全部镜像）")
 
     out_headers = {}
     for h in ("content-length", "content-range", "accept-ranges"):

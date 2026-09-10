@@ -37,6 +37,9 @@ public final class MediaPlaybackService extends Service {
     private static boolean paused = true;
 
     private MediaSessionCompat session;
+    /** #45：播放期间持有的 CPU / Wi-Fi 锁（息屏与切后台时系统会把两者降频，流式音频随即断供）。 */
+    private android.os.PowerManager.WakeLock wakeLock;
+    private android.net.wifi.WifiManager.WifiLock wifiLock;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -81,6 +84,7 @@ public final class MediaPlaybackService extends Service {
             paused = intent.getBooleanExtra("paused", paused);
         }
         registerNoisyReceiver();
+        if (paused) releaseLocks(); else acquireLocks();   // #45：出声才拿锁，暂停就交还
         updateSessionState();
         startForeground(NOTIFICATION_ID, buildNotification());
         return START_STICKY;
@@ -182,9 +186,36 @@ public final class MediaPlaybackService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
+    /** 拿住 CPU 与 Wi-Fi：不被息屏/切前台带来的省电策略掐断流。 */
+    private void acquireLocks() {
+        try {
+            if (wakeLock == null) {
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "BiliMusic:playback");
+                wakeLock.setReferenceCounted(false);
+            }
+            if (!wakeLock.isHeld()) wakeLock.acquire();
+        } catch (Exception ignored) {}
+        try {
+            if (wifiLock == null) {
+                android.net.wifi.WifiManager wm =
+                    (android.net.wifi.WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+                wifiLock = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "BiliMusic:playback");
+                wifiLock.setReferenceCounted(false);
+            }
+            if (!wifiLock.isHeld()) wifiLock.acquire();
+        } catch (Exception ignored) {}
+    }
+
+    private void releaseLocks() {
+        try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); } catch (Exception ignored) {}
+        try { if (wifiLock != null && wifiLock.isHeld()) wifiLock.release(); } catch (Exception ignored) {}
+    }
+
     @Override public void onDestroy() {
         running = false;
         unregisterNoisyReceiver();
+        releaseLocks();   // #45
         if (session != null) { session.release(); session = null; }
         stopForeground(STOP_FOREGROUND_REMOVE);
         super.onDestroy();
