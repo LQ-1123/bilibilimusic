@@ -1,6 +1,20 @@
 {% if songs %}
 <div class="tracklist">
   {% for s in songs %}
+  {% if compact %}
+  {# #43：UP 视图右侧列表——只留歌名与收藏按钮 #}
+  <div class="trk card trk-mini" data-play="{{ s.id }}" data-bvid="{{ s.bvid }}">
+    <span class="im"><img src="{{ s.cover_url }}" alt="" loading="lazy" referrerpolicy="no-referrer"></span>
+    <div class="tt"><div class="t1" title="{{ s.title }}">{{ s.title }}</div></div>
+    <span class="row-acts">
+      <button class="star{{ ' on' if s.collected else '' }}" type="button"
+              {% if s.collected %}data-uncollect="{{ s.id }}" title="移出曲库（不影响 B 站收藏）" aria-label="移出曲库"
+              {% else %}data-collect="{{ s.id }}" title="收藏这首到曲库" aria-label="收藏到曲库"{% endif %}>
+        <svg aria-hidden="true"><use href="#i-star"/></svg>
+      </button>
+    </span>
+  </div>
+  {% else %}
   <div class="trk card" data-play="{{ s.id }}" data-bvid="{{ s.bvid }}">
     <span class="no">{{ loop.index }}</span>
     <span class="eqbox"><span class="eq"><i></i><i></i><i></i></span></span>
@@ -21,6 +35,7 @@
       {% endif %}
     </span>
   </div>
+  {% endif %}
   {% endfor %}
 </div>
 {% else %}

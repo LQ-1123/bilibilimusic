@@ -111,6 +111,7 @@ def song_out(s: Song) -> dict:
     return {
         "id": s.id,
         "bvid": s.bvid,
+        "cid": s.cid,  # #44：前端按 bvid+cid 判收藏状态（多分 P 各分集独立）
         "title": s.title,
         "artist": s.artist,
         "duration": s.duration,

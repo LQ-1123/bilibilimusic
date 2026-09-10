@@ -288,6 +288,17 @@
 | 09-10 | #25 分享（Android 正向） | v1.1.0 APK 已发布（Release v1.1.0），待真机验收 | ⏳ | 曲库单曲菜单点「分享」→ 系统面板出现 → 选微信后对方收到可点开的 B 站链接（`BiliMusicNative.shareText`） |
 | 09-10 | #25 分享（Android 反向） | v1.1.0 APK 已发布，待真机验收（已核 APK 内含 SEND text/plain + shareText 桥） | ⏳ | B 站 App 分享视频 → 系统面板选 BiliMusic → 应用打开并提示入库（`SEND text/plain` + `__receiveShare`）；冷启动/后台两种入口都要试（`onCreate` / `onNewIntent`） |
 
+| 09-10 | BUG-010 手机端 5 项 | 无头 Chrome + CDP 设备仿真（390/768/1280） | ✅ | UP 名可点进主页；UP 页「全部音乐」恒两列（列宽封顶 220px）；搜索删空不再关闭；UP 页搜索结果不被面板盖住；键盘 300px 时胶囊/结果面板整体上移（bottom 826→526 / 720→456）；桌面行为不变 |
+| 09-10 | BUG-011 UP 页「加载更多」遮挡 | 无头 Chrome + CDP（390/430） | ✅ | 修前：播放条 top=682 / 按钮 bottom=694（重叠 12px、已无滚动余量）；修后：按钮 bottom=644、重叠 0px，两种宽度均滚到底可见 |
+| 09-10 | BUG-012 UP 页搜索框不可见 | 无头 Chrome + CDP（390/1280） | ✅ | 命中测试：修复后胶囊中心命中 input#search（挂到 #app），旧行为下命中 div#m-dock（被作品页盖住）；歌词页同样可见；桌面全程父节点仍是 mainEl，无回归 |
+| 09-10 | BUG-013 搜索框与播放条齐平 | 无头 Chrome + CDP（390/360） | ✅ | 390：播放条/胶囊/结果面板三者同为 25→365（340px）；360：三者同为 40→320（280px）；顺带删掉重复的 .search-drop 规则（它盖掉了键盘避让的 max-height），键盘 300px 复测仍正常 |
+| 09-10 | BUG-014 搜索面板与播放条顺序 | 无头 Chrome + CDP（390/360） | ✅ | 390×844：播放条 156→222 / 面板 232→756 / 胶囊 766→826，两处间隙均 10px；矮屏+键盘退化场景面板 140px 兜底、不把播放条顶到状态栏；关闭搜索后播放条复位 |
+| 09-10 | BUG-015 导航块点击形变 | 无头 Chrome + CDP 采样 --pill-sy | ✅ | 点击 Tab：25ms 1.146 → 111ms 峰值 1.245 → ~0.7s 平滑回落（改前一帧到位）；拖动仍随滞后量上升（300ms 到 1.298），手感未削弱 |
+| 09-10 | BUG-016 PC 详情页左列排版 | 无头 Chrome + CDP（1280/1024/390） | ✅ | PC 五行统一列宽（1280：89→449；1024：61→368）；控制行三键两端对齐；底行「播放模式 + 播放列表」两端对齐；手机端数值逐项复测与改前一致 |
+| 09-10 | BUG-017 手机端缺退出登录 | 无头 Chrome + CDP（390/1280） | ✅ | 账号页出现「退出登录」红色行；点击弹二次确认；点取消后仍为登录态；桌面侧栏同逻辑（未打包） |
+| 09-10 | BUG-018 账号页去解释小字 | 无头 Chrome + CDP（390） | ✅ | account 页 innerText 只剩 6 行主文案；`.sub` 计数 0；页脚说明句已移除；无 JS 异常 |
+| 09-10 | BUG-019 PC UP 视图右侧重排 | 无头 Chrome + CDP（1440/390） | ✅ | PC：行 = 封面+歌名+★（网格 44/646/44），表头「歌名｜收藏」；手机端维持原 7 列；星形点击拦截为 POST /api/songs/{id}/uncollect |
+| 09-10 | BUG-020 播放条星串台 | 无头 Chrome + CDP（1440） | ✅ | 同 bvid 不同分集：未收藏分集星不亮、已收藏分集星亮；点星发 POST /api/songs/{id}/collect 且状态即时正确；（测试误删的专辑已重新导入复原：60 分 P、277 行、19 收藏） |
 **进度汇总**：通过 27 / 27 组——**v0.4.0 验收闭环（2026-09-09 真机抽查全过，无新增待修项）**。遗留仅剩增量项：#3 深段（Media3 迁移，按需）· #14 series 二期（下一大项，见 next-steps §2）。
 
 > **模拟器验收环境（2026-09-08 搭建）**：Android Studio SDK + `emulator` 包 + `system-images;android-35;default;arm64-v8a`，AVD 名 `BM35`（Pixel 6，三键导航）。项目侧需：`android/local.properties`（sdk.dir）、Gradle wrapper 8.11.1、`brew install python@3.11`（Chaquopy buildPython，构建时 PATH 前置）、`PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/`。种子数据：`adb push` 曲库 DB/cookies/active_mid 到 `/data/local/tmp` 后 `run-as` 拷入 `files/data/`。WebView 调试：debug 构建已开 `setWebContentsDebuggingEnabled`，`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` 后可用 CDP（websocket 需 `suppress_origin=True`）。

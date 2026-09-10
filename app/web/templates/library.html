@@ -130,16 +130,20 @@
       <div class="s">已登录 · 音质最高 192K</div>
     </div>
   </div>
+  <!-- #42：行尾的解释性小字一律去掉（像半成品）；状态类信息交给界面本身表达 -->
   <div class="acct-rows">
     {% if not logged_in %}
-    <button class="acct-row" type="button" onclick="openLogin()"><span>◐</span>登录 B 站账号<span class="sub">扫码 · 凭据存本机</span></button>
+    <button class="acct-row" type="button" onclick="openLogin()"><span>◐</span>登录 B 站账号</button>
     {% else %}
-    <button class="acct-row" type="button" onclick="syncNow()"><span>⇅</span>同步 B 站收藏夹<span class="sub">曲库事实源在 B 站</span></button>
-    <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接<span class="sub">bilimusic 夹</span></button>
+    <button class="acct-row" type="button" onclick="syncNow()"><span>⇅</span>同步 B 站收藏夹</button>
+    <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接</button>
     {% endif %}
-    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗<span class="sub" id="theme-mode-sub">跟随本机</span></button>
+    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗</button>
+    {% if logged_in %}
+    <!-- #41：手机端账号页补上「退出登录」（原来只在桌面侧栏的用户弹层里） -->
+    <button class="acct-row danger" type="button" onclick="logoutNow()"><span>⏻</span>退出登录</button>
+    {% endif %}
   </div>
-  <div style="text-align:center;font-size:10.5px;color:var(--txt3);margin-top:26px">BiliMusic · 曲库事实源在 B 站侧</div>
 </section>
 
 <form class="collect-box" hidden hx-post="/web/import" hx-target="#task-list" hx-swap="innerHTML">

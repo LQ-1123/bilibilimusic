@@ -19,9 +19,12 @@
   var K_DRAG = 0.24, D_DRAG = 0.42;
   // 松手落位 / 程序切换：慢一些、基本不过冲（实测 ≈400ms 落位，0 过冲）
   var K_SETTLE = 0.14, D_SETTLE = 0.84;
+  // 形变本身也走缓动：点击/按下时不再「一步到位」，约 0.3~0.45s 缓慢变形（时间常数 0.15s）
+  var SHAPE_TAU = 0.15;
   var baseCx = 0;             // translateX(0) 时选中块的中心
   var step = 0;               // 每格位移（= 选中块宽度）
   var pos = 0, vel = 0, target = 0;   // 当前 / 目标 translateX（px）
+  var shapeSx = 1, shapeSy = 1, shapeTs = 0;   // 实际画出来的形变（缓动后）
   var raf = 0, down = false, dragging = false, pid = null, startX = 0, moved = 0, press = 0;
 
   function measure() {
@@ -41,38 +44,57 @@
     for (var i = 0; i < btns.length; i++) if (btns[i].classList.contains("on")) return i;
     return 0;
   }
-  function paint() {
+  function shapeT() {
     var span = Math.max(1, tabs.clientWidth / btns.length);
     // 滞后越远，水珠越短越粗越圆；长按时给一个基础形变
-    var t = Math.max(press, Math.min(1, Math.abs(target - pos) / (span * 0.5)));
-    var sx = reduce ? 1 : 1 - 0.06 * t;   // 最窄 0.94（≈79px，和纵向 83px 基本相当）
-    // 最高 1.60：52px × 1.60 = 83.2px，上下各溢出 64px 内区约 9.6px
-    var sy = reduce ? 1 : 1 + 0.60 * t;
-    tabs.style.setProperty("--pill-x", pos.toFixed(2) + "px");
-    tabs.style.setProperty("--pill-sx", sx.toFixed(3));
-    tabs.style.setProperty("--pill-sy", sy.toFixed(3));
+    return Math.max(press, Math.min(1, Math.abs(target - pos) / (span * 0.5)));
   }
-  function tick() {
+  function shapeWant() {
+    var t = shapeT();
+    // 最窄 0.94（≈79px，和纵向 83px 基本相当）；最高 1.60：52px × 1.60 = 83.2px
+    return { sx: reduce ? 1 : 1 - 0.06 * t, sy: reduce ? 1 : 1 + 0.60 * t };
+  }
+  function shapeBusy() {
+    var want = shapeWant();
+    return Math.abs(want.sx - shapeSx) > 0.002 || Math.abs(want.sy - shapeSy) > 0.002;
+  }
+  // snap = true 时立刻到位（首屏、旋转屏、减少动效）
+  function paint(ts, snap) {
+    var want = shapeWant();
+    if (reduce || snap || !SHAPE_TAU) {
+      shapeSx = want.sx; shapeSy = want.sy;
+    } else if (ts) {
+      var dt = shapeTs ? Math.min(64, Math.max(0, ts - shapeTs)) : 16;
+      var a = 1 - Math.exp(-dt / (SHAPE_TAU * 1000));
+      shapeSx += (want.sx - shapeSx) * a;
+      shapeSy += (want.sy - shapeSy) * a;
+    }
+    if (ts) shapeTs = ts;
+    tabs.style.setProperty("--pill-x", pos.toFixed(2) + "px");
+    tabs.style.setProperty("--pill-sx", shapeSx.toFixed(3));
+    tabs.style.setProperty("--pill-sy", shapeSy.toFixed(3));
+  }
+  function tick(ts) {
     raf = 0;
     var live = down && dragging;      // 手指还在拖 → 跟手参数；已松手 → 慢速落位参数
     var k = live ? K_DRAG : K_SETTLE;
     var d = live ? D_DRAG : D_SETTLE;
     vel += (target - pos) * k - vel * d;
     pos += vel;
-    if (Math.abs(target - pos) < 0.3 && Math.abs(vel) < 0.3) {
-      pos = target; vel = 0; paint(); return;
-    }
-    paint();
-    raf = requestAnimationFrame(tick);
+    var moving = Math.abs(target - pos) >= 0.3 || Math.abs(vel) >= 0.3;
+    if (!moving) { pos = target; vel = 0; }
+    paint(ts);
+    // 位置停了但形变还在缓动 → 继续跑帧，否则形变会卡在半路
+    if (moving || shapeBusy()) raf = requestAnimationFrame(tick);
   }
   function kick() {
-    if (reduce) { pos = target; vel = 0; paint(); return; }  // 减少动效：直接落位，不做弹簧
+    if (reduce) { pos = target; vel = 0; paint(0, true); return; }  // 减少动效：直接落位，不做弹簧
     if (!raf) raf = requestAnimationFrame(tick);
   }
   function sync(instant) {
     if (!measure()) return;
     target = offsetOf(activeIndex());
-    if (instant) { pos = target; vel = 0; paint(); return; }  // 首屏/旋转屏：立刻落位，不等下一帧
+    if (instant) { pos = target; vel = 0; paint(0, true); return; }  // 首屏/旋转屏：立刻落位，不等下一帧
     kick();
   }
   function swallowNextClick() {
@@ -88,7 +110,7 @@
     startX = e.clientX; moved = 0;
     press = reduce ? 0 : 0.55;          // 长按立刻有明显形变
     target = pos;
-    paint();                            // 按下就要有反馈，不等下一帧
+    paint(performance.now());           // 按下就要有反馈，不等下一帧（形变本身仍是缓动的）
     kick();
   }
   function onMove(e) {

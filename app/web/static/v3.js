@@ -149,7 +149,10 @@
       '<div class="upv-head"' + (hue ? ' style="--uph:' + hue + '"' : "") + ">" + avaHtml +
       '<div><div class="upv-title" id="upv-title" title="查看 UP 主作品页">' + escUp(name) + "</div>" +
       '<div class="upv-meta">' + escUp(count) + " 首 · 收藏的歌曲</div></div></div>" +
-      '<div class="list-head"><span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span></div>' +
+      // #43：PC 端这一栏只要「歌名 + 收藏」，表头跟着收窄（手机端维持原样）
+      (window.matchMedia("(min-width: 901px)").matches
+        ? '<div class="list-head list-head-mini"><span></span><span>歌名</span><span class="r">收藏</span></div>'
+        : '<div class="list-head"><span style="text-align:center">#</span><span></span><span>标题</span><span>歌单</span><span>音质</span><span class="r">时长</span><span></span></div>') +
       '<div id="upv-songs"></div>';
     var titleEl = $("upv-title"); // 点姓名 → 打开该 UP 主的沉浸式作品页（复用 openUp）
     if (titleEl && bvid && window.openUp) {
@@ -161,7 +164,8 @@
       ava.innerHTML = '<img src="' + escUp(face) + '" alt="" referrerpolicy="no-referrer">';
     }
     if (window.htmx) {
-      htmx.ajax("GET", "/partials/songs?artist=" + encodeURIComponent(name), {
+      htmx.ajax("GET", "/partials/songs?artist=" + encodeURIComponent(name) +
+        (window.matchMedia("(min-width: 901px)").matches ? "&compact=1" : ""), {
         target: "#upv-songs", swap: "innerHTML",
       });
     }
@@ -259,12 +263,20 @@
       if (!e.target.closest(".user-pop")) setOpen(false);
     });
     document.addEventListener("keydown", function (e) { if (e.key === "Escape") setOpen(false); });
+    // #41 退出登录：桌面侧栏弹层与手机账号页共用一份逻辑（带二次确认，避免误触清掉凭据）
+    window.logoutNow = function () {
+      var ask = window.__confirmModal
+        ? window.__confirmModal("退出登录", "本机保存的 B 站凭据会被清除。曲库仍在 B 站收藏夹里，重新登录即可同步回来。")
+        : Promise.resolve(window.confirm("退出登录？"));
+      ask.then(function (ok) {
+        if (!ok) return;
+        fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+          .then(function () { location.href = "/"; });
+      });
+    };
     var sync = $("side-sync"), quit = $("side-logout");
     if (sync) sync.addEventListener("click", function () { setOpen(false); syncNow(); });
-    if (quit) quit.addEventListener("click", function () {
-      fetch("/api/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
-        .then(function () { location.href = "/"; });
-    });
+    if (quit) quit.addEventListener("click", function () { setOpen(false); window.logoutNow(); });
   })();
 
   // ---------- 导航 ----------
@@ -815,24 +827,44 @@
       var bvid = t ? t.bvid : (s ? s.bvid : null);
       if (bvid) openUp(bvid); else window.__toast("当前没有播放的歌");
     }
-    var la = $("lyrics-artist"), pa = $("player-artist");
-    if (la) la.addEventListener("click", upFromPlayer);
-    if (pa) pa.addEventListener("click", upFromPlayer);
+    // 歌词页顶栏 / 播放条 / 手机播放页大封面下的 UP 名，点它进 UP 主页（#38 补上第三种）
+    ["lyrics-artist", "player-artist", "ly-artist-big"].forEach(function (id) {
+      var el = $(id);
+      if (el) el.addEventListener("click", upFromPlayer);
+    });
   })();
 
   // ---------- 已收藏状态：播放条星星（灰=未收藏，粉=已在曲库）；#33 点已收藏 = 取消收藏 ----------
+  // #44：收藏按「bvid + cid」记，**不能只按 bvid** —— 多分 P 视频里每个分集是不同歌曲，
+  // 只按 bvid 记会让「收藏了第 3 分集」把同视频的第 7 分集也点亮（用户实测报的 bug）。
   var collected = {}, collectedIds = {};
-  function currentBvid() {
+  function songKey(bvid, cid) { return String(bvid || "") + ":" + String(cid || 0); }
+  function currentRef() {
     var t = window.BiliPlayer && BiliPlayer.trialInfo ? BiliPlayer.trialInfo() : null;
+    if (t && t.bvid) return { bvid: t.bvid, cid: 0, id: 0 };   // 试听/推荐流：没有本地曲库行
     var s = window.BiliPlayer && BiliPlayer.currentSong ? BiliPlayer.currentSong() : null;
-    return t ? t.bvid : (s ? s.bvid : null);
+    return s && s.bvid ? { bvid: s.bvid, cid: s.cid || 0, id: s.id || 0 } : null;
+  }
+  function currentBvid() {
+    var r = currentRef();
+    return r ? r.bvid : null;
+  }
+  function currentKey() {
+    var r = currentRef();
+    return r ? songKey(r.bvid, r.cid) : null;
   }
   function markStar() {
-    var cur = currentBvid();
-    var on = !!cur && !!collected[cur];
+    var k = currentKey();
+    var on = !!k && !!collected[k];
     document.querySelectorAll("#btn-star, #ly-star, #ly-star-big").forEach(function (star) {
       star.classList.toggle("on", on);
     });
+  }
+  function markOne(ref) {
+    var k = songKey(ref.bvid, ref.cid);
+    collected[k] = 1;
+    if (ref.id) collectedIds[k] = ref.id;
+    markStar();
   }
   function loadCollected() {
     if (!window.BiliPlayer || !BiliPlayer.songs) return;
@@ -840,15 +872,26 @@
       collected = {};
       collectedIds = {};
       (songs || []).forEach(function (s) {
-        collected[s.bvid] = 1;
-        if (s.id) collectedIds[s.bvid] = s.id; // #33：取消收藏要按 song.id 调 DELETE
+        if (!s.collected) return; // 以服务端 collected 为准（合集子作品可能未收藏）
+        var k = songKey(s.bvid, s.cid);
+        collected[k] = 1;
+        if (s.id) collectedIds[k] = s.id; // #33：取消收藏要按 song.id 调 DELETE
       });
       markStar();
     }).catch(function () {});
   }
   window.__markCollected = function (bvid, id) {
-    collected[bvid] = 1;
-    if (id) collectedIds[bvid] = id;
+    // 整视频收藏（发现页收藏卡 / 导入完成）：把当前正在播的同 bvid 那一首一并点亮
+    if (bvid) {
+      var r = currentRef();
+      if (r && r.bvid === bvid) {
+        var k = songKey(r.bvid, r.cid);
+        collected[k] = 1;
+        if (id || r.id) collectedIds[k] = id || r.id;
+      }
+      collected[songKey(bvid, 0)] = 1; // 试听流（无 cid）也认
+      if (id) collectedIds[songKey(bvid, 0)] = id;
+    }
     markStar();
   };
   document.body.addEventListener("refreshSongs", loadCollected);
@@ -871,8 +914,9 @@
   }
 
   // 取消收藏（#33）：单曲 → DELETE /api/songs/{id}；多分 P 专辑 → 确认后 DELETE /api/albums/{id}
-  function uncollectCurrent(bvid) {
-    albumForBvid(bvid).then(function (album) {
+  function uncollectCurrent(ref) {
+    var key = songKey(ref.bvid, ref.cid);
+    albumForBvid(ref.bvid).then(function (album) {
       if (album) {
         return window.__confirmModal(
           "取消收藏「" + (album.title || "该专辑") + "」？",
@@ -885,34 +929,47 @@
             .then(function (r) { if (!r.ok) throw new Error("uncollect"); return true; });
         });
       }
-      var id = collectedIds[bvid];
+      var id = collectedIds[key] || ref.id;
       if (!id) { window.__toast("这首还没入库"); return false; }
       return fetch("/api/songs/" + id, { method: "DELETE" })
         .then(function (r) { if (!r.ok) throw new Error("uncollect"); return true; });
     }).then(function (done) {
       if (!done) return;
-      delete collected[bvid];
-      delete collectedIds[bvid];
+      delete collected[key];
+      delete collectedIds[key];
       markStar();
       window.__toast("已取消收藏 · 已从 B 站收藏夹移除");
       if (window.htmx) htmx.trigger(document.body, "refreshSongs");
     }).catch(function () { window.__toast("取消收藏失败，请稍后重试"); });
   }
 
-  // 星星点击：未收藏 → 收藏当前播放的歌；已收藏 → 取消收藏（#33）
+  // 星星点击：未收藏 → 收藏当前播放的歌；已收藏 → 取消收藏（#33 / #44）
   function collectCurrent() {
-    var cur = currentBvid();
-    if (!cur) { window.__toast("当前没有播放的歌"); return; }
-    if (collected[cur]) { uncollectCurrent(cur); return; }
+    var ref = currentRef();
+    if (!ref) { window.__toast("当前没有播放的歌"); return; }
+    if (collected[songKey(ref.bvid, ref.cid)]) { uncollectCurrent(ref); return; }
+    // 曲库内已知行（含合集子作品）：精确认领这一首——多分 P 只收藏当前分集，
+    // 不再整视频导入（否则合集子作品永远收藏不上，星点了也没反应）
+    if (ref.id) {
+      fetch("/api/songs/" + ref.id + "/collect", { method: "POST" })
+        .then(function (r) {
+          if (!r.ok) throw new Error("collect");
+          markOne(ref);
+          window.__toast("已收藏 · 已加入我的曲库");
+          if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+        })
+        .catch(function () { window.__toast("收藏失败，请稍后重试"); });
+      return;
+    }
     fetch("/web/import", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ url: "https://www.bilibili.com/video/" + cur, playlist_id: "0" }),
+      body: new URLSearchParams({ url: "https://www.bilibili.com/video/" + ref.bvid, playlist_id: "0" }),
     })
       .then(function (r) { return r.text().then(function (t) { return { ok: r.ok, t: t }; }); })
       .then(function (res) {
         if (!res.ok) { window.__toast("收藏失败，请稍后重试"); return; }
-        window.__markCollected(cur);
+        window.__markCollected(ref.bvid);
         window.__toast("已收藏 · 已同步 B 站收藏夹");
       })
       .catch(function () { window.__toast("网络错误，请重试"); });
@@ -975,12 +1032,34 @@
     // 滚动、改窗口、侧栏宽度变化都重新量一次；搜索框滚出视口时面板一并收起，
     // 免得它孤零零钉在页面上、跟输入框脱节。
     var wantOpen = false;
+
+    // #39b：结果面板恒定夹在「播放条」与「搜索胶囊」中间——把播放条顶到面板上方。
+    // 面板高度是动态的（结果条数、键盘避让都会变），所以用实测的 rect 反推播放条该抬多高：
+    // 播放条底距 = 视口底到面板顶的距离 + 10px 间隙。
+    function liftPlayerBar() {
+      var pb = $("player-bar");
+      if (!pb) return;
+      var mobile = document.documentElement.clientWidth <= 900;
+      if (!mobile || drop.hidden || !document.body.classList.contains("msearching")) {
+        pb.style.bottom = "";
+        return;
+      }
+      var r = drop.getBoundingClientRect();
+      if (!r.height || r.top <= 0) { pb.style.bottom = ""; return; }
+      // 矮屏 + 键盘同时出现时面板只剩几十像素，这时硬顶会把播放条推到状态栏上，宁可不动
+      if (r.height < 180) { pb.style.bottom = ""; return; }
+      pb.style.bottom = Math.round(window.innerHeight - r.top + 10) + "px";
+    }
+    window.__liftPlayerBar = liftPlayerBar;
+    if (window.ResizeObserver) new ResizeObserver(function () { liftPlayerBar(); }).observe(drop);
+
     function place() {
       if (!wantOpen) return;
       if (document.documentElement.clientWidth <= 900) {
         // 手机端是底部胶囊，沿用 CSS 的 bottom 定位
         drop.style.top = ""; drop.style.left = ""; drop.style.width = ""; drop.style.maxHeight = "";
         drop.hidden = false;
+        liftPlayerBar();
         return;
       }
       var bar = $("tbSearch") || input;
@@ -1012,6 +1091,8 @@
       if (tb) { tb.classList.remove("searching"); tb.style.bottom = ""; }
       document.body.classList.remove("msearching");
       var d = $("search-drop"); if (d) d.style.bottom = "";
+      var pb = $("player-bar"); if (pb) pb.style.bottom = ""; // 播放条落回原位（#39b）
+      if (window.__searchBarPortal) window.__searchBarPortal(false); // 胶囊放回 .main
     }
 
     function esc(s) {
@@ -1101,7 +1182,18 @@
     function scheduleSearch() {
       clearTimeout(timer);
       var q = input.value.trim();
-      if (!q) { close(); lastQ = null; } else { open(); timer = setTimeout(function () { run(q); }, 350); }
+      if (!q) {
+        // #38：删到空不再关掉搜索态（原来 close() 会把手机端胶囊整个收掉，
+        // 用户得重新点底部圆钮）。手机端只清结果、保留面板与焦点；桌面端输入框常驻，仍收起面板。
+        lastQ = null;
+        lib.innerHTML = '<div class="sd-empty">输入关键词，搜曲库和 B 站</div>';
+        web.innerHTML = "";
+        if (document.documentElement.clientWidth <= 900) { open(); drop.hidden = false; }
+        else { close(); }
+      } else {
+        open();
+        timer = setTimeout(function () { run(q); }, 350);
+      }
       syncClose();
     }
     input.addEventListener("input", function (e) {
@@ -1661,12 +1753,26 @@
     goHome();
     if (mainEl) mainEl.scrollTop = 0;
   };
+  // #38b：`.main` 带 position:absolute + z-index:0，**自成层叠上下文**，所以搜索胶囊待在
+  // .main 里时无论 z-index 写多高，都压不过 .main(0) 之上的 #up-panel(90)——UP 作品页里
+  // 表现为「结果面板出来了、搜索框却看不见」。搜索态时把胶囊临时挂到 #app 下（这时它是
+  // position:fixed，视觉位置不变，节点搬家不丢事件），关掉搜索再放回 .main 首位。
+  window.__searchBarPortal = function (on) {
+    var tb = $("topbar"), app = $("app"), main = $("mainEl");
+    if (!tb || !app || !main) return;
+    if (on) {
+      if (tb.parentElement !== app) app.appendChild(tb);
+    } else if (tb.parentElement !== main) {
+      main.insertBefore(tb, main.firstChild);
+    }
+  };
   window.orbSearch = function (e) {
     if (e) e.stopPropagation(); // 防止开启搜索的这次点击冒泡到 document 触发"点击外部关闭"
     var tb = $("topbar");
     if (!tb) return;
     if (getComputedStyle(tb).display === "none") {
       // 手机端：搜索胶囊从底部圆钮位置向左展开
+      window.__searchBarPortal(true);
       tb.classList.add("searching");
       document.body.classList.add("msearching");
       var t = document.querySelector('.m-tab[data-mtab="home"]');
@@ -1684,19 +1790,25 @@
   };
   function openMobileDrop() { var d = $("search-drop"); if (d) d.hidden = false; }
 
-  // 键盘弹起时：搜索胶囊与结果面板跟随可视视口上移，避免被键盘遮住
+  // #38 键盘弹起：把输入法占位高度写成 --kb，CSS 里的搜索胶囊/结果面板据此整体上移。
+  // 原来只在已进入搜索态时改行内 bottom——结果面板往往是「后出现」的（要等接口返回），
+  // 那时早已错过了 resize 事件，于是列表落在键盘下面。改成变量后，谁看谁生效。
   (function () {
     var vv = window.visualViewport;
     if (!vv) return;
-    vv.addEventListener("resize", function () {
+    function syncKeyboard() {
+      var overlap = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      document.documentElement.style.setProperty("--kb", overlap + "px");
       var tb = $("topbar");
-      if (!tb || !tb.classList.contains("searching")) return;
-      var overlap = window.innerHeight - vv.height - vv.offsetTop; // 键盘占位高度
-      var lift = overlap > 0 ? overlap + 12 : 14;
-      tb.style.bottom = lift + "px";
+      if (tb) tb.style.bottom = ""; // 清掉旧版写法留下的行内值，统一交给 CSS
       var d = $("search-drop");
-      if (d && !d.hidden) d.style.bottom = (lift + 64) + "px";
-    });
+      if (d) d.style.bottom = "";
+      if (window.__liftPlayerBar) window.__liftPlayerBar(); // 键盘一变，面板高度跟着变，播放条要重算（#39b）
+    }
+    syncKeyboard();
+    vv.addEventListener("resize", syncKeyboard);
+    vv.addEventListener("scroll", syncKeyboard);
+    window.addEventListener("orientationchange", function () { setTimeout(syncKeyboard, 120); });
   })();
 
   // ---------- 队列 / 歌词 按钮视觉态 ----------

@@ -257,7 +257,8 @@ async def web_playlist_add_song(
 
 
 @router.get("/partials/songs", response_class=HTMLResponse)
-def songs_partial(request: Request, q: str = "", playlist_id: int = 0, artist: str = ""):
+def songs_partial(request: Request, q: str = "", playlist_id: int = 0, artist: str = "",
+                  compact: int = 0):
     gate = _login_redirect(request)
     if gate:
         return gate
@@ -269,7 +270,9 @@ def songs_partial(request: Request, q: str = "", playlist_id: int = 0, artist: s
         d = _song_ctx(s)
         d["pl_name"] = pl_names.get(s.playlist_id or 0, "")
         songs.append(d)
-    return templates.TemplateResponse(request, "partials/songs.html", {"songs": songs})
+    return templates.TemplateResponse(
+        request, "partials/songs.html", {"songs": songs, "compact": bool(compact)}
+    )  # compact：UP 视图右侧列表只留「歌名 + 收藏」（#43）
 
 
 @router.get("/partials/up-list", response_class=HTMLResponse)
