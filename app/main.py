@@ -4,11 +4,13 @@
 （或 python -m app.main）
 """
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -48,18 +50,32 @@ async def lifespan(app: FastAPI):
     claimed = settings.db_path.with_name(settings.db_path.name + ".claimed")
     # 已迁移后的 legacy cookie 只是历史备份，不能在退出后用它恢复另一个账号。
     if saved.logged_in and (mid is not None or not claimed.exists()):
-        candidate_store = CookieStore()
-        candidate_store.set_many(saved.all())
-        candidate = BiliClient(candidate_store)
-        try:
-            await accounts.activate(
-                candidate, inherit_legacy=mid is None,
-                expected_mid=mid or saved.get("mid"),
-            )
-        except Exception as exc:
-            log.warning("恢复登录失败，需重新登录（%s）", type(exc).__name__)
-            await candidate.aclose()
-            dbs.reset_to_pending(clear_marker=False)
+        # #46：启动时到 B 站的一次网络抖动不该让用户「被登出」——网络类错误重试两次再放弃
+        # （凭据本身失效属于 BiliApiError，不重试，直接按需重新登录）。
+        for attempt in range(3):
+            candidate_store = CookieStore()
+            candidate_store.set_many(saved.all())
+            candidate = BiliClient(candidate_store)
+            try:
+                await accounts.activate(
+                    candidate, inherit_legacy=mid is None,
+                    expected_mid=mid or saved.get("mid"),
+                )
+                break
+            except Exception as exc:
+                await candidate.aclose()
+                network_ish = isinstance(exc, (httpx.HTTPError, OSError, ConnectionError))
+                if network_ish and attempt < 2:
+                    delay = 1.5 * (attempt + 1)
+                    log.warning(
+                        "恢复登录时连不上 B 站（%s），%.1fs 后重试（第 %d 次）",
+                        type(exc).__name__, delay, attempt + 1,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                log.warning("恢复登录失败，需重新登录（%s）", type(exc).__name__)
+                dbs.reset_to_pending(clear_marker=False)
+                break
     else:
         dbs.reset_to_pending()
     runtime = accounts.current

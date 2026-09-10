@@ -14,7 +14,25 @@
 
   var DEVICE_KEY = "bmDeviceId";
   var HEARTBEAT_MS = 5000;
+  var HANDOFF_FADE_MS = 350;   // #23 Phase 3：交接交叉淡入淡出时长（两端同一窗口，中间不留静音缝）
   var $ = function (id) { return document.getElementById(id); };
+
+  /** 音量线性淡入/淡出，返回 Promise（交叉淡入用；比 WebAudio 简单，够用且不影响既有的本地交叉淡入）。 */
+  function fade(media, to, ms) {
+    return new Promise(function (resolve) {
+      if (!media || typeof media.volume !== "number") { resolve(); return; }
+      var from = media.volume, steps = Math.max(4, Math.round(ms / 40)), i = 0;
+      var timer = setInterval(function () {
+        i += 1;
+        try { media.volume = Math.max(0, Math.min(1, from + (to - from) * (i / steps))); } catch (e) {}
+        if (i >= steps) {
+          clearInterval(timer);
+          try { media.volume = to; } catch (e) {}
+          resolve();
+        }
+      }, Math.max(16, Math.round(ms / steps)));
+    });
+  }
 
   function uuid() {
     try {
@@ -58,6 +76,7 @@
   var pending = null;       // 进行中的移交 {queue,index,position,startedAt,live}
   var liveTransferAt = 0;   // 收到发送端「现报进度」的时刻
   var needGesture = false;  // 需要用户点一下才能出声（自动播放被拦 / canplay 失败）
+  var yielding = false;     // 正在把播放让给别的设备（淡出期间不能再说自己在播）
 
   function post(path, body) {
     return fetch(path, {
@@ -83,7 +102,7 @@
     var q = P.queue ? P.queue() : [];
     return {
       deviceId: ME, name: NAME, kind: KIND,
-      playing: !!(P.isPlaying && P.isPlaying()),
+      playing: yielding ? false : !!(P.isPlaying && P.isPlaying()),
       position: media && isFinite(media.currentTime) ? Math.max(0, media.currentTime) : 0,
       index: pos && pos.index ? pos.index - 1 : 0,
       queue: q,
@@ -145,24 +164,21 @@
     render();
   }
 
-  /** 让出播放：300ms 淡出后暂停（点移交/被抢占都走这里）。 */
+  /** 让出播放（点移交 / 被抢占都走这里）：#23 Phase 3 交叉淡出——接收端此时正好在淡入，
+   *  两端的音量斜坡落在同一个窗口里，中间不留静音缝。 */
   function handOverLocally(session) {
     var media = window.BiliPlayer && BiliPlayer.activeMedia ? BiliPlayer.activeMedia() : null;
     if (!media || media.paused) return;
-    var from = media.volume == null ? 1 : media.volume;
-    var steps = 8, i = 0;
-    var timer = setInterval(function () {
-      i += 1;
-      try { media.volume = Math.max(0, from * (1 - i / steps)); } catch (e) {}
-      if (i >= steps) {
-        clearInterval(timer);
-        try { media.pause(); media.volume = from; } catch (e) {}
-        if (window.__toast) {
-          window.__toast(session && session.activeDeviceName
-            ? "已在「" + session.activeDeviceName + "」上继续播放" : "已在另一台设备上继续播放");
-        }
+    yielding = true;   // 立刻对自己的上报口径生效：淡出期间别再声明 playing（否则会把会话抢回来）
+    var back = typeof media.volume === "number" ? media.volume : 1;
+    fade(media, 0, HANDOFF_FADE_MS).then(function () {
+      try { media.pause(); media.volume = back; } catch (e) {}
+      yielding = false;
+      if (window.__toast) {
+        window.__toast(session && session.activeDeviceName
+          ? "已在「" + session.activeDeviceName + "」上继续播放" : "已在另一台设备上继续播放");
       }
-    }, 38);
+    });
   }
 
   function pct(session) {
@@ -298,38 +314,59 @@
     post("/api/session/position", { deviceId: ME, position: pos }).catch(function () {});
   }
 
-  /** 我是接收端：等发送端现报（最多 800ms）→ 预加载 seek → canplay → 出声 → claimed。 */
+  /** 我是接收端（#23 Phase 2+3）：**立刻开始预加载**（用已知进度），canplay 后把落点纠到发送端
+   *  现报的精确进度 → 音量从 0 淡入并 claimed（与发送端淡出同一窗口，消除交接那不到 1 秒的缝）。 */
   function onTransferIn(d) {
     if (!d || d.toDeviceId !== ME || !window.BiliPlayer || !BiliPlayer.prepare) return;
     pending = pending || { startedAt: Date.now() };
     pending.queue = d.queue || [];
     pending.index = d.index || 0;
     pending.position = Math.max(pending.position || 0, Number(d.position) || 0);
-    var waitLive = setInterval(function () {
-      if (pending && pending.live) { clearInterval(waitLive); go(); }
-    }, 60);
-    setTimeout(function () { clearInterval(waitLive); go(); }, 800);
-    var started = false;
-    function go() {
-      if (started || !pending) return;
-      started = true;
-      window.__toast && window.__toast("正在接管播放…");
-      BiliPlayer.prepare(pending.queue, pending.index, pending.position)
-        .then(function () { return BiliPlayer.resume(); })   // 用户点按钮触发 → 算手势
-        .then(function () {
-          return post("/api/session/claimed", { deviceId: ME, position: pending ? pending.position : 0 });
-        })
-        .then(function (res) {
-          if (res && res.__err) { window.__toast && window.__toast("接管失败，请重试"); pending = null; needGesture = false; return; }
+    if (pending.preparing) return;
+    pending.preparing = true;
+    window.__toast && window.__toast("正在接管播放…");
+    BiliPlayer.prepare(pending.queue, pending.index, pending.position)
+      .then(function () {
+        // 预加载期间现报的精确进度通常已经到了；没到就再等一会儿（最多 600ms）
+        var t0 = Date.now();
+        return new Promise(function (res) {
+          (function poll() {
+            if (!pending || pending.live || Date.now() - t0 > 600) return res();
+            setTimeout(poll, 40);
+          })();
+        });
+      })
+      .then(function () {
+        var media = BiliPlayer.activeMedia ? BiliPlayer.activeMedia() : null;
+        var at = pending ? pending.position : 0;
+        if (media && at > 1) {
+          // 只在偏差明显时纠偏（缓冲区里的 seek 很快，±0.7s 以内不值得再动一次）
+          try { if (Math.abs((media.currentTime || 0) - at) > 0.7) media.currentTime = at; } catch (e) {}
+        }
+        if (media && typeof media.volume === "number") media.volume = 0;   // 从静音起步，交给淡入
+        return BiliPlayer.resume();      // 用户点按钮触发 → 算手势
+      })
+      .then(function () {
+        return post("/api/session/claimed", { deviceId: ME, position: pending ? pending.position : 0 });
+      })
+      .then(function (res) {
+        if (res && res.__err) {
+          window.__toast && window.__toast("接管失败，请重试");
           pending = null;
           needGesture = false;
-          window.__toast && window.__toast("已在本机继续播放");
-        })
-        .catch(function () {
-          // canplay 超时 / 自动播放被拦：发送端继续播，这里给一个「点一下继续」
-          showResumeFallback();
-        });
-    }
+          return;
+        }
+        var media = BiliPlayer.activeMedia ? BiliPlayer.activeMedia() : null;
+        fade(media, 1, HANDOFF_FADE_MS);   // #23 Phase 3：交叉淡入
+        pending = null;
+        needGesture = false;
+        window.__toast && window.__toast("已在本机继续播放");
+      })
+      .catch(function () {
+        // canplay 超时 / 自动播放被拦：发送端继续播，这里给一个「点一下继续」
+        if (pending) pending.preparing = false;
+        showResumeFallback();
+      });
   }
 
   function showResumeFallback() {
@@ -340,6 +377,8 @@
   /** 用户点「点一下继续播放」：这一次点击就是手势，play 与 claimed 一起完成。 */
   function claimNow() {
     var at = pending ? pending.position : 0;
+    var media = BiliPlayer.activeMedia ? BiliPlayer.activeMedia() : null;
+    if (media && typeof media.volume === "number") media.volume = 0;
     BiliPlayer.resume().then(function () {
       return post("/api/session/claimed", { deviceId: ME, position: at });
     }).then(function (res) {
@@ -350,6 +389,7 @@
       }
       needGesture = false;
       pending = null;
+      fade(media, 1, HANDOFF_FADE_MS);
       render();
       window.__toast && window.__toast("已在本机继续播放");
     }).catch(function () { window.__toast && window.__toast("仍然无法播放，请重试"); });

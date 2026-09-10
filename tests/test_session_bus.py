@@ -1,7 +1,13 @@
 """#23 Phase 1：跨端播放会话（设备注册 / 上报 / 只读快照）。"""
 import time
 
-from app.services.session_bus import MAX_DEVICES, OFFLINE_AFTER, TRANSFER_TIMEOUT, SessionBus
+from app.services.session_bus import (
+    MAX_DEVICES,
+    OFFLINE_AFTER,
+    TAKEOVER_GRACE,
+    TRANSFER_TIMEOUT,
+    SessionBus,
+)
 
 
 def _queue(*titles):
@@ -160,9 +166,10 @@ def test_transfer_handshake_reports_live_position_then_claims():
     assert session["activeDeviceId"] == "dev-iph1"
     assert session["position"] == 42.8 and session["playing"] is True
     assert bus.snapshot("m")["transfer"] is None              # 握手结束
-    # 发送端仍在播 → 不再是 active
+    # 发送端交出会话（客户端在 350ms 交叉淡出里收声）：不再是 active，设备级也标为未播
     devices = {d["id"]: d for d in bus.devices("m")}
-    assert devices["dev-mac1"]["active"] is False and devices["dev-mac1"]["playing"] is True
+    assert devices["dev-mac1"]["active"] is False and devices["dev-mac1"]["playing"] is False
+    assert devices["dev-iph1"]["active"] is True and devices["dev-iph1"]["playing"] is True
 
 
 def test_transfer_rejects_offline_or_unknown_targets():
@@ -187,3 +194,20 @@ def test_live_position_requires_pending_transfer_for_that_sender():
     bus.start_transfer("m", "dev-mac1", "dev-iph1")
     assert bus.live_position("m", "dev-iph1", 10)["reason"] == "no-pending-transfer"
     assert bus.live_position("m", "dev-mac1", 10)["ok"] is True
+
+
+def test_handover_grace_prevents_sender_from_stealing_session_back():
+    """发送端淡出期间仍会上报 playing=true，宽限窗内不许它把会话抢回去。"""
+    bus = _two_devices(SessionBus())
+    assert bus.start_transfer("m", "dev-mac1", "dev-iph1")["ok"] is True
+    bus.live_position("m", "dev-mac1", 42.75)
+    assert bus.claim("m", "dev-iph1")["ok"] is True
+
+    out = bus.report("m", "dev-mac1", {"playing": True, "position": 43.1, "index": 0, "queue": _queue("A")})
+    assert out["accepted"] is False and out["reason"] == "just-taken-over"
+    assert bus.snapshot("m")["session"]["activeDeviceId"] == "dev-iph1"
+
+    # 宽限窗过后（发送端确实还在放 -> 后播者赢的常规规则恢复）
+    bus._sessions["m"].takeover_at = time.time() - (TAKEOVER_GRACE + 1)
+    again = bus.report("m", "dev-mac1", {"playing": True, "position": 50, "index": 0, "queue": _queue("A")})
+    assert again["accepted"] is True and again["preemptedDeviceId"] == "dev-iph1"

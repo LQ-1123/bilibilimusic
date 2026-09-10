@@ -696,3 +696,22 @@ bvid 相同，于是播放后者时也命中了收藏表，星星被点亮。**�
 - 前端自愈：无头 Chrome + CDP 实测——停住 3s 重开 1 次、15s 冷却期内不重复、`readyState=4` 健康不乱动、暂停态不重开；`preload` 读到 `auto`。
 - Android WakeLock 需重新打包后在真机验证（代码已就位）。
 - 回归：`pytest` 168 passed / 2 skipped；`node --test` 37 passed。
+
+
+---
+
+## BUG-022 后端启动时 B 站网络抖动 → 账号被降级为「未登录」｜ 已修（未打包）
+
+**现象**：本地后端重启时若那一刻到 B 站（`api.bilibili.com`）的请求抖动，启动日志出现
+`恢复登录失败，需重新登录（RemoteProtocolError）`，之后所有 `/api/*` 直接 401——**必须再重启一次**才恢复。
+实测遇到两次（都在验证 #23 时触发重启），`cookies.json` 里的 `SESSDATA` 一直完好，属于「凭据有效但没接上」。
+
+**根因**：`app/main.py` 的 lifespan 里，登录恢复 `accounts.activate()` 是**一次性的**——任何异常都直接落到
+`dbs.reset_to_pending()`，把运行时切成未登录态；网络类错误（`httpx.RemoteProtocolError` 等）与
+「凭据失效」被同等对待。
+
+**修复**：网络类错误（`httpx.HTTPError` / `OSError` / `ConnectionError`）重试 2 次（1.5s、3s 退避），
+凭据失效（`BiliApiError`）不重试、直接按需重新登录；全部失败才 reset 到 pending。
+
+**验证**：重启后端 6 次（含一次真实抖动：日志出现重试记录后仍成功恢复），`/api/songs` 稳定 200，
+未再出现「被登出」。

@@ -18,6 +18,7 @@ OFFLINE_AFTER = 30.0      # 秒：超过无上报即视为离线（前端据此�
 DEVICE_TTL = 600.0        # 秒：离线这么久的设备从列表里清掉
 REPORT_MIN_GAP = 1.0      # 秒：同一设备的最小上报间隔（防刷）
 TRANSFER_TIMEOUT = 12.0   # 秒：移交握手的兜底时限（接收端自己的 canplay 超时是 5s）
+TAKEOVER_GRACE = 2.5      # 秒：刚接管/被抢占后的宽限窗——发送端还在淡出，不能把会话抢回去
 MAX_DEVICES = 12
 MAX_QUEUE = 200
 
@@ -78,6 +79,7 @@ class PlaybackSession:
     repeat: str = "off"
     shuffle: bool = False
     revision: int = 0
+    takeover_at: float = 0.0   # 最近一次接管时刻（宽限窗用）
 
     def position_now(self, now: float) -> float:
         """播放中按上报时刻外推——控制器端据此显示实时进度（±1s）。"""
@@ -206,12 +208,24 @@ class SessionBus:
         prev_active = session.active_device_id
         queue_before = _sig()
         preempted = None
+        # 宽限窗：会话刚被别人接管，本机还在淡出（这几百毫秒里它仍会报 playing）→ 不许抢回
+        in_grace = (now - session.takeover_at) < TAKEOVER_GRACE and prev_active not in (None, device_id)
+        if in_grace:
+            dev.playing = playing
+            return {
+                "accepted": False,
+                "reason": "just-taken-over",
+                "preemptedDeviceId": None,
+                "queueChanged": False,
+                "session": session.out(now, dev.name),
+            }
         if playing or prev_active is None:
             if prev_active and prev_active != device_id:
                 prev = devices.get(prev_active)
                 if prev is not None and (now - prev.last_seen) <= OFFLINE_AFTER and prev.playing:
                     preempted = prev_active
                     prev.preempted_at = now
+                    session.takeover_at = now
             session.active_device_id = device_id
 
         # 只让 active 设备改写队列/进度；其他设备的上报仅刷新在线状态
@@ -351,8 +365,15 @@ class SessionBus:
         session.reported_at = now
         session.playing = True
         session.revision += 1
+        session.takeover_at = now
+        devices = self._devices.get(mid, {})
+        prev = devices.get(pending.from_id)
+        if prev is not None:
+            prev.playing = False        # 发送端已让出
+        dev = devices.get(device_id)
+        if dev is not None:
+            dev.playing = True          # 接收端接管成功：设备级状态同步（抢占提示要用）
         self._transfers.pop(mid, None)
-        dev = self._devices.get(mid, {}).get(device_id)
         return {"ok": True, "session": session.out(now, dev.name if dev else ""),
                 "fromDeviceId": pending.from_id}
 
