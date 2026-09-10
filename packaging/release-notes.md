@@ -1,32 +1,39 @@
-## BiliMusic v1.1.0: 分享能力与手机端打磨 / sharing and mobile polish
+## BiliMusic v1.2.0: 手机端 11 项体验修复 + PC 排版统一 / mobile fixes and desktop layout
 
-Desktop v1.1.0 and Android v1.1.0 are a feature release on top of v1.0.2.
+Desktop v1.2.0 and Android v1.2.0 are a polish release on top of v1.1.0.
 
-v1.1.0 在 v1.0.2 基础上新增分享能力，并集中打磨手机端界面与歌词质量。
+v1.2.0 在 v1.1.0 基础上修掉 11 项手机端/桌面端体验问题（每条都在台账 `docs/bugs.md` 的 BUG-010 ~ BUG-020 有实测记录）。
 
-### 分享 / Sharing
+### 搜索 / Search
 
-- **正向分享**：曲库单曲、歌单、专辑/合集、UP 主页、导出弹窗都能一键分享，内容是**真实 B 站链接**（自带 B 站预览卡，不做视觉仿冒）。降级链：Android 原生分享面板 → `navigator.share` → 剪贴板 → `execCommand` → 弹窗展示链接，**任何一环失败都不会静默**。 / Share songs, playlists, albums, UP pages and export links with the real Bilibili URL. Fallback chain: native Android share sheet → `navigator.share` → clipboard → `execCommand` → show the link in a dialog; no step fails silently.
-- **反向分享**：在 B 站 App 点分享 → 系统面板里选 BiliMusic → 一步入库（收藏夹 / 合集链接同样识别）。未登录或文本里没有 B 站链接时会直接说清原因。 / Reverse sharing: share from the Bilibili app and pick BiliMusic to import in one step; unreadable text and logged-out states are explained instead of failing silently.
-- **修掉系列合集分享链接**：跨视频合集以前会拼出打不开的 `video/sid:…`，现在走 `collectiondetail?sid=…`；拿不到来源 UP 时明确提示，不再发半截链接。 / Fixed broken share links for cross-video collections.
+- **删到最后一个字不再关闭搜索框**：以前输入清空会把整个搜索胶囊收掉，得重新点底部圆钮；现在只清结果、保留面板与焦点。 / Clearing the query no longer dismisses the search bar.
+- **UP 作品页也能搜出结果**：搜索胶囊原本待在 `.main` 里，压不过作品页那一层，表现为「有结果、没搜索框」；现在搜索态把胶囊提到最上层。 / Search now shows on the artist page (a stacking-context fix).
+- **结果不被输入法盖住**：键盘高度写进 CSS 变量，结果面板与搜索框据此整体上移。 / Results stay above the on-screen keyboard.
+- **播放条让位**：搜索时顺序固定为「播放条 → 结果面板 → 搜索框」，播放条被顶到面板上方。 / The player bar moves above the results panel while searching.
+- **搜索框与播放条左右齐平**。 / Search bar aligns with the player bar.
+- 顺手修掉一条重复的 `.search-drop` 规则（它盖掉了键盘避让的高度计算）。 / Removed a duplicated rule that broke the keyboard offset.
 
 ### 手机端 / Mobile
 
-- **底部导航液态玻璃选中块**：可跟手拖动，拖动中水珠形变并溢出导航条，松手过阻尼落位不弹跳。 / Liquid-glass nav pill: follows the finger, deforms like a droplet while dragging, settles without overshoot.
-- **播放条精简**：只保留封面、歌名/UP、播放与切歌，去掉进度条与次要按钮。 / Slim player bar: cover, title/artist and transport only.
-- **播放页与歌词页改版**：按参考图比例重建（封面 75% 宽、控件与底行对齐），歌名走马灯两端羽化，歌词字号与进度条加粗，收藏与「···」对齐且已收藏为粉色。 / Rebuilt the player and lyrics pages to the reference proportions, with marquee fades and a pink active favourite.
-- **PC 歌词页**：去掉与「点封面打开歌词」重复的歌词按钮，左上角关闭钮常显（桌面没有返回手势）。 / Desktop lyrics page: removed the duplicate lyrics button and kept the close button always visible.
+- **导航条选中块点击时缓慢变形**（0.15s 时间常数，约 0.3s 走完），不再是「一点就到位」。 / The liquid-glass nav pill now eases into its shape instead of snapping.
+- **UP 作品页「全部音乐」恒定两列**，列宽封顶 220px，宽屏不会把封面撑成大图。 / Artist page music list is always two columns.
+- **「加载更多」不再被播放条压住**（原来滚到底还差 12px）。 / Fixed the "load more" button being covered by the player bar.
+- **账号页补上「退出登录」**（桌面侧栏与手机共用同一套逻辑，带二次确认），并去掉行尾那些解释性小字。 / Added a log-out row on the account page and dropped the trailing caption texts.
 
-### 歌词质量 / Lyrics
+### 收藏 / Favourites
 
-- 兜底来源加**置信度校验**：网易云错配不再冒充命中，宁可空着也不显示错歌词。 / Confidence checks on fallback lyric sources: a wrong match no longer counts as a hit.
-- 合集子曲目标题收敛为分集名，歌词候选提取不再丢掉真歌名。 / Album child titles collapse to the part title, so lyric candidates keep the real song name.
+- **修掉「只听专辑却显示已收藏」**：收藏状态以前只按视频号记，同一个多分 P 视频里各分集互相串台；现在按「视频+分集」判定，点星只收藏当前这一集。 / Fixed a false "collected" state on multi-part videos: collection is now tracked per part.
+
+### 桌面端 / Desktop
+
+- **歌曲详情页左列与手机版统一**：封面、歌名行、进度条、控制行、底行共用同一条列宽；控制行只留上一首/暂停/下一首，底行两端是播放模式与播放列表（原来播放列表键没有样式、实际不可见）。 / Unified the song detail page's left column with the mobile layout.
+- **UP 主视图右侧列表重排**：一行只留歌名与收藏星。 / The artist view's song list now shows only the title and a favourite star.
 
 ### 安装 / Installers
 
-- macOS: `BiliMusic-1.1.0-mac-arm64.dmg` / `BiliMusic-1.1.0-mac-x64.dmg`
-- Windows: `BiliMusic-1.1.0-win-x64.exe`
-- Android: `BiliMusic-1.1.0-android.apk` (arm64-v8a / x86_64)
+- macOS: `BiliMusic-1.2.0-mac-arm64.dmg` / `BiliMusic-1.2.0-mac-x64.dmg`
+- Windows: `BiliMusic-1.2.0-win-x64.exe`
+- Android: `BiliMusic-1.2.0-android.apk` (arm64-v8a / x86_64)
 - `SHA256SUMS.txt` for verification
 
 > 数据目录沿用旧版本；老库启动时自动补 `album.mid` 列。 / Data directories are reused; older databases get the new `album.mid` column on startup.
