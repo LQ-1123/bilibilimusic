@@ -12,14 +12,15 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=217">
+  <link rel="stylesheet" href="/static/style.css?v=218">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
-  <script src="/static/app.js?v=70" defer></script>
+  <script src="/static/app.js?v=71" defer></script>
   <script src="/static/export.js?v=8" defer></script>
-  <script src="/static/v3.js?v=81" defer></script>
+  <script src="/static/v3.js?v=82" defer></script>
   <script src="/static/nav-liquid.js?v=12" defer></script>
+  <script src="/static/session-sync.js?v=2" defer></script>
   <script src="/static/back-stack.js?v=4" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
@@ -158,6 +159,7 @@
         </label>
       </div>
     </div>
+    <div class="q-devices" id="q-devices" hidden></div><!-- #23：同账号各设备在放什么 -->
     <ul id="queue-list"></ul>
   </div>
 

@@ -25,7 +25,7 @@
 | #1 ~ #22 | 验收 | 系统壳/原生能力/播放控件/启动性能/内容数据 | 27/27 组通过，遗留 #3 深段、#14 series 二期 | `docs/acceptance-manual.md` |
 | BUG-001 ~ 005 | 缺陷 | 收藏夹翻页、极验滑块、验证码错误、计数口径、推荐卡 fab | 均已修 | `docs/bugs.md` |
 | FEAT-001 | 功能 | 登录改「二维码存相册 + 拉起 B 站 App」 | v1.0.1 已上线 | `docs/bugs.md:79-89` |
-| **#23** | **功能** | **多端同步与跨端接力（Spotify Connect 式）** | **提案 / 待排期** | **本文件 §2** |
+| **#23** | **功能** | **多端同步与跨端接力（Spotify Connect 式）** | **Phase 1 已实现（2026-09-10）；Phase 2 待做** | **本文件 §2 / §2.12** |
 | **#24** | **缺陷** | **多 P 专辑曲目名冗余（「专辑名 · 分集名」）** | **待排期（用户：先不改代码）** | **本文件 §3** |
 | **#25** | **功能** | **分享能力：正向原生分享面板 + 反向分享目标接收** | **已实现（Web/桌面已验证，Android 待重新打包验收）** | **本文件 §4** |
 
@@ -33,7 +33,7 @@
 
 ## 2. #23 多端同步与跨端接力（Spotify Connect 式）
 
-> 类型：功能 ｜ 状态：提案 / 待排期 ｜ 提出于 2026-09-09
+> 类型：功能 ｜ 状态：**Phase 1 已落地**（设备注册 + 服务端会话 + 只读展示 + 打开即续播，2026-09-10）｜ Phase 2（命令通道 + 移交握手）待做 ｜ 提出于 2026-09-09
 > 一句话：同账号的多台设备共享一份权威播放会话，可在设备间查看对方在放什么，并把播放无缝接到自己这台设备上。
 
 ### 2.1 背景
@@ -198,6 +198,30 @@ event: transferIn       data: {queue,index,position,revision}   → 发给接收
 | `frontend-prd.md` **D-16**（主/歌词双轨进度） | 本条目要求单一数据源，与 D-16 的修法一致 |
 | `BUG-001`（多设备曲库数量不一致） | 设备列表可显示每台设备最后同步时间，使不一致**当天可见**，是该项的长期可观测性补充 |
 | `#3+#4`（后台播放/系统媒体条） | 互补：Android 前台服务是接力链路里唯一能后台运行的端 |
+
+### 2.12 实现落点与验证（Phase 1，2026-09-10）
+
+| 层 | 文件 | 内容 |
+|---|---|---|
+| 服务端 | `app/services/session_bus.py` | `Device` / `PlaybackSession` + `SessionBus` 进程内单例（按 mid 隔离，写法对齐 `SyncState`）；30s 无上报算离线、10 分钟清设备、设备表上限 12、队列表上限 200、同设备 1s 上报防抖（换歌/拖拽不受限） |
+| 服务端 | `app/api/routes.py` | `POST /api/devices/hello`、`GET /api/devices`、`GET /api/session`、`PUT /api/session`（上报后发 `sessionChanged`） |
+| 服务端 | `app/events.py` | `publish(mid, name, data=None)`：队列项统一 `(name, data)`；SSE 端 `data` 为空时仍只发事件名（旧监听器行为不变）→ 事件可携带结构化负载 |
+| 前端 | `app/web/static/session-sync.js`（新） | 设备身份 `localStorage.bmDeviceId`（同浏览器多标签=一台）、平台名、hello、心跳（切歌/播放暂停/拖动/每 5s/回前台/关闭前）、队列面板里的「设备 · 同账号跨端」区（进度按上报时刻外推，±1s）、「从 X 的 3:42 继续」= 打开即续播 |
+| 前端 | `app/web/static/app.js` | `BiliPlayer.queue()`（上报用队列快照）、`BiliPlayer.adopt(items, index, at)`（把远端队列搬到本机：按 bvid+cid 自建 `/api/stream` 地址、从同一进度开始） |
+| 前端 | `app/web/static/v3.js` | 复用现有 EventSource，把 `sessionChanged` 转成 DOM 事件 `bm:sessionChanged`（不再开第二条 SSE 连接） |
+
+**与提案的差异（有意）**：① SSE 事件里**不带整条队列**（只带摘要 + `queueSize` + `queueChanged`），
+客户端点「继续」时再 `GET /api/session` 拉全量——否则每 5 秒推几十 KB；② Phase 1 用响应里的
+`accepted/preemptedDeviceId` 表达「你是不是 active、被谁抢了」，暂不用 409（Phase 2 做显式移交时再收紧）。
+
+**验证**：
+
+- 单测：`tests/test_session_bus.py` 9 例（注册/首播成 active/被抢标记/非 active 不改会话/进度外推/防抖与跳变/离线与清理/设备表上限/账号隔离）；
+  `tests/test_session_api.py` 3 例（hello→上报→快照、上报发 `sessionChanged` 且不带队列、第二台抢占用 `preemptedDeviceId`）；`tests/test_events.py` 补 payload 用例。**181 passed / 2 skipped**。
+- 端到端（两个独立 Chrome 实例 = 两台设备）：A 上报「正在播放 爱的初体验 @42.5s」→ B 打开页面即在队列面板看到
+  `Mac · 正在播放 · 张震岳 - 爱的初体验 · 0:45`；A 推进到 88.25s → B **不刷新**自动变 `1:28`（SSE ✓）；
+  B 点「从 Mac 的 0:45 继续」→ 本机播放条变成同一首歌、队列 2 首、提示「已从 Mac 的进度继续」；
+  B 上报在播 → 会话切到 B、A 收到「已在另一台设备上继续播放」（验收 #8 的抢占提示 ✓）。
 
 ---
 

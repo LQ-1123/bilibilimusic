@@ -22,7 +22,11 @@ def unsubscribe(q: asyncio.Queue) -> None:
             _subs.discard(item)
 
 
-def publish(mid: str | None, name: str) -> None:
+def publish(mid: str | None, name: str, data: dict | None = None) -> None:
+    """发布事件；data 可选（#23 会话快照等结构化负载）。
+
+    队列项统一为 (name, data)：订阅端按事件名分发，忽略 data 的旧监听器行为不变。
+    """
     for sub_mid, q in list(_subs):
         if sub_mid == mid:
-            q.put_nowait(name)
+            q.put_nowait((name, data))

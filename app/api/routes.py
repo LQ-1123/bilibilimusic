@@ -5,6 +5,7 @@
 
 import asyncio
 import hashlib
+import json
 import logging
 import re
 import urllib.parse
@@ -33,6 +34,7 @@ from app.db.models import Album, ImportTask, Song
 from app.db.session import new_session
 from app.services import library, playlists, recs
 from app.services.importer import ImportService, part_display_title
+from app.services.session_bus import bus as session_bus
 from app.storage.files import FileStore
 
 log = logging.getLogger(__name__)
@@ -594,11 +596,12 @@ async def library_events(request: Request) -> StreamingResponse:
             yield "retry: 3000\n\n"
             while True:
                 try:
-                    name = await asyncio.wait_for(queue.get(), timeout=15)
+                    name, data = await asyncio.wait_for(queue.get(), timeout=15)
                 except asyncio.TimeoutError:
                     yield ": ping\n\n"
                     continue
-                yield f"event: {name}\ndata: {name}\n\n"
+                payload = json.dumps(data, ensure_ascii=False) if data is not None else name
+                yield f"event: {name}\ndata: {payload}\n\n"
         finally:
             events.unsubscribe(queue)
 
@@ -607,6 +610,65 @@ async def library_events(request: Request) -> StreamingResponse:
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---- #23 跨端播放会话（Phase 1：设备注册 / 状态上报 / 只读快照） ----
+# 详见 docs/issue-ledger.md §2：搬的是会话状态不是音频，接收端自己取流并 seek。
+# Phase 2 再加命令通道（play/pause/next/seek）与移交握手。
+
+_DEVICE_ID = Field(min_length=6, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class DeviceHello(BaseModel):
+    deviceId: str = _DEVICE_ID
+    name: str = Field(default="", max_length=40)
+    kind: str = Field(default="browser", max_length=16)
+
+
+class SessionReport(BaseModel):
+    deviceId: str = _DEVICE_ID
+    name: str = Field(default="", max_length=40)
+    kind: str = Field(default="browser", max_length=16)
+    queue: list[dict] = Field(default_factory=list, max_length=200)
+    index: int = Field(default=0, ge=0)
+    position: float = Field(default=0.0, ge=0)
+    playing: bool = False
+    repeat: str = Field(default="off", max_length=8)
+    shuffle: bool = False
+
+
+@router.post("/devices/hello")
+def devices_hello(body: DeviceHello, request: Request) -> dict:
+    """设备注册 + 拉会话快照（页面打开时调一次）。"""
+    return session_bus.hello(request.state.mid, body.deviceId, body.name, body.kind)
+
+
+@router.get("/devices")
+def list_devices(request: Request) -> dict:
+    return {"devices": session_bus.devices(request.state.mid)}
+
+
+@router.get("/session")
+def get_playback_session(request: Request) -> dict:
+    """会话快照（含队列）——「从别台设备的进度继续」时按需拉取。"""
+    return session_bus.snapshot(request.state.mid)
+
+
+@router.put("/session")
+def report_playback_session(body: SessionReport, request: Request) -> dict:
+    """本机上报播放状态；被抢走的设备经 sessionChanged 事件收到提示（Phase 2 做显式移交）。"""
+    mid = request.state.mid
+    result = session_bus.report(
+        mid, body.deviceId, body.model_dump(), name=body.name, kind=body.kind
+    )
+    light = session_bus.summary(mid)          # 摘要不含队列，避免每 5 秒推几十 KB
+    events.publish(mid, "sessionChanged", {
+        "session": light["session"],
+        "devices": light["devices"],
+        "preemptedDeviceId": result["preemptedDeviceId"],
+        "queueChanged": result["queueChanged"],
+    })
+    return result
 
 
 # ---- B 站搜索 ----

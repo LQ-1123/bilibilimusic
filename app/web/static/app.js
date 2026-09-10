@@ -1227,6 +1227,37 @@
     currentId: function () { return playlist[current] ? playlist[current].id : null; },
     isPlaying: function () { return !!audio.src && !audio.paused; },
     songs: fetchSongs, // v3.js 搜索下拉用
+    // #23 跨端会话：上报用的队列快照（只带跨端需要的字段）+ 把远端队列搬到本机
+    queue: function () {
+      return playlist.map(function (s) {
+        return { songId: s.id || 0, bvid: s.bvid, cid: s.cid || 0,
+                 title: s.title, artist: s.artist, coverUrl: s.coverUrl };
+      });
+    },
+    adopt: function (items, index, at) {
+      var list = (items || []).map(function (it) {
+        return {
+          id: it.songId || 0, bvid: it.bvid, cid: it.cid || 0,
+          title: it.title || "", artist: it.artist || "",
+          qualityLabel: "在线", coverUrl: it.coverUrl || "", duration: it.duration || 0,
+          // 接收端自己向后端取流（B 站按视频+分 P 路由），跨端搬的只是会话状态
+          audioUrl: "/api/stream/" + encodeURIComponent(it.bvid) + (it.cid ? "?cid=" + it.cid : ""),
+        };
+      }).filter(function (x) { return !!x.bvid; });
+      if (!list.length) return false;
+      playlist = list;
+      current = Math.min(Math.max(0, index | 0), list.length - 1);
+      var seekTo = Math.max(0, Number(at) || 0);
+      var onMeta = function () {
+        audio.removeEventListener("loadedmetadata", onMeta);
+        try {
+          if (seekTo > 1 && isFinite(audio.duration) && seekTo < audio.duration - 2) audio.currentTime = seekTo;
+        } catch (e) {}
+      };
+      audio.addEventListener("loadedmetadata", onMeta);
+      playSong(playlist[current]);
+      return true;
+    },
     activeMedia: function () { return (recActive && recAudio) ? recAudio : audio; }, // 歌词页进度条寻址
     currentSong: function () { return playlist[current] || null; }, // 含 bvid
     position: function () { // 队列位置（1 基），用于播放页封面上的「3 / 30」；无队列返回 null
