@@ -145,7 +145,6 @@ app/
   services/     账号、导入、同步、推荐、歌词、跨端会话
   web/          页面路由、模板、CSS 与 JavaScript
 tests/          Python 与 JavaScript 回归测试
-docs/images/    README 界面截图
 docs/shots/     跨端串流等功能的界面留档
 ```
 

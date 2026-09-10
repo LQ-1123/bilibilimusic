@@ -145,7 +145,6 @@ app/
   services/     Accounts, imports, sync, recommendations, lyrics, sessions
   web/          Routes, templates, CSS, JavaScript
 tests/          Python and JavaScript regression tests
-docs/images/    README screenshots
 docs/shots/     UI records, including cross-device streaming
 ```
 
