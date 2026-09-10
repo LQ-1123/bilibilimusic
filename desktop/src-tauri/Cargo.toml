@@ -1,6 +1,6 @@
 [package]
 name = "bilimusic"
-version = "1.3.0"
+version = "2.0.0"
 description = "BiliMusic desktop player"
 edition = "2021"
 
