@@ -1,0 +1,327 @@
+/* ============================================================
+   组件：曲目行 / 货架卡片 / 详情头 / 菜单 / 弹窗 / Toast / 抽屉
+   ============================================================ */
+
+/* ---------- 区段标题 ---------- */
+.section { margin-top: var(--sp-8); }
+.section__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: var(--sp-4);
+}
+.section__title { font-size: var(--fs-2xl); }
+.section__more { font-size: var(--fs-sm); color: var(--text-3); font-weight: 500; display: inline-flex; align-items: center; gap: 3px; transition: var(--dur-1); }
+.section__more:hover { color: var(--text); }
+.section__more svg { width: 13px; height: 13px; }
+
+/* ---------- 曲目行（Apple Music 式） ---------- */
+.tracklist { display: flex; flex-direction: column; }
+
+.track {
+  display: grid;
+  grid-template-columns: 28px 44px 1fr minmax(120px, .4fr) 60px 40px;
+  align-items: center; gap: var(--sp-3);
+  height: 56px; padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  transition: background var(--dur-1) var(--ease);
+  position: relative;
+  cursor: default;
+}
+.track + .track::before {
+  content: ""; position: absolute; top: 0; left: calc(28px + 44px + var(--sp-3) * 3); right: var(--sp-3);
+  height: 1px; background: var(--stroke); opacity: .6;
+}
+.track:hover, .track:focus-visible { background: var(--hover); }
+.track:hover + .track::before, .track:hover::before { opacity: 0; }
+.track.is-playing { background: var(--selected); }
+.track.is-playing + .track::before, .track.is-playing::before { opacity: 0; }
+
+.track__idx { font-size: var(--fs-sm); color: var(--text-3); text-align: center; font-variant-numeric: tabular-nums; }
+.track.is-playing .track__idx .num { display: none; }
+.track__idx .eq { display: none; }
+.track.is-playing .track__idx .eq { display: inline-flex; }
+
+.track__cover { width: 44px; height: 44px; }
+.track__main { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.track__title {
+  font-size: var(--fs-lg); font-weight: 500;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 6px;
+}
+.track.is-playing .track__title { color: var(--pink); font-weight: 600; }
+.track__artist { font-size: var(--fs-sm); color: var(--text-2); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.track__album {
+  font-size: var(--fs-sm); color: var(--text-2);
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 5px;
+}
+.track__album:hover { color: var(--text); text-decoration: underline; }
+.track__album svg { width: 13px; height: 13px; flex: none; }
+.track__dur { font-size: var(--fs-sm); color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+.track__more { opacity: 0; }
+.track:hover .track__more, .track:focus-within .track__more { opacity: 1; }
+
+/* 触屏常显操作 */
+@media (pointer: coarse) {
+  .track__more { opacity: 1; }
+}
+/* 手机曲目行：封面 + 两行 + 时长 + 更多 */
+@media (max-width: 820px) {
+  .track { grid-template-columns: 48px 1fr 44px; height: 64px; gap: var(--sp-3); }
+  .track__idx, .track__album, .track__dur { display: none; }
+  .track__cover { width: 48px; height: 48px; }
+  .track + .track::before { left: calc(48px + var(--sp-3) * 2); }
+}
+
+/* ---------- 货架卡片（Apple 式：图 + 两行文字，无重边框） ---------- */
+.shelf { display: flex; gap: var(--sp-4); overflow-x: auto; padding: 2px 2px var(--sp-3); scroll-snap-type: x proximity; scrollbar-width: none; }
+.shelf::-webkit-scrollbar { display: none; }
+.shelf > * { scroll-snap-align: start; }
+
+.card { width: 168px; flex: none; text-align: left; transition: var(--dur-2) var(--ease); border-radius: var(--r-md); padding: 6px; margin: -6px; }
+.card:hover { background: var(--hover); }
+.card__art {
+  position: relative; width: 100%; aspect-ratio: 1;
+  border-radius: var(--r-cover); overflow: hidden;
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--sp-3);
+}
+.card__art img { width: 100%; height: 100%; object-fit: cover; transition: transform var(--dur-3) var(--ease-out); }
+.card:hover .card__art img { transform: scale(1.04); }
+.card__play {
+  position: absolute; right: 8px; bottom: 8px;
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--pink); color: #fff;
+  display: grid; place-items: center;
+  box-shadow: var(--shadow-md);
+  opacity: 0; transform: translateY(8px);
+  transition: var(--dur-2) var(--ease);
+}
+.card__play svg { width: 18px; height: 18px; }
+.card:hover .card__play, .card:focus-within .card__play { opacity: 1; transform: translateY(0); }
+.card__play:hover { background: var(--pink-strong); transform: scale(1.06); }
+.card__title { font-size: var(--fs-lg); font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.card__sub { font-size: var(--fs-sm); color: var(--text-2); margin-top: 1px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+/* 圆形卡（UP 主用） */
+.card--round .card__art { border-radius: 50%; }
+
+@media (pointer: coarse) { .card__play { opacity: 1; transform: none; } }
+
+/* ---------- 详情页头部（Apple Music 专辑页式） ---------- */
+.detail-hero {
+  display: flex; align-items: flex-end; gap: var(--sp-6);
+  padding: var(--sp-6) 0 var(--sp-6);
+  position: relative;
+}
+/* 主色氛围：封面色向背景淡出 */
+.detail-hero::before {
+  content: ""; position: absolute; inset: calc(var(--topbar-h) * -1) calc(var(--sp-8) * -1) 0;
+  background: linear-gradient(180deg, var(--hero-color, var(--bg-overlay)) 0%, transparent 100%);
+  opacity: var(--hero-op); pointer-events: none; z-index: -1;
+}
+.detail-hero__cover {
+  width: 200px; height: 200px; flex: none;
+  border-radius: var(--r-md); overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.detail-hero__cover img { width: 100%; height: 100%; object-fit: cover; }
+.detail-hero__meta { min-width: 0; padding-bottom: 2px; }
+.detail-hero__kind { font-size: var(--fs-xs); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); margin-bottom: var(--sp-2); }
+.detail-hero__title { font-size: var(--fs-hero); line-height: 1.15; margin-bottom: var(--sp-2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.detail-hero__sub { font-size: var(--fs-md); color: var(--text-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.detail-hero__sub .badge { margin-left: 2px; }
+.detail-hero__actions { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-5); }
+
+.btn--play-hero {
+  height: 42px; padding: 0 24px; gap: 8px;
+  background: var(--pink); color: #fff; border-color: transparent;
+  font-size: var(--fs-lg); font-weight: 700;
+  border-radius: var(--r-pill);
+  box-shadow: 0 6px 20px var(--pink-glow);
+}
+.btn--play-hero:hover { background: var(--pink-strong); color: #fff; transform: scale(1.02); }
+.btn--play-hero svg { width: 17px; height: 17px; }
+
+@media (max-width: 820px) {
+  .detail-hero { flex-direction: column; align-items: center; text-align: center; gap: var(--sp-5); padding-top: var(--sp-4); }
+  .detail-hero::before { inset: calc(var(--topbar-h) * -1) calc(var(--sp-4) * -1) 0; }
+  .detail-hero__cover { width: 220px; height: 220px; }
+  .detail-hero__sub { justify-content: center; }
+  .detail-hero__actions { justify-content: center; }
+}
+
+/* ---------- 右键/长按菜单（Action Sheet 双形态共用） ---------- */
+.menu {
+  min-width: 220px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  display: flex; flex-direction: column;
+}
+.menu__item {
+  display: flex; align-items: center; gap: 11px;
+  height: 40px; padding: 0 var(--sp-3);
+  border-radius: var(--r-xs);
+  font-size: var(--fs-md); color: var(--text);
+  transition: var(--dur-1); text-align: left;
+}
+.menu__item svg { width: 17px; height: 17px; color: var(--text-2); flex: none; }
+.menu__item:hover { background: var(--hover); }
+.menu__item--danger { color: var(--red); }
+.menu__item--danger svg { color: var(--red); }
+.menu__sep { height: 1px; background: var(--stroke); margin: 5px 8px; }
+
+/* ---------- 弹窗（Modal） ---------- */
+.modal-mask {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0, 0, 0, .5);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  display: grid; place-items: center;
+  padding: var(--sp-5);
+  animation: fade var(--dur-2) var(--ease);
+}
+@keyframes fade { from { opacity: 0; } }
+.modal {
+  width: 420px; max-width: 100%;
+  max-height: min(640px, 90vh);
+  background: var(--bg-float);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: pop var(--dur-2) var(--spring);
+}
+@keyframes pop { from { opacity: 0; transform: scale(.94) translateY(10px); } }
+.modal__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-5) var(--sp-5) 0;
+}
+.modal__title { font-size: var(--fs-xl); font-weight: 700; }
+.modal__body { padding: var(--sp-5); overflow-y: auto; }
+.modal__foot { display: flex; justify-content: flex-end; gap: var(--sp-3); padding: 0 var(--sp-5) var(--sp-5); }
+
+/* ---------- 输入框 ---------- */
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field__label { font-size: var(--fs-sm); font-weight: 600; color: var(--text-2); }
+.field__input {
+  height: 42px; padding: 0 var(--sp-4);
+  border-radius: var(--r-sm);
+  background: var(--bg-raise);
+  border: 1px solid var(--stroke);
+  font-size: var(--fs-md); color: var(--text);
+  transition: var(--dur-2);
+}
+.field__input:focus { border-color: var(--pink); box-shadow: 0 0 0 3px var(--pink-soft); }
+.field__input::placeholder { color: var(--text-3); }
+.field__hint { font-size: var(--fs-xs); color: var(--text-3); }
+.field__hint--err { color: var(--red); }
+
+/* ---------- Toast ---------- */
+.toast-wrap {
+  position: fixed; left: 50%; bottom: calc(var(--bar-h) + var(--sp-5)); z-index: 200;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 9px;
+  height: 40px; padding: 0 var(--sp-4);
+  border-radius: var(--r-pill);
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border: 1px solid var(--stroke-2);
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-md); font-weight: 500;
+  animation: toast-in .3s var(--spring);
+  max-width: min(480px, 90vw);
+}
+.toast svg { width: 16px; height: 16px; flex: none; }
+.toast--ok svg { color: var(--green); }
+.toast--err svg { color: var(--red); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(12px) scale(.94); } }
+@media (max-width: 820px) {
+  .toast-wrap { bottom: calc(var(--bar-h) + var(--tabbar-h) + var(--sp-4) + var(--inset-bottom, env(safe-area-inset-bottom, 0px))); }
+}
+
+/* ---------- 移动 Action Sheet（菜单的手机形态） ---------- */
+.sheet-mask { position: fixed; inset: 0; z-index: 110; background: rgba(0,0,0,.45); animation: fade var(--dur-2); }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 111;
+  background: var(--bg-float);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  padding: var(--sp-2) var(--sp-3) calc(var(--sp-3) + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));
+  box-shadow: var(--shadow-lg);
+  animation: sheet-up .32s var(--ease);
+  max-height: 78vh; overflow-y: auto;
+}
+@keyframes sheet-up { from { transform: translateY(100%); } }
+.sheet__grab { width: 36px; height: 4px; border-radius: 4px; background: var(--stroke-2); margin: var(--sp-2) auto var(--sp-3); }
+.sheet .menu__item { height: 48px; font-size: var(--fs-lg); }
+.sheet .menu__item svg { width: 19px; height: 19px; }
+
+/* ---------- 进度条（统一样式，#19 粉色填充） ---------- */
+.slider {
+  --val: 0%;
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 20px; background: transparent; cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 4px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--pink) var(--val), var(--stroke-2) var(--val));
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; margin-top: -4px;
+  box-shadow: 0 1px 5px rgba(0,0,0,.4);
+  opacity: 0; transition: opacity var(--dur-1);
+}
+.slider:hover::-webkit-slider-thumb, .slider:active::-webkit-slider-thumb { opacity: 1; }
+.slider::-moz-range-track { height: 4px; border-radius: 4px; background: var(--stroke-2); }
+.slider::-moz-range-progress { height: 4px; border-radius: 4px; background: var(--pink); }
+.slider::-moz-range-thumb { width: 12px; height: 12px; border: none; border-radius: 50%; background: #fff; opacity: 0; }
+.slider:hover::-moz-range-thumb { opacity: 1; }
+
+/* ---------- 芯片（筛选/电台分类） ---------- */
+.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  height: 32px; padding: 0 15px; flex: none;
+  border-radius: var(--r-pill);
+  background: var(--bg-float); border: 1px solid var(--stroke);
+  font-size: var(--fs-md); font-weight: 500; color: var(--text-2);
+  transition: var(--dur-1);
+}
+.chip:hover { color: var(--text); background: var(--bg-overlay); }
+.chip.is-active { background: var(--text); color: var(--bg); border-color: transparent; font-weight: 600; }
+
+/* ---------- 设置行 ---------- */
+.setting-row {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--stroke);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-row__meta { flex: 1; min-width: 0; }
+.setting-row__title { font-size: var(--fs-lg); font-weight: 500; }
+.setting-row__desc { font-size: var(--fs-sm); color: var(--text-3); margin-top: 1px; }
+
+/* 开关 */
+.switch { position: relative; width: 46px; height: 28px; flex: none; }
+.switch input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+.switch i {
+  position: absolute; inset: 0; border-radius: 999px;
+  background: var(--stroke-2); transition: var(--dur-2) var(--ease);
+}
+.switch i::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px;
+  border-radius: 50%; background: #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.25);
+  transition: var(--dur-2) var(--spring);
+}
+.switch input:checked + i { background: var(--pink); }
+.switch input:checked + i::after { transform: translateX(18px); }

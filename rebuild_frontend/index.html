@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0c11">
+<title>BiliMusic · 重设计预览</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23fb7299'/%3E%3Ctext x='16' y='22' font-size='16' fill='white' text-anchor='middle' font-family='sans-serif' font-weight='700'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/components.css">
+<link rel="stylesheet" href="css/player.css">
+<link rel="stylesheet" href="css/pages.css">
+<style>
+  /* 设计稿工具条（不属于产品设计） */
+  .demo-dock {
+    position: fixed; top: 14px; right: 14px; z-index: 500;
+    display: flex; gap: 8px;
+  }
+  .demo-dock button {
+    height: 30px; padding: 0 13px;
+    border-radius: 999px; font-size: 12px; font-weight: 600;
+    background: rgba(30,30,40,.72); color: #eee;
+    border: 1px solid rgba(255,255,255,.18);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    cursor: pointer; font-family: inherit;
+  }
+  .demo-dock button:hover { background: rgba(50,50,64,.85); }
+  html[data-theme="light"] .demo-dock button { background: rgba(255,255,255,.8); color: #333; border-color: rgba(0,0,0,.12); }
+</style>
+</head>
+<body>
+  <div class="demo-dock">
+    <button id="dock-theme">☀ / 🌙 主题</button>
+    <button id="dock-login">登录弹窗</button>
+    <button id="dock-np">播放页</button>
+    <button id="dock-jobs">任务抽屉</button>
+  </div>
+
+  <div id="app" class="app"></div>
+
+  <script type="module">
+    import './js/app.js';
+    import { state, applyTheme, renderNowPlaying, renderJobs, openLogin } from './js/views.js';
+    const dock = document.querySelector('.demo-dock');
+    dock.addEventListener('click', e => {
+      const id = e.target.id;
+      if (id === 'dock-theme') {
+        document.documentElement.classList.add('theme-anim');
+        state.theme = state.theme === 'dark' ? 'light' : 'dark';
+        localStorage.setItem('bmTheme', state.theme);
+        applyTheme();
+        setTimeout(() => document.documentElement.classList.remove('theme-anim'), 350);
+      }
+      if (id === 'dock-login') openLogin();
+      if (id === 'dock-np') { state.nowOpen = !state.nowOpen; renderNowPlaying(); }
+      if (id === 'dock-jobs') { state.jobsOpen = !state.jobsOpen; renderJobs(); }
+    });
+  </script>
+</body>
+</html>

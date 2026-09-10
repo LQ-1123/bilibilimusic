@@ -1,0 +1,133 @@
+/* ============================================================
+   BiliMusic · 设计令牌 (Design Tokens)
+   参考策略：Apple Music 的呼吸感 + Spotify 的浏览效率 + YT Music 的沉浸封面
+   ============================================================ */
+
+/* ---------- 1. 品牌与基础色 ---------- */
+:root {
+  /* 品牌粉：保留 BiliMusic 现有身份，降饱和一档用于大面填充 */
+  --pink: #fb7299;
+  --pink-strong: #f85e8a;
+  --pink-soft: rgba(251, 114, 153, .14);
+  --pink-glow: rgba(251, 114, 153, .32);
+
+  /* 功能色 */
+  --green: #34d399;          /* 在线 / 成功 */
+  --amber: #fbbf24;          /* 进行中 */
+  --red: #f87171;            /* 失败 / 危险 */
+
+  /* 字体族：跟随系统，中文优先苹方 */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+          "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+  --font-num: "SF Pro Display", -apple-system, "PingFang SC", sans-serif;
+
+  /* ---------- 2. 字阶（Apple 式 1.25 递进，14 基准） ---------- */
+  --fs-xs: 11px;    /* 标签、徽标 */
+  --fs-sm: 12.5px;  /* 辅助信息、时长 */
+  --fs-md: 13.5px;  /* 正文、列表次要行 */
+  --fs-lg: 15px;    /* 列表主行、按钮 */
+  --fs-xl: 17px;    /* 卡片标题 */
+  --fs-2xl: 21px;   /* 区段标题 */
+  --fs-3xl: 27px;   /* 页面标题 */
+  --fs-hero: 34px;  /* 详情页大标题 */
+
+  /* ---------- 3. 间距（4 基准） ---------- */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  /* ---------- 4. 圆角（连续曲率观感） ---------- */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 24px;
+  --r-pill: 999px;
+  --r-cover: 8px;   /* 封面统一圆角，比卡片小一档更利落 */
+
+  /* ---------- 5. 尺寸 ---------- */
+  --side-w: 248px;        /* 桌面侧栏 */
+  --bar-h: 64px;          /* 播放条 */
+  --tabbar-h: 56px;       /* 移动底部 Tab */
+  --topbar-h: 60px;
+  --touch: 44px;          /* 触摸热区下限 */
+}
+
+/* ---------- 6. 暗色主题（默认） ---------- */
+:root, html[data-theme="dark"] {
+  color-scheme: dark;
+  /* 背景三段：底 → 面 → 浮层，明度阶梯 ≤4% 保持克制 */
+  --bg: #0c0c11;
+  --bg-raise: #131318;
+  --bg-float: #1a1a21;
+  --bg-overlay: #202029;
+
+  --text: #f5f5f7;
+  --text-2: #9d9daa;
+  --text-3: #63636f;
+
+  --stroke: rgba(255, 255, 255, .08);
+  --stroke-2: rgba(255, 255, 255, .14);
+
+  --hover: rgba(255, 255, 255, .055);
+  --active: rgba(255, 255, 255, .10);
+  --selected: rgba(251, 114, 153, .13);
+
+  --glass: rgba(18, 18, 24, .72);
+  --glass-strong: rgba(14, 14, 19, .9);
+
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, .28);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, .55);
+
+  --hero-op: .5;
+  --bar-bg: rgba(16, 16, 22, .78);
+  --tabbar-bg: rgba(13, 13, 18, .82);
+}
+
+/* ---------- 7. 亮色主题 ---------- */
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f4f7;
+  --bg-raise: #fbfbfd;
+  --bg-float: #ffffff;
+  --bg-overlay: #ffffff;
+
+  --text: #1b1b22;
+  --text-2: #71717e;
+  --text-3: #a8a8b4;
+
+  --stroke: rgba(24, 24, 40, .09);
+  --stroke-2: rgba(24, 24, 40, .16);
+
+  --hover: rgba(24, 24, 40, .05);
+  --active: rgba(24, 24, 40, .09);
+  --selected: rgba(251, 114, 153, .13);
+
+  --glass: rgba(251, 251, 253, .72);
+  --glass-strong: rgba(255, 255, 255, .92);
+
+  --shadow-sm: 0 2px 10px rgba(30, 30, 60, .07);
+  --shadow-md: 0 8px 28px rgba(30, 30, 60, .12);
+  --shadow-lg: 0 20px 60px rgba(30, 30, 60, .18);
+
+  --hero-op: .34;
+  --bar-bg: rgba(255, 255, 255, .8);
+  --tabbar-bg: rgba(250, 250, 252, .85);
+
+  --pink: #f0507f;
+  --pink-strong: #e6406f;
+}
+
+/* ---------- 8. 主题切换动效 ---------- */
+html.theme-anim, html.theme-anim * { transition: background-color .28s ease, color .28s ease, border-color .28s ease !important; }
+
+/* ---------- 9. 动效曲线与降动效 ---------- */
+:root {
+  --ease: cubic-bezier(.32, .72, 0, 1);      /* Apple 标准 */
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --spring: cubic-bezier(.5, 1.6, .4, 1);     /* 轻弹性，用于弹层 */
+  --dur-1: .15s; --dur-2: .24s; --dur-3: .4s;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
