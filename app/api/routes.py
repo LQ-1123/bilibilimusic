@@ -616,7 +616,7 @@ async def library_events(request: Request) -> StreamingResponse:
 # 详见 docs/issue-ledger.md §2：搬的是会话状态不是音频，接收端自己取流并 seek。
 # Phase 2 再加命令通道（play/pause/next/seek）与移交握手。
 
-_DEVICE_ID = Field(min_length=6, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+_DEVICE_ID = Field(min_length=6, max_length=64)   # 字符白名单由 session_bus 清洗（v1/v2 都稳）
 
 
 class DeviceHello(BaseModel):
@@ -629,7 +629,7 @@ class SessionReport(BaseModel):
     deviceId: str = _DEVICE_ID
     name: str = Field(default="", max_length=40)
     kind: str = Field(default="browser", max_length=16)
-    queue: list[dict] = Field(default_factory=list, max_length=200)
+    queue: list[dict] = Field(default_factory=list)   # 上限由 session_bus 截断（pydantic v1 不支持 list 上的 max_length）
     index: int = Field(default=0, ge=0)
     position: float = Field(default=0.0, ge=0)
     playing: bool = False
@@ -659,7 +659,9 @@ def report_playback_session(body: SessionReport, request: Request) -> dict:
     """本机上报播放状态；被抢走的设备经 sessionChanged 事件收到提示（Phase 2 做显式移交）。"""
     mid = request.state.mid
     result = session_bus.report(
-        mid, body.deviceId, body.model_dump(), name=body.name, kind=body.kind
+        mid, body.deviceId,
+        (body.model_dump() if hasattr(body, "model_dump") else body.dict()),   # v2 / v1 都支持
+        name=body.name, kind=body.kind
     )
     light = session_bus.summary(mid)          # 摘要不含队列，避免每 5 秒推几十 KB
     events.publish(mid, "sessionChanged", {

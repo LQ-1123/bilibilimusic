@@ -23,6 +23,18 @@ MAX_DEVICES = 12
 MAX_QUEUE = 200
 
 
+def clean_id(raw: str) -> str:
+    """设备 id 只留 [A-Za-z0-9_-] 并限长——pydantic v1 不支持 pattern 约束时的替代清洗。"""
+    keep = "".join(ch for ch in str(raw or "") if ch.isalnum() or ch in "-_")
+    return keep[:64]
+
+
+def clean_name(raw: str, fallback: str = "") -> str:
+    """设备名去掉控制字符并限长（会显示在其他设备的 UI 上）。"""
+    text = "".join(ch for ch in str(raw or "") if ch.isprintable()).strip()
+    return (text or fallback)[:40]
+
+
 @dataclass
 class Device:
     id: str
@@ -124,6 +136,7 @@ class SessionBus:
 
     def hello(self, mid: str, device_id: str, name: str = "", kind: str = "browser") -> dict:
         now = time.time()
+        device_id = clean_id(device_id) or "unknown-device"
         devices = self._devices.setdefault(mid, {})
         dev = devices.get(device_id)
         if dev is None:
@@ -135,7 +148,7 @@ class SessionBus:
                 devices.pop(oldest.id, None)
             dev = Device(id=device_id, mid=mid, last_seen=now)
             devices[device_id] = dev
-        dev.name = (name or dev.name or kind)[:40]
+        dev.name = clean_name(name or dev.name, kind)
         dev.kind = (kind or dev.kind or "browser")[:16]
         dev.last_seen = now
         return self.snapshot(mid)
@@ -184,6 +197,8 @@ class SessionBus:
         - 同一设备 1 秒内重复上报只刷新 last_seen，不改 revision（省流量、防抖）。
         """
         now = time.time()
+        device_id = clean_id(device_id) or "unknown-device"
+        name = clean_name(name)
         devices = self._devices.setdefault(mid, {})
         dev = devices.get(device_id)
         if dev is None:
@@ -192,7 +207,7 @@ class SessionBus:
             dev = devices[device_id]
         dev.last_seen = now
         if name:
-            dev.name = name[:40]
+            dev.name = clean_name(name, dev.name)
         playing = bool(payload.get("playing"))
         dev.playing = playing
 
