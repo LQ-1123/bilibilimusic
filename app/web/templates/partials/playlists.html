@@ -1,8 +1,10 @@
+<div class="side-sec side-pl-section"><span class="lb">资料库</span></div>
 {% for c in cards %}
-<button type="button" class="side-pl" data-pl="{{ c.id }}" data-name="{{ c.name }}"
+<button type="button" class="side-pl{% if c.id == 0 %} side-pl-library{% endif %}" data-pl="{{ c.id }}" data-name="{{ c.name }}"
         data-count="{{ c.count }}" data-hue="{{ c.hue }}" style="--h:{{ c.hue }}"
         onclick="openDetailFrom(this)" title="打开歌单「{{ c.name }}」">
-  <span class="sp-cov">{% if c.cover %}<img src="{{ c.cover }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}♪{% endif %}</span>
+  {% if c.id == 0 %}<svg class="sp-library-icon" aria-hidden="true"><use href="#i-note"/></svg>{% endif %}
+  <span class="sp-cov">{% if c.cover %}<img src="{{ c.cover }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<svg width="16" height="16" aria-hidden="true"><use href="#i-note"/></svg>{% endif %}</span>
   <span class="sp-name">{{ c.name }}</span>
   {% if c.id != 0 %}
   <span class="cnt">{{ c.count }}</span>
@@ -12,4 +14,10 @@
         onclick="event.stopPropagation(); deletePlaylist({{ c.id }}, this.closest('.side-pl').dataset.name)">✕</span>
   {% endif %}
 </button>
+{% if c.id == 0 %}
+<div class="side-sec side-pl-section">
+  <span class="lb">我的歌单</span>
+  <button class="add" type="button" onclick="createPlaylist()" title="新建歌单" aria-label="新建歌单"><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
+</div>
+{% endif %}
 {% endfor %}

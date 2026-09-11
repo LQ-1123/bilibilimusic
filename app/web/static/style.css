@@ -29,7 +29,7 @@ html[data-theme="light"]{
   --txt:#16161d; --txt2:#6d6d7a; --txt3:#a3a3af;
   --pink:#f0507f; --pink-strong:#e64a78; --pink-tint:rgba(240,80,127,.13); --pink-txt:#d63d6c;
   --glass:rgba(255,255,255,.62); --glass-strong:rgba(255,255,255,.9);
-  --sidebar-glass:rgba(246,246,249,.78); --sidebar-selected:rgba(35,35,45,.09);
+  --sidebar-glass:rgba(229,230,236,.62); --sidebar-selected:rgba(35,35,45,.09);
   --sidebar-hover:rgba(35,35,45,.05);
   --stroke:rgba(20,20,35,.09); --stroke2:rgba(20,20,35,.16);
   --shadow:0 18px 50px rgba(30,30,60,.14); --shadow-sm:0 6px 20px rgba(30,30,60,.10);
@@ -59,9 +59,9 @@ img{display:block}
 .hidden{display:none !important}
 /* 走马灯激活态（#13）：关省略号——裁切缘的省略号不随平移走，会钉在右缘 */
 .ticker-on{text-overflow:clip !important}
-::-webkit-scrollbar{width:9px;height:9px}
-::-webkit-scrollbar-thumb{background:rgba(140,140,160,.28);border-radius:8px;border:2px solid transparent;background-clip:content-box}
-::-webkit-scrollbar-track{background:transparent}
+/* 滚动条全部隐藏（滚动能力保留：滚轮/触控板/键盘照常）——含 macOS「始终显示滚动条」的情况 */
+*{scrollbar-width:none;-ms-overflow-style:none}
+*::-webkit-scrollbar{width:0;height:0;display:none}
 
 /* ---------- 应用框架 ---------- */
 :root{--side:264px}
@@ -280,7 +280,7 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
   background:var(--glass-strong);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow);padding:6px}
 #pl-menu .pm-title{font-size:10.5px;font-weight:700;letter-spacing:1.2px;color:var(--txt3);padding:7px 12px 5px}
-#pl-menu .pm-item,#song-menu .pm-item{display:flex;width:100%;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;
+#pl-menu .pm-item,#song-menu .pm-item,#q-menu .pm-item{display:flex;width:100%;align-items:center;gap:8px;padding:9px 12px;border-radius:9px;
   font-size:13px;font-weight:600;color:var(--txt);transition:.15s;text-align:left}
 #pl-menu .pm-item:hover,#song-menu .pm-item:hover{background:var(--card2)}
 #pl-menu .pm-item.on .nm{color:var(--pink-txt)}
@@ -291,27 +291,42 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .trk .del:hover{color:#f87171}
 .empty{padding:34px 10px;text-align:center;color:var(--txt3);font-size:13px;line-height:1.8}
 
-/* ---------- 侧栏（玻璃覆盖层） ---------- */
-.sidebar{position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:95;display:flex;flex-direction:column;
-  background:var(--sidebar-glass);backdrop-filter:blur(64px) saturate(1.8);-webkit-backdrop-filter:blur(64px) saturate(1.8);
-  border-right:1px solid var(--stroke);padding:20px 6px 14px 18px}
+/* ---------- 侧栏：Apple Music 的中性材质、红色图标与整行选中态 ---------- */
+.sidebar{
+  /* 底色只走中性灰：冷暖两片氛围的彩度压到近乎无色，透明度与羽化都往上提，
+     玻璃后面是什么就透出什么（--sidebar-* 三处参数是调这段话的地方）。 */
+  --sidebar-accent:#ff526c;--sidebar-label:#a5a5ad;--sidebar-material:rgba(30,31,36,.66);
+  --sidebar-cool:rgba(126,140,156,.09);--sidebar-warm:rgba(146,133,138,.045);
+  --sidebar-edge:rgba(255,255,255,.06);--sidebar-avatar:#617b9d;
+  position:absolute;top:0;left:0;bottom:0;width:var(--side);z-index:95;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,var(--sidebar-cool),transparent 28%),
+    linear-gradient(330deg,var(--sidebar-warm),transparent 40%),var(--sidebar-material);
+  backdrop-filter:blur(80px) saturate(1.05);-webkit-backdrop-filter:blur(80px) saturate(1.05);
+  border-right:1px solid var(--sidebar-edge);padding:24px 10px 12px;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif}
+html[data-theme="light"] .sidebar{
+  /* 浅色下底色走灰（不是白）：206,208,214 叠在页面上约等于 #dadbe0，仍留 1/3 透光 */
+  --sidebar-accent:#f6264d;--sidebar-label:#5f5f68;--sidebar-material:rgba(206,208,214,.66);
+  --sidebar-cool:rgba(190,195,203,.2);--sidebar-warm:rgba(202,199,202,.1);
+  --sidebar-edge:rgba(0,0,0,.055);--sidebar-avatar:#a0b7d6}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
   .sidebar{background:var(--bg2)}
 }
 @media (prefers-reduced-transparency:reduce){
   .sidebar{background:var(--bg2);backdrop-filter:none;-webkit-backdrop-filter:none}
 }
-.side-nav{display:flex;flex-direction:column;gap:3px;margin-bottom:18px}
-.side-item{display:flex;align-items:center;gap:12px;height:40px;border-radius:10px;padding:0 12px;
-  font-size:14px;font-weight:600;color:var(--txt2);transition:.18s;position:relative;width:100%;text-align:left}
-.side-item svg{width:19px;height:19px;flex:none;color:var(--pink)}  /* 图标常驻粉色（AM 侧栏样式），文字保持灰色 */
-.side-item:hover{color:var(--txt);background:var(--sidebar-hover)}
-.side-item.on{color:var(--txt)}
-.side-item.on::before{content:"";position:absolute;left:-18px;top:9px;bottom:9px;width:3.5px;border-radius:0 4px 4px 0;background:var(--pink)}
-.side-sec{display:flex;align-items:center;justify-content:space-between;padding:0 12px;margin:2px 0 9px}
-.side-sec .lb{font-size:11px;font-weight:700;letter-spacing:1.6px;color:var(--txt3)}
-.side-sec .add{width:22px;height:22px;border-radius:7px;color:var(--txt3);display:grid;place-items:center;transition:.2s;font-size:15px}
-.side-sec .add:hover{color:var(--pink-txt);background:var(--pink-tint)}
+.side-nav{display:flex;flex-direction:column;gap:0;margin-bottom:14px;flex:none}
+.side-item{display:flex;align-items:center;gap:10px;height:36px;border-radius:7px;padding:0 10px 0 14px;
+  font-size:13.5px;font-weight:400;color:var(--txt);transition:background .16s,color .16s;width:100%;text-align:left}
+.side-item svg{width:18px;height:18px;margin-inline:2px;flex:none;color:var(--sidebar-accent)}
+.side-item:hover{background:var(--sidebar-hover)}
+.side-item.on{background:var(--sidebar-selected)}
+.side-sec{display:flex;align-items:center;justify-content:space-between;min-height:22px;padding:0 10px;margin:14px 0 4px}
+.side-sec .lb{font-size:12px;font-weight:600;letter-spacing:0;color:var(--sidebar-label)}
+.side-sec .add{width:22px;height:22px;border-radius:6px;color:var(--sidebar-label);display:grid;place-items:center;
+  transition:background .16s,color .16s}
+.side-sec .add svg{width:14px;height:14px}
+.side-sec .add:hover{color:var(--sidebar-accent);background:var(--sidebar-selected)}
 .side-pls{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px;padding-right:8px;margin-right:-2px}
 .side-pl{display:flex;align-items:center;gap:11px;height:40px;border-radius:10px;padding:0 9px;cursor:pointer;transition:.18s;width:100%;background:none;border:none}
 .side-pl:hover{background:var(--sidebar-hover)}
@@ -330,14 +345,34 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .side-pl:hover .pl-rename,.side-pl:hover .pl-del{display:grid}
 .side-pl .pl-rename:hover{color:var(--pink-txt);background:var(--pink-tint)}
 .side-pl .pl-del:hover{color:#f87171;background:rgba(248,113,113,.12)}
-.side-user{position:relative;border-top:1px solid var(--stroke);margin-top:10px;padding:10px 6px 8px}
-.su-row{display:flex;align-items:center;gap:11px;width:100%;padding:6px 8px;border-radius:10px;transition:.18s;text-align:left}
-.su-row:hover{background:var(--card)}
-.su-more{margin-left:auto;flex:none;color:var(--txt3);font-size:15px;line-height:1;transition:transform .2s}
+/* 歌单片段也用于手机资料库；分组与桌面选中态只在侧栏内生效。 */
+.side-pl-section,.sp-library-icon{display:none}
+.sidebar .side-pls{min-height:0;gap:0;padding:0;margin:0;overscroll-behavior:contain}
+.sidebar .side-pl-section{display:flex;flex:none}
+.sidebar .side-pl-section:first-child{margin-top:0}
+.sidebar .side-pl{height:34px;min-height:34px;flex-shrink:0;padding:0 8px 0 14px;gap:10px;border-radius:7px;
+  transition:background .16s}
+.sidebar .side-pl .sp-cov{width:22px;height:22px;border-radius:4px}
+.sidebar .side-pl .sp-name{font-size:13.5px;font-weight:400;color:var(--txt)}
+.sidebar .side-pl .cnt{font-size:10.5px;color:var(--sidebar-label)}
+.sidebar .side-pl:hover .cnt,.sidebar .side-pl:focus-within .cnt{display:none}
+.sidebar .side-pl:focus-within .pl-rename,.sidebar .side-pl:focus-within .pl-del{display:grid}
+.sidebar .side-pl.on{background:none}
+.sidebar .side-pl:hover{background:var(--sidebar-hover)}
+.sidebar .side-pl.is-current{background:var(--sidebar-selected)}
+.sidebar .side-pl-library .sp-cov{display:none}
+.sidebar .sp-library-icon{display:block;width:18px;height:18px;margin-inline:2px;flex:none;color:var(--sidebar-accent)}
+.sidebar :is(button,[role="separator"]):focus-visible{outline:2px solid var(--sidebar-accent);outline-offset:-2px}
+.side-user{position:relative;flex:none;margin-top:auto;padding:12px 0 0}
+.su-row{display:flex;align-items:center;gap:10px;width:100%;min-height:42px;padding:6px 8px;border-radius:7px;
+  transition:background .16s;text-align:left}
+.su-row:hover,.side-user.pop-open .su-row{background:var(--sidebar-hover)}
+.su-more{width:14px;height:14px;margin-left:auto;flex:none;color:var(--sidebar-label);opacity:.6;transition:transform .2s}
 .side-user.pop-open .su-more{transform:rotate(90deg)}
-.side-user .ava{width:34px;height:34px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:800;font-size:13px;object-fit:cover;
-  background:radial-gradient(120% 120% at 20% 15%, #ff9db9, #fb7299 55%, #b23a67)}
-.side-user .un{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-user .ava{width:30px;height:30px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;font-weight:500;font-size:13px;
+  object-fit:cover;background:var(--sidebar-avatar)}
+.side-user .ava svg{width:18px;height:18px}
+.side-user .un{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .side-user .us{font-size:10.5px;color:var(--txt3);margin-top:1.5px}
 .side-user .u-more{margin-left:auto;flex:none;width:24px;height:24px;border-radius:7px;color:var(--txt3);display:grid;place-items:center;font-size:12px}
 .side-user .u-more:hover{color:var(--pink-txt);background:var(--pink-tint)}
@@ -362,9 +397,13 @@ html[data-theme="light"] #theme-toggle .t-moon{display:block}
 .up-row.danger{color:#f87171}
 .up-row.danger:hover{background:rgba(248,113,113,.12)}
 .up-sep{height:1px;background:var(--stroke);margin:4px 10px}
-.side-handle{position:absolute;top:50%;right:-4px;transform:translateY(-50%);width:7px;height:70px;border-radius:6px;
-  background:var(--pink);opacity:.5;cursor:col-resize;z-index:36;transition:opacity .2s}
-.side-handle:hover{opacity:1}
+.side-handle{position:absolute;top:0;bottom:0;right:-5px;width:10px;cursor:col-resize;touch-action:none;z-index:36;
+  color:var(--sidebar-label)}
+.side-handle::after{content:"";position:absolute;top:0;bottom:0;left:4px;width:1px;background:currentColor;opacity:0;transition:opacity .16s}
+.side-handle:hover::after,.side-handle:focus-visible::after,.sidebar.is-resizing .side-handle::after{opacity:.55}
+@media (prefers-reduced-motion:reduce){
+  .sidebar *,.sidebar *::after{transition:none!important}
+}
 
 /* ---------- 播放胶囊 ---------- */
 #player-bar{position:absolute;left:calc(var(--side) + 24px);right:24px;bottom:18px;max-width:850px;margin-inline:auto;
@@ -382,6 +421,11 @@ html[data-theme="light"] .tb-search,html[data-theme="light"] #player-bar,
 html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme="light"] .topbar.searching{
   background:rgba(255,255,255,.48);border-color:rgba(255,255,255,.7);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.95),inset 0 -1px 1px rgba(255,255,255,.4),0 8px 28px rgba(35,35,50,.12)}
+/* 播放条单独再透一档：它悬在内容之上，太实会把底下的封面糊成一片死白。
+   白色高光同步收一收，否则内阴影又把它拉回「实心白」。 */
+html[data-theme="light"] #player-bar{
+  background:rgba(249,250,254,.34);border-color:rgba(255,255,255,.5);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.6),inset 0 -1px 1px rgba(255,255,255,.22),0 8px 28px rgba(35,35,50,.1)}
 /* 搜索框 / 手机搜索胶囊：换用更透的 --search-glass + 更强的模糊，背后的内容才会显成磨砂 */
 .tb-search,.topbar.searching{
   background:var(--search-glass);
@@ -574,13 +618,6 @@ html[data-theme="light"] .m-tabs,html[data-theme="light"] .m-orb,html[data-theme
   font-size:13px;font-weight:700;transition:.2s}
 .sd-go:hover{background:var(--pink-strong)}
 
-/* ---------- toast ---------- */
-.toast{position:fixed;left:50%;bottom:34px;transform:translate(-50%,16px);z-index:300;border-radius:999px;
-  background:var(--glass-strong);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);color:var(--txt);
-  border:1px solid var(--stroke);box-shadow:var(--shadow);padding:11px 22px;font-size:13px;font-weight:600;
-  display:flex;gap:9px;align-items:center;opacity:0;pointer-events:none;transition:.3s}
-.toast.show{opacity:1;transform:translate(-50%,0)}
-.toast .h{color:var(--pink);font-size:15px}
 body.trial #seek,body.trial .p-time{visibility:hidden}
 
 /* ---------- 设备抽屉（#27：播放条上一枚图标 → 贴条抽屉；设备列表/推送/遥控/远端音量/局域网） ---------- */
@@ -696,26 +733,139 @@ html[data-theme="light"] #player-bar.mirror{border-color:rgba(240,80,127,.5);
 .dp-low .dp-volrow{width:100%}
 .dp-low .dp-status{padding:0 4px;justify-content:center}
 .dp-low .dp-status .txt{flex:none;max-width:70%;text-align:center}
-#queue-panel{position:absolute;top:14px;right:14px;bottom:100px;width:min(344px,calc(100vw - 28px));z-index:90;border-radius:18px; /* 高于歌词面板(80)，否则从歌词页点播放列表会被盖住 */
-  background:var(--glass-strong);backdrop-filter:blur(30px) saturate(1.5);-webkit-backdrop-filter:blur(30px) saturate(1.5);
-  border:1px solid var(--stroke);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}
-.q-head{padding:16px 18px 12px;border-bottom:1px solid var(--stroke)}
-.q-head .t{font-size:15.5px;font-weight:800;display:flex;align-items:baseline;gap:8px}
-.q-head .t #queue-count{font-size:11.5px;color:var(--txt3);font-weight:600}
-.q-toggles{display:flex;gap:8px;margin-top:12px}
-.smart-toggle{flex:1;height:32px;border-radius:9px;background:var(--card);border:1px solid var(--stroke);font-size:11.5px;font-weight:600;
-  color:var(--txt2);display:flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;transition:.2s}
-.smart-toggle input{display:none}
-.smart-toggle.checked{background:var(--pink-tint);border-color:transparent;color:var(--pink-txt)}
-#queue-list{flex:1;overflow-y:auto;list-style:none;padding:9px;display:flex;flex-direction:column;gap:2px}
-#queue-list li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:11px;cursor:pointer;transition:.16s;min-width:0}
-#queue-list li:hover{background:var(--card)}
-#queue-list li.active{background:var(--card2)}
-#queue-list .q-name{font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-#queue-list li.active .q-name{color:var(--pink-txt)}
-#queue-list .q-artist{font-size:10.5px;color:var(--txt2);flex:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#queue-list .q-dur{font-size:10.5px;color:var(--txt3);flex:none;font-variant-numeric:tabular-nums}
-.q-empty{color:var(--txt3);font-size:12px;text-align:center;padding:20px}
+/* v2.1 队列视图：住在歌词面板里的第二个视图（歌词 ⇄ 播放列表切换），
+   完全复用歌词页的头部/背景/进度/走播，视觉语言零分叉。 */
+#queue-view{overflow-y:auto;padding:6px 4px 20px;min-width:0}
+#lyrics-panel.queue-mode #lyrics-scroll{display:none}
+/* [hidden] 会被作者级 display 规则打穿（手机端 #lyrics-scroll 有 display:flex），
+   这里强制兜底：队列模式下歌词滚区必须真隐藏，否则透明层拦截列表点击 */
+#lyrics-panel #lyrics-scroll[hidden],
+#lyrics-panel #queue-view[hidden]{display:none!important}
+#lyrics-panel.queue-mode #lyrics-scroll{display:none!important}
+#lyrics-panel.queue-mode #queue-view{grid-column:2;grid-row:1/span 4;overflow-y:auto} /* 桌面：占歌词滚区格位 */
+@media (max-width:900px){#lyrics-panel.queue-mode .l-hero{display:none}
+  #lyrics-panel.queue-mode #queue-view{flex:1;min-height:0;grid-column:auto;grid-row:auto}} /* 手机：列表内部滚动，底行留在屏内 */
+/* 胶囊：等分撑满一行（Apple Music 队列的两枚大胶囊），开启态实心粉、静止态灰面 */
+.q-pills{display:flex;gap:8px;padding:6px 0 14px;max-width:520px} /* 宽版队列视图里别把胶囊拉成三条横幅 */
+.q-pill{flex:1 1 0;min-width:0;height:44px;border-radius:999px;background:var(--card2);border:none;
+  position:relative;display:grid;place-items:center;color:var(--txt2);cursor:pointer;transition:.16s;font-size:16px}
+.q-pill svg{width:19px;height:19px}
+.q-pill:hover{color:var(--txt);background:var(--raise)}
+/* 开启态用品牌粉：面板内 --pink 被改写成白色（供文字/图标用），这里取 --pink-star，
+   玻璃右栏里没有 --pink-star 就回退到 --pink——两个壳都是同一个粉。 */
+.q-pill.on,.q-pill.on:hover{background:var(--pink-star,var(--pink));color:#fff}
+/* 循环胶囊的「单曲」态：图标角上补一个 1，和列表循环区分开（没有 repeat-one 图标可用） */
+.q-pill.one::after{content:"1";position:absolute;top:7px;right:12px;font-size:10px;font-weight:800;line-height:1}
+.q-sec{margin-top:6px}
+.q-sec-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.q-sec-t{font-size:15px;font-weight:800}
+.q-clear{flex:none;font-size:12.5px;font-weight:600;color:var(--pink-txt);padding:2px 3px;border-radius:6px;transition:.16s}
+.q-clear:hover{color:var(--pink-strong)}
+.q-sec-s{font-size:11.5px;color:var(--txt3);margin:3px 0 8px}
+.q-list{list-style:none;padding:0;display:flex;flex-direction:column;gap:3px}
+.q-list li{--q-pad:10px;position:relative;display:flex;align-items:center;gap:12px;padding:5px var(--q-pad);
+  border-radius:12px;cursor:pointer;transition:background .16s;min-width:0}
+/* 行间发丝分割线：只落在相邻两行之间（首行之前、末行之后都没有），两端内缩到行内边距，
+   不顶到容器边缘才像排版而不是表格；颜色走 --stroke 令牌，歌词面板与桌面玻璃右栏自动适配 */
+.q-list li+li::before{content:"";position:absolute;left:var(--q-pad);right:var(--q-pad);top:-2px;height:1px;
+  background:var(--stroke);pointer-events:none}
+.q-list li:hover{background:var(--card)}
+.q-cvr{width:46px;height:46px;border-radius:8px;corner-shape:superellipse(2);object-fit:cover;flex:none;
+  background:var(--card2);box-shadow:0 6px 18px rgba(0,0,0,.26)}
+.q-cvr-none{display:inline-block}
+.q-meta{min-width:0;flex:1}
+.q-t1{font-size:15px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.q-t2{font-size:12px;color:var(--txt2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+[data-qlist="radio"] .q-t1{color:var(--pink-txt)}
+.q-dur{font-size:11.5px;color:var(--txt3);flex:none;font-variant-numeric:tabular-nums}
+/* 队列列表里的三段：已播放压暗（可点＝重播）、正在播放粉字＋右侧音频脉动（body.playing 时跳动）、
+   待播原样。面板内 --pink 被改写成白色，脉动固定取品牌粉 --pink-star；
+   正在播放那行点击不动，所以不给悬停底色。 */
+.q-list li.q-done{opacity:.5}
+.q-list li.q-done:hover{opacity:.85}
+.q-list li.q-now{cursor:default}
+.q-list li.q-now:hover{background:transparent}
+.q-now .q-t1{color:var(--pink-txt)}
+.q-eq{margin-left:auto;flex:none;display:flex;align-items:center;padding-right:2px}
+.q-eq .eq{height:14px}
+.q-eq .eq i{background:var(--pink-star,var(--pink))}
+/* 静止（暂停/未播放）时也保持「三条高低不齐」的均衡器形态：
+   默认 26% 会被误认成行尾的 ··· 菜单 */
+.q-eq .eq i:nth-child(1){height:40%}
+.q-eq .eq i:nth-child(2){height:82%}
+.q-eq .eq i:nth-child(3){height:58%}
+/* 行「···」：鼠标悬停与时长同一格互换（参考图的悬停态），触屏常显（没有 hover 就点不到） */
+.q-more{display:none;width:30px;height:30px;flex:none;place-items:center;border-radius:9px;padding-bottom:5px;
+  color:var(--txt2);font-size:15px;font-weight:700;letter-spacing:.5px;line-height:1;transition:.14s}
+.q-more:hover{background:var(--card2);color:var(--txt)}
+@media (hover:hover) and (pointer:fine){
+  .q-list li:hover .q-dur{display:none}
+  .q-list li:hover .q-more{display:grid}
+}
+/* 触屏没有 hover：··· 常显并顶掉时长（行右缘只留一个操作，触控目标放大到 34） */
+@media (pointer:coarse){
+  .q-more{display:grid;width:34px;height:34px}
+  .q-dur{display:none}
+}
+.q-empty{color:var(--txt3);font-size:12.5px;text-align:center;padding:24px}
+/* 桌面端队列视图：占右列格位，节奏对齐歌词滚区（封面行 · Apple Music 桌面队列形态） */
+@media (min-width:901px){
+  #lyrics-panel.queue-mode #queue-view{padding:76px 64px 60px 48px}
+  .q-list li{--q-pad:12px;padding:6px var(--q-pad)}
+}
+/* v2.1 桌面队列：贴边整高右栏，与左侧栏同一套「薄玻璃」材质——同一份 --sidebar-glass
+   + blur(80px) saturate(2)（对齐 Apple Music 侧栏的 vibrancy：底色压淡、模糊给足、饱和度提上去，
+   背后的封面才会化成一团有色玻璃而不是被白色洗掉）；不支持 backdrop-filter / 系统开了
+   「降低透明度」时回退实底。
+   关键：右栏是【盖在内容上】的——主区不再给右栏让位，内容从玻璃后面透出来，毛玻璃才看得见；
+   只有播放条与全屏层（歌词/UP）让位，免得被压在面板底下。 */
+#q-drawer{position:absolute;top:0;right:0;bottom:0;width:min(360px,34vw);z-index:95;
+  display:flex;flex-direction:column;overflow:hidden;
+  background:var(--sidebar-glass);backdrop-filter:blur(80px) saturate(2);-webkit-backdrop-filter:blur(80px) saturate(2);
+  border-left:1px solid var(--stroke);box-shadow:-22px 0 56px rgba(0,0,0,.34);
+  transform:translateX(100%);visibility:hidden;
+  transition:transform .42s cubic-bezier(.32,.72,0,1),visibility 0s linear .42s}
+body.qside-open #q-drawer{transform:none;visibility:visible;transition:transform .42s cubic-bezier(.32,.72,0,1)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  #q-drawer{background:var(--bg2)}
+}
+@media (prefers-reduced-transparency:reduce){
+  #q-drawer{background:var(--bg2);backdrop-filter:none;-webkit-backdrop-filter:none}
+}
+html[data-theme="light"] #q-drawer{box-shadow:-18px 0 44px rgba(30,30,60,.13)}
+/* 开栏入场：胶囊 → 段头 → 行依次从右落位（只有开栏那一下，JS 700ms 后摘掉 qside-enter） */
+@keyframes qIn{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+body.qside-enter #q-drawer .q-pills,
+body.qside-enter #q-drawer .q-sec{animation:qIn .34s cubic-bezier(.22,1,.36,1) both}
+body.qside-enter #q-drawer .q-list li{animation:qIn .32s cubic-bezier(.22,1,.36,1) both;
+  animation-delay:calc(.05s + var(--qi,0) * .026s)}
+.qd-head{display:flex;align-items:center;justify-content:space-between;padding:20px 18px 6px;flex:none}
+.qd-title{font-size:15px;font-weight:800}
+.qd-close{width:30px;height:30px;border-radius:50%;border:none;background:transparent;color:var(--txt2);
+  font-size:13px;cursor:pointer;transition:.16s}
+.qd-close:hover{color:var(--txt);background:var(--card2)}
+#q-drawer .q-body{flex:1;overflow-y:auto;padding:2px 14px 16px}
+@media (min-width:901px){
+  /* 播放条与全屏层让位（跟着右栏一起滑，别硬切）；主区刻意不让位——留出的正是玻璃要吃的内容 */
+  #player-bar{transition:right .42s cubic-bezier(.32,.72,0,1)}
+  /* 右栏展开后播放条统一收成「只留走播控制」的窄胶囊，并在让位后的区间里居中：不管窗口多宽、
+     有没有被挤压，形态都一致（歌曲信息收起，当前曲目在右栏队列里用粉色音频脉动表示） */
+  body.qside-open #player-bar{right:calc(min(360px,34vw) + 24px);width:max-content;max-width:none;
+    grid-template-columns:44px auto auto 44px}
+  body.qside-open #player-bar .p-meta{display:none}
+  body.qside-open #lyrics-panel{padding-right:min(360px,34vw)}
+  body.qside-open #up-panel{padding-right:min(360px,34vw)}
+}
+@media (max-width:900px){#q-drawer{display:none!important}}
+/* 底部走播控制：与歌词页同构（进度 + 三键） */
+.q-bottom{padding:8px 26px calc(18px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));max-width:720px}
+.q-prog input{width:100%;accent-color:#fff}
+.q-times{display:flex;justify-content:space-between;font-size:10.5px;color:var(--txt3);font-variant-numeric:tabular-nums;margin-top:2px}
+.q-ctl{display:flex;align-items:center;justify-content:center;gap:34px;margin-top:10px}
+.q-ctl button{background:none;border:none;color:#fff;cursor:pointer;display:grid;place-items:center;opacity:.92;transition:.15s}
+.q-ctl button:hover{opacity:1;transform:scale(1.05)}
+.q-ctl button svg{width:26px;height:26px}
+.q-ctl button.big svg{width:44px;height:44px}
 
 /* ---------- 歌词全屏 ---------- */
 #lyrics-panel{position:absolute;inset:0;z-index:80;background:#28282b;display:grid;padding-left:var(--side);
@@ -727,7 +877,9 @@ html[data-theme="light"] #player-bar.mirror{border-color:rgba(240,80,127,.5);
   --pink-star:#fb7299; /* 面板内 --pink 被改成白色，收藏态单独用品牌粉 */
   /* #40：桌面左列与手机同一套排版——封面 / 信息行 / 进度 / 控制行 / 底行共用同一条列宽 */
   --ly-desktop-col:min(360px,30vw);
-  grid-template-columns:42% 1fr;grid-template-rows:1fr auto;
+  /* 四行：首尾两条弹性空行等分剩余高度，把「封面+信息」和「进度+控制」当成一整组竖直居中
+     （原来是控制行贴底，窗口越高、中间空得越多）。窗口不够高时两条空行收成 0。 */
+  grid-template-columns:42% 1fr;grid-template-rows:1fr auto auto 1fr;
 }
 /* Blur artwork directly so remote covers retain their colors without canvas access. */
 #lyrics-backdrop{position:absolute;inset:-100px;width:calc(100% + 200px);height:calc(100% + 200px);
@@ -737,7 +889,9 @@ html[data-theme="light"] #player-bar.mirror{border-color:rgba(240,80,127,.5);
 #lyrics-panel::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
   background:rgba(12,12,16,.48)}
 @media (prefers-reduced-motion:reduce){#lyrics-backdrop{transition:none}}
-.l-left{grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:24px;padding:0 20px 30px;position:relative;min-width:0}
+/* 封面 + 信息行：住在四行网格的第 2 行（内容高度），上下由空行撑出居中效果。
+   这里不再做 relative 容器：右上角的 ✕ 要锚在面板左上角，跟着这行跑会掉到封面旁边。 */
+.l-left{grid-column:1;grid-row:2;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:24px;padding:0 20px 30px;min-width:0}
 
 #btn-lyrics-close{position:absolute;top:calc(24px + var(--inset-top, env(safe-area-inset-top, 0px)));left:calc(var(--side) + 28px);width:36px;height:36px;border-radius:50%;
   background:var(--card);border:1px solid var(--stroke);display:grid;place-items:center;color:var(--txt2);font-size:14px}
@@ -750,7 +904,7 @@ html[data-theme="light"] #player-bar.mirror{border-color:rgba(240,80,127,.5);
 .l-song span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--txt2);margin-top:6px}
 .l-song small{display:block;color:var(--txt3);font-size:10px;margin-top:5px}
 /* 歌词页控制条：进度 + 控制行 + 底行，与手机同一条列宽（#40） */
-.l-bottom{grid-column:1;grid-row:2;display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 20px 34px}
+.l-bottom{grid-column:1;grid-row:3;display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 20px 34px}
 .ly-prog,.ly-ctl,.ly-foot{width:var(--ly-desktop-col)}
 .ly-prog{padding:0}
 .ly-times{display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);margin-top:2px;font-variant-numeric:tabular-nums}
@@ -765,13 +919,18 @@ body:not(.playing) .i-pause{display:none}
 .ly-ctl .big svg{width:46px;height:46px}
 .ly-ctl .on{color:var(--pink)}
 .ly-ctl #ly-add{display:none}  /* #40：与手机一致（加入歌单走 ··· 菜单） */
-.ly-foot{display:flex;align-items:center;justify-content:space-between}
+/* 随机 / 循环＝贴在三键两侧的播放轴开关：开启态用品牌粉（面板里 --pink 被改成白色，取 --pink-star），
+   关闭态与相邻按钮同灰；单曲循环沿用队列胶囊的角上「1」。 */
+.ly-ctl #ly-shuffle svg,.ly-ctl #ly-mode svg{width:20px;height:20px}
+.ly-ctl #ly-shuffle.on,.ly-ctl #ly-mode.on{color:var(--pink-star,var(--pink))}
+.ly-ctl #ly-mode{position:relative}
+.ly-ctl #ly-mode.one::after{content:"1";position:absolute;top:4px;right:4px;font-size:9px;font-weight:800;line-height:1}
+.ly-foot{display:none}  /* 桌面不占位：底行只剩手机要的歌词气泡 / 播放列表 */
 .ly-foot button{width:44px;height:44px;display:grid;place-items:center;color:var(--txt2);transition:color .15s}
 .ly-foot button:hover{color:var(--txt)}
 .ly-foot button svg{width:23px;height:23px;display:block}
 .ly-foot #ly-queue svg{width:25px;height:25px}
 .ly-foot .on{color:var(--pink)}
-.ly-foot #ly-mode{display:none}  /* 手机版底行左槽是歌词气泡，模式键只在桌面出现 */
 .ly-morerow{display:flex;justify-content:flex-end;gap:8px;flex:none;padding:0 4px}
 #ly-star{width:38px;height:30px;border-radius:999px;color:var(--txt3);font-size:14px;transition:.15s}
 #ly-star:hover{color:var(--pink-txt);background:var(--pink-tint)}
@@ -788,10 +947,10 @@ body:not(.playing) .i-pause{display:none}
 #ly-vol::-moz-range-progress{height:3.5px;border-radius:3px;background:var(--pink)}
 #ly-vol::-moz-range-thumb{width:0;height:0;border:none}
 #ly-more:hover{color:var(--txt);background:var(--card2)}
-#song-menu{position:fixed;z-index:150;min-width:170px;border-radius:14px;
+#song-menu,#q-menu{position:fixed;z-index:150;min-width:170px;border-radius:14px;
   background:var(--glass-strong);backdrop-filter:blur(28px) saturate(1.5);-webkit-backdrop-filter:blur(28px) saturate(1.5);
   border:1px solid var(--stroke);box-shadow:var(--shadow);padding:6px}
-#lyrics-scroll{grid-column:2;grid-row:1 / span 2;position:relative;overflow-y:auto;padding:90px min(76px,7vw) 90px 48px;
+#lyrics-scroll{grid-column:2;grid-row:1 / span 4;position:relative;overflow-y:auto;padding:90px min(76px,7vw) 90px 48px;
   -webkit-mask-image:linear-gradient(transparent, #000 12%, #000 84%, transparent);
   mask-image:linear-gradient(transparent, #000 12%, #000 84%, transparent)}
 /* 非当前行提亮保证暖色封面下可读（#21）；点击行=seek 语义，禁文本选中防蓝框（#16） */
@@ -908,11 +1067,11 @@ body.playing #up-panel .i-pause{display:block}
 
 /* ---------- 界面切换过渡 ----------
    覆盖层（艺术家页/歌词页）：开=淡入上浮微放大，关=淡出；视图（主页/详情/账号）：淡入上浮 */
-#up-panel{transition:opacity .3s ease,transform .3s cubic-bezier(.3,.85,.3,1)}
+#up-panel{transition:opacity .3s ease,transform .3s cubic-bezier(.3,.85,.3,1),padding-right .42s cubic-bezier(.32,.72,0,1)}
 #up-panel.opening{opacity:0;transform:translateY(14px) scale(1.012)}
 #up-panel.closing{opacity:0;transform:translateY(10px) scale(1.012);pointer-events:none}
 /* 歌词/歌曲详情页：从下而上整页推入，退出向下推回（iOS 全屏 sheet 手感） */
-#lyrics-panel{transition:transform .42s cubic-bezier(.32,.72,.33,1)}
+#lyrics-panel{transition:transform .42s cubic-bezier(.32,.72,.33,1),padding-right .42s cubic-bezier(.32,.72,0,1)}
 #lyrics-panel.opening,#lyrics-panel.closing{transform:translateY(100%)}
 #lyrics-panel.closing{pointer-events:none}
 /* 歌曲播放大页面（歌词全屏）自带控制条：打开时全局播放条不叠显 */
@@ -920,6 +1079,9 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 #view-home,#view-detail,#view-account,#view-recommend,#view-up,#view-search,#view-library{animation:viewIn .34s cubic-bezier(.3,.85,.3,1)}
 @keyframes viewIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){
+  #q-drawer,#player-bar{transition:none !important}
+  body.qside-enter #q-drawer .q-pills,body.qside-enter #q-drawer .q-sec,
+  body.qside-enter #q-drawer .q-list li{animation:none !important}
   #up-panel,#lyrics-panel,#view-home,#view-detail,#view-account,#view-recommend,#view-up{transition:none !important;animation:none !important}
 }
 
@@ -1157,7 +1319,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #seek{display:none}
   #player-artist{display:block;font-size:11px;margin-top:2px}
   #task-list{left:12px;bottom:150px;max-width:calc(100vw - 24px)}
-  #queue-panel{top:10px;bottom:calc(150px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)))}
+  #queue-panel{padding-left:0}
   /* 手机端歌词全屏（Apple Music 式）：顶栏=小封面+左对齐歌名+···，歌词居中作主体，底部=进度+三键 */
   #lyrics-panel{display:flex;flex-direction:column;--ly-col:75%} /* 播放页所有元素共用的居中列宽 */
   .ly-volhost{display:none} /* 手机端不需要音量条 */
@@ -1167,6 +1329,12 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   #lyrics-panel:not(.showlyrics) .l-songrow{display:none}
   .l-left{flex:none;display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;column-gap:11px;
     padding:calc(30px + var(--inset-top, env(safe-area-inset-top, 0px))) 12px 4px}
+  /* 对齐（用户定稿）：歌词/队列视图里，顶栏歌曲信息与歌词、队列内容统一到
+     进度条的居中列（--ly-col）——三者共用同一条左缘竖线 */
+  #lyrics-panel.showlyrics .l-left{width:var(--ly-col);margin:0 auto;padding-left:0;padding-right:0}
+  #lyrics-panel.showlyrics #lyrics-scroll,
+  #lyrics-panel.queue-mode #queue-view{width:var(--ly-col);margin:0 auto}
+  #lyrics-panel.queue-mode #queue-view{padding-left:0;padding-right:0}
   .l-songrow{display:contents} /* 子元素直接参与顶部 grid 行 */
   #btn-lyrics-close{position:static}
   #lyrics-cover{width:52px;height:52px;border-radius:8px;corner-shape:superellipse(2);box-shadow:0 10px 26px rgba(0,0,0,.35)}
@@ -1175,12 +1343,11 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .l-song b,.l-song span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .l-song span{font-size:12px;margin-top:3px}
   .ly-morerow{width:auto;padding:0;gap:4px}
-  .ly-morerow #ly-retry{display:none} /* 右上角只留收藏与 ··· */
   /* 顶栏右上角：收藏与 ··· 放大并对齐（同一 44×44 盒 + 居中，字重一致） */
   #ly-star{width:44px;height:44px;font-size:24px;line-height:1;display:grid;place-items:center}
   #ly-more{width:44px;height:44px;font-size:24px;line-height:1;letter-spacing:1px;display:grid;place-items:center;
     padding-bottom:4px} /* 中点字形的视觉中心比星形低 2px，补一点下内边距对齐 */
-  #lyrics-scroll{flex:1;display:flex;flex-direction:column;padding:20px 30px 12px}
+  #lyrics-scroll{flex:1;display:flex;flex-direction:column;padding:20px 0 12px}
   #lyrics-scroll .l-line:first-child{margin-top:auto}
   #lyrics-scroll .l-line:last-child{margin-bottom:auto}
   #lyrics-scroll .l-empty{margin:auto}
@@ -1197,6 +1364,9 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .ly-ctl button{width:56px;height:56px}
   .ly-ctl button svg{width:28px;height:28px}
   .ly-ctl .big svg{width:68px;height:68px}
+  /* 两侧的随机 / 循环比三大键小一号，一排五颗在窄屏才不挤 */
+  .ly-ctl #ly-shuffle,.ly-ctl #ly-mode{width:46px;height:46px}
+  .ly-ctl #ly-shuffle svg,.ly-ctl #ly-mode svg{width:22px;height:22px}
   .ly-ctl #ly-add{display:none}  /* #40：＋ 收进 ··· 菜单；播放模式已挪到底行（桌面端才显示） */
   /* 手机端不要左上角 ✕（返回手势/返回键即可退出） */
   #lyrics-panel #btn-lyrics-close{display:none}

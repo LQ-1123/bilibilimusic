@@ -59,6 +59,12 @@
       if (audio.paused || audio.readyState >= 3) return;
       if (now - cooldownAt < 15000 || tries >= 5) return;
       cooldownAt = now; tries += 1;
+      if (tries === 2) {
+        // v2.1 A6 弱网降档：同一首第二次停顿就换 64K 原地重开（保进度），
+        // 之后 10 分钟内的歌直接按低档起播，窗口过期自然回升到网络策略档。
+        window.__weakNetNow();
+        try { audio.src = withTier(audio.src); } catch (e) {}
+      }
       var at = audio.currentTime || 0;
       var onMeta = function () {
         audio.removeEventListener("loadedmetadata", onMeta);
@@ -81,6 +87,82 @@
       el.addEventListener("playing", function () { clearTimeout(timer); tries = 0; });
     });
   })();
+
+  // v2.1 A3/A6 音质策略：Wi-Fi/桌面 → 最高档（Hi-Res 随会员权益）；蜂窝 → 192K 省流量；
+  // 弱网降档后 10 分钟内直接 64K，窗口过期下一首自然回升。tier 由后端 /api/stream 消费。
+  var weakNetUntil = 0;
+  function netTier() {
+    if (Date.now() < weakNetUntil) return "64";
+    var c = navigator.connection || window.connection;
+    if (c && c.type === "cellular") return "192";
+    return "best";
+  }
+  function withTier(src) {
+    if (!src) return src;
+    var t = netTier();
+    if (/(?:[?&])tier=[^&]*/.test(src)) return src.replace(/([?&])tier=[^&]*/, "$1tier=" + t);
+    return src + (src.indexOf("?") >= 0 ? "&" : "?") + "tier=" + t;
+  }
+  window.__weakNetNow = function () { weakNetUntil = Date.now() + 10 * 60 * 1000; };
+  // 档位标签：起播后探测实际选中的档位，播放条歌手位显示「歌手 · Hi-Res」（零提示文化：不弹胶囊）
+  var qualityLabelNow = "";
+  window.__qualityProbe = function (bvid, cid) {
+    qualityLabelNow = "";
+    if (!bvid) return;
+    fetch("/api/stream/" + bvid + "/quality?tier=" + netTier() + (cid ? "&cid=" + cid : ""), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) { if (d && d.qualityLabel) qualityLabelNow = d.qualityLabel; })
+      .catch(function () {});
+  };
+  window.__qualityLabel = function () { return qualityLabelNow; };
+
+  // v2.1 A5 漫游电台：队列面板 ∞ 开关（或详情页「电台」按钮）打开后，队列见底
+  // 自动按当前歌为种子从推荐池续歌（试听流，不落盘）；跳过电台歌＝出池负反馈。
+  var radioPlayed = [];
+  function radioOn() {
+    try { return localStorage.getItem("bmRadio") === "1"; } catch (e) { return false; }
+  }
+  function radioSeedBvid() {
+    if (recActive && recAudio && recAudio.dataset.bvid) return recAudio.dataset.bvid;
+    var s = playlist[current];
+    return s && s.bvid ? s.bvid : null;
+  }
+  function radioAppend(done) {
+    var seed = radioSeedBvid();
+    if (!radioOn() || !seed) { done(false); return; }
+    fetch("/api/radio/next", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seedBvid: seed, exclude: radioPlayed.slice(-30) }),
+    })
+      .then(function (r) { return r.ok ? r.json() : { songs: [] }; })
+      .then(function (d) {
+        var q = window.__trialQueue;
+        if (!q || !q.items) { q = window.__trialQueue = { items: [], i: -1 }; }
+        var added = 0;
+        (d.songs || []).forEach(function (s) {
+          if (!s.bvid) return;
+          radioPlayed.push(s.bvid);
+          q.items.push({ bvid: s.bvid, title: s.title, artist: s.artist, cover: s.coverUrl, radio: true });
+          added += 1;
+        });
+        if (added && (queueMode() || drawerOpen())) renderQueue();
+        done(added > 0);
+      })
+      .catch(function () { done(false); });
+  }
+  function radioContinue(fallbackStop) {
+    radioAppend(function (got) {
+      var q = window.__trialQueue;
+      var nxt = (got && q && q.items) ? q.items[q.i + 1] : null;
+      if (nxt) { q.i = q.i + 1; window.playStream(nxt.bvid, nxt, null); return; }
+      if (fallbackStop) fallbackStop();
+    });
+  }
+  function radioDismiss(bvid) {
+    if (!bvid) return;
+    fetch("/api/recs/" + bvid, { method: "DELETE" }).catch(function () {});
+  }
 
   var audioCtx = null, gains = null; // gains: {audioA: GainNode, audioB: GainNode}
   var transitionState = null;        // 进行中的过渡 {mainEl, timer}
@@ -105,7 +187,6 @@
   // 播放顺序 = 自动决策链：按过渡得分把队列贪心排序（智能过渡关闭时 = 原顺序）
   var chainOrder = [];      // songId 序列，起点为当前歌
   var queueDisplayItems = []; // 队列面板当前展示的曲目（与 data-idx 对应）
-  var repeatOne = localStorage.getItem("bmRepeatOne") === "1";
 
   function escapeHtml(s) {
     return String(s || "").replace(/[&<>"']/g, function (c) {
@@ -114,21 +195,87 @@
   }
 
   function renderQueue() {
-    var list = $("queue-list");
-    if (!list) return;
-    $("queue-count").textContent = playlist.length ? "共 " + playlist.length + " 首" : "";
-    var playingId = playlist[current] ? playlist[current].id : null;
-    var display = queueDisplay();
-    queueDisplayItems = display;
-    list.innerHTML = display.map(function (s, i) {
-      var cls = s.id === playingId ? ' class="active"' : "";
-      return "<li" + cls + ' data-idx="' + i + '" title="' + escapeHtml(s.title) + '">' +
-        '<span class="q-name">' + escapeHtml(s.title) + "</span>" +
-        '<span class="q-artist">' + escapeHtml(s.artist) + "</span>" +
-        '<span class="q-dur">' + fmt(s.duration) + "</span></li>";
-    }).join("") || '<li class="q-empty">播放列表为空</li>';
-    var active = list.querySelector("li.active");
-    if (active) active.scrollIntoView({ block: "nearest" });
+    // v2.1 队列双壳：手机=播放页内视图（#queue-view），桌面=右侧栏抽屉（#q-drawer）。
+    // 两壳共用同一份 partial，渲染写进所有 [data-qlist] 容器，事件全部委托。
+    var mains = document.querySelectorAll('[data-qlist="main"]');
+    if (!mains.length) return;
+    var trialQ = window.__trialQueue;
+    var trialItems = (recActive && trialQ && trialQ.items && trialQ.items.length) ? trialQ.items : null;
+    var trialIdx = trialItems && trialQ.i >= 0 ? trialQ.i : -1;
+    // v2.2 主列表＝一整个队列：已播放（压暗）/ 正在播放（粉字＋脉动）/ 待播，段位连着排，
+    // 当前曲目不再单独拎出来——这样上一首、下一首的关系一眼可见。
+    var entries, curIdx = -1, radioItems = [];
+    if (trialItems) {
+      entries = trialItems.filter(function (it) { return !it.radio; });
+      radioItems = trialItems.filter(function (it) { return it.radio; });
+      curIdx = entries.indexOf(trialItems[trialIdx]); // 当前项本身是电台歌时不进主列表（落在下面 ∞ 分区）
+    } else {
+      entries = playlist.slice();
+      curIdx = current;
+    }
+    queueDisplayItems = entries; // data-idx 直接对应整张队列
+    function _qEq() {
+      return '<span class="q-eq" role="img" aria-label="正在播放"><span class="eq"><i></i><i></i><i></i></span></span>';
+    }
+    var mainHtml = entries.map(function (s, i) {
+      var cls = i === curIdx ? "q-now" : (curIdx >= 0 && i < curIdx ? "q-done" : "");
+      return "<li" + (cls ? ' class="' + cls + '"' : "") + " data-idx=\"" + i + "\" style=\"--qi:" + Math.min(i, 12) + "\" title=\"" + escapeHtml(s.title) + "\">" +
+        _qRowCover(s) +
+        '<div class="q-meta"><div class="q-t1">' + escapeHtml(s.title) + "</div>" +
+        '<div class="q-t2">' + escapeHtml(s.artist || "") + "</div></div>" +
+        (i === curIdx ? _qEq() : '<span class="q-dur">' + fmt(s.duration) + "</span>" + _qRowMore()) + "</li>";
+    }).join("") || (trialItems ? "" : '<li class="q-empty">播放列表为空</li>');
+    var radioHtml = radioItems.map(function (it, i) {
+      var isNow = !!trialItems && it === trialItems[trialIdx];
+      return '<li' + (isNow ? ' class="q-now"' : "") + ' data-radio="' + i + '" style="--qi:' + Math.min(i, 12) + '" title="' + escapeHtml(it.title) + '">' +
+        _qRowCover(it) +
+        '<div class="q-meta"><div class="q-t1">' + escapeHtml(it.title) + "</div>" +
+        '<div class="q-t2">' + escapeHtml(it.artist || "") + "</div></div>" + (isNow ? _qEq() : _qRowMore()) + "</li>";
+    }).join("");
+    document.querySelectorAll('[data-qlist="main"]').forEach(function (el) { el.innerHTML = mainHtml; });
+    document.querySelectorAll('[data-qlist="radio"]').forEach(function (el) { el.innerHTML = radioHtml; });
+    document.querySelectorAll('[data-qsec="next"]').forEach(function (el) {
+      el.hidden = !entries.length;
+      var s = el.querySelector('[data-qsrc="next"]');
+      if (s) s.textContent = !entries.length ? ""
+        : (curIdx >= 0 ? "正在播放第 " + (curIdx + 1) + " 首 · 共 " + entries.length + " 首" : "共 " + entries.length + " 首");
+    });
+    document.querySelectorAll('[data-qsec="radio"]').forEach(function (el) { el.hidden = !radioItems.length; });
+    closeQueueMenu(); // 行 DOM 换过一遍，菜单的锚点已失效
+    syncQueuePills();
+  }
+  function _qRowMore() { // 行「···」：静止时不占视线，悬停/触屏常显（对齐 Apple Music 队列行的形态）
+    return '<button class="q-more" type="button" data-qmore aria-label="更多操作">···</button>';
+  }
+  function _qRowCover(song) { // 行封面（用户定稿：接受低密度，行必须带封面）
+    var c = song.coverUrl || song.cover || "";
+    return c
+      ? '<img class="q-cvr" src="' + escapeHtml(c) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
+      : '<span class="q-cvr q-cvr-none"></span>';
+  }
+
+  // 三个胶囊＝三条互相独立的轴：随机（开/关）· 循环（关 → 列表 → 单曲）· ∞ 电台（开/关）。
+  // 任意组合都成立：随机＋列表循环＝打乱后环绕；随机＋不循环＝打乱后放完即止。
+  function syncQueuePills() {
+    var loop = loopMode(), shuf = shuffleOn(), radio = radioOn();
+    document.querySelectorAll('[data-qpill]').forEach(function (btn) {
+      var kind = btn.dataset.qpill, on;
+      if (kind === "shuffle") {
+        on = shuf;
+        btn.title = on ? "随机播放：开（点按恢复原顺序）" : "随机播放：关（点按打乱播放顺序）";
+      } else if (kind === "loop") {
+        on = loop !== "off";
+        btn.title = loop === "one" ? "循环：单曲（点按关闭循环）"
+          : (loop === "all" ? "循环：整个列表（点按切到单曲）" : "循环：关（点按开启列表循环）");
+        btn.classList.toggle("one", loop === "one");
+      } else if (kind === "radio") {
+        on = radio;
+        btn.title = on ? "漫游电台：开（队列播完自动续播）" : "漫游电台：关（点按开启，队列播完自动续播）";
+      } else return;
+      btn.classList.toggle("on", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    if (window.__syncLyMode) window.__syncLyMode(); // 歌词页的循环钮与这里同源
   }
 
   // 队列展示顺序 = 自动决策链（智能过渡关闭时 = 原顺序）
@@ -148,6 +295,12 @@
   // 直到排完整条队列。分析未就绪的歌按原顺序排在已分析歌之后，分析到位后自动重排。
   function planChain() {
     if (!playlist.length) { chainOrder = []; renderQueue(); return; }
+    // 随机开启：顺序由固定种子决定（与当前歌无关，切歌不重排）；专辑队列不参与随机
+    if (albumQueueId === null && shuffleOn()) {
+      chainOrder = shuffleChainIds();
+      renderQueue();
+      return;
+    }
     if (albumQueueId !== null || !smartEnabled()) {
       chainOrder = playlist.map(function (s) { return s.id; });
       renderQueue();
@@ -193,25 +346,62 @@
     return b.entryPoints && b.entryPoints.length ? b.entryPoints[0].t : 0;
   }
 
-  // 播放模式：order 顺序（到队尾停）/ loop 列表循环 / random 随机（歌词页模式钮切换）
-  function playMode() {
-    return albumQueueId !== null ? "order" : (localStorage.getItem("bmPlayMode") || "order");
+  // ---------- 播放三轴：随机 / 循环 / 电台，各自独立，可任意组合 ----------
+  // 旧版把「随机」和「循环」塞进同一个 bmPlayMode 枚举（order|loop|random），二者天生互斥；
+  // 现在拆成 bmShuffle(0/1) × bmLoop(off|all|one) × bmRadio(0/1)，首次运行做一次性迁移。
+  var shuffleSeed = (Math.random() * 0xffffffff) >>> 0;
+  var shuffleIds = null, shuffleIdsKey = "";
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function shuffleOn() { return lsGet("bmShuffle") === "1"; }
+  function loopMode() { var v = lsGet("bmLoop"); return (v === "all" || v === "one") ? v : "off"; }
+  function setShuffleOn(on) {
+    lsSet("bmShuffle", on ? "1" : "0");
+    if (on) { shuffleSeed = (Math.random() * 0xffffffff) >>> 0; shuffleIds = null; } // 每次开启＝重掷一套新顺序
+  }
+  function setLoopMode(v) { lsSet("bmLoop", (v === "all" || v === "one") ? v : "off"); }
+  (function migratePlayMode() { // 只在两个新键都还没写过时跑一次
+    if (lsGet("bmShuffle") !== null || lsGet("bmLoop") !== null) return;
+    var old = lsGet("bmPlayMode");
+    if (old === null && lsGet("bmRepeatOne") === null) return;
+    if (lsGet("bmRepeatOne") === "1") lsSet("bmLoop", "one");
+    else lsSet("bmLoop", old === "loop" ? "all" : "off");
+    lsSet("bmShuffle", old === "random" ? "1" : "0");
+  })();
+
+  // 随机顺序：种子固定 + 队列指纹固定 → 同一份顺序反复取用，切歌不重排。
+  // 当前歌排头，这样「不循环」也能把整队正好放完一次。
+  function shuffleChainIds() {
+    var ids = playlist.map(function (s) { return s.id; });
+    var key = shuffleSeed + "|" + ids.join(",");
+    if (shuffleIds && shuffleIdsKey === key) return shuffleIds.slice();
+    var seed = shuffleSeed >>> 0;
+    function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+    for (var i = ids.length - 1; i > 0; i--) {
+      var j = Math.floor(rnd() * (i + 1));
+      var t = ids[i]; ids[i] = ids[j]; ids[j] = t;
+    }
+    var curId = playlist[current] ? playlist[current].id : null;
+    var at = curId === null ? -1 : ids.indexOf(curId);
+    if (at > 0) { ids.splice(at, 1); ids.unshift(curId); }
+    shuffleIds = ids; shuffleIdsKey = key;
+    return shuffleIds.slice();
   }
 
-  // 链上的上/下一首；order 模式到队尾/队首即止，loop 环绕
+  // 链上的上/下一首；loop=all 才环绕（专辑队列永远不环绕），到队尾/队首返回 -1
   function chainNextIndex(dir) {
     if (!chainOrder.length || !playlist.length) return -1;
-    if (playMode() === "random") return -1; // 随机不走链
+    var wrap = loopMode() === "all" && albumQueueId === null;
     var curId = playlist[current] ? playlist[current].id : null;
     var pos = chainOrder.indexOf(curId);
     if (pos === -1) pos = 0;
     var next = pos + dir;
     if (next >= chainOrder.length) {
-      if (playMode() === "loop") next = 0;
+      if (wrap) next = 0;
       else return -1;
     }
     if (next < 0) {
-      if (playMode() === "loop") next = chainOrder.length - 1;
+      if (wrap) next = chainOrder.length - 1;
       else return -1;
     }
     var id = chainOrder[next];
@@ -364,7 +554,8 @@
     ensureGraph();
     setGain(audioA, audioA === audio ? 1 : 0);
     setGain(audioB, audioB === audio ? 1 : 0);
-    audio.src = song.audioUrl;
+    audio.src = withTier(song.audioUrl);
+    window.__qualityProbe(song.bvid, song.cid);
     audio.play().catch(function () {});
     updateNowPlaying(song);
     if (song.id) pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
@@ -402,7 +593,7 @@
     pt.textContent = song.title;
     pt.title = song.title; // 截断时悬停看全文（#12）
     if (window.BiliTicker) BiliTicker.set(pt); // 超宽标题窗口内滚动（#13）
-    $("player-artist").textContent = song.artist + " · " + (song.qualityLabel || "");
+    $("player-artist").textContent = song.artist + " · " + (window.__qualityLabel() || song.qualityLabel || "");
     // 切歌即重置进度显示（否则上一首的粉色填充/时间码会遗留到新歌开头）
     var seekEl = $("seek");
     if (seekEl) {
@@ -456,8 +647,14 @@
     // 试听态：在同列表组成的试听队列内切换（推荐/搜索/UP 页的歌）
     var q = window.__trialQueue;
     if (recActive && recAudio && q && q.items && q.items.length && window.playStream) {
+      var cur = q.items[q.i];
+      if (cur && cur.radio) radioDismiss(cur.bvid); // 跳过电台歌＝负反馈出池
       var ti = q.i + delta;
       if (ti < 0) ti = q.items.length - 1;
+      if (ti >= q.items.length && radioOn()) {
+        radioContinue(function () {});
+        return;
+      }
       if (ti >= q.items.length) ti = 0;
       q.i = ti;
       window.playStream(q.items[ti].bvid, q.items[ti], null);
@@ -465,14 +662,16 @@
     }
     stopTrial();
     naturalPlan = null;
-    if (delta === 1 && playMode() === "random" && playlist.length > 1) {
-      var ri = Math.floor(Math.random() * playlist.length);
-      if (ri === current) ri = (ri + 1) % playlist.length;
-      playSongSmart(playlist[ri]);
-      return;
-    }
     var ni = chainNextIndex(delta);
     if (ni < 0) {
+      // v2.1 A5：曲库队列放完且电台开着 → 以最后一首为种子续电台（试听流接管）
+      if (delta === 1 && radioOn() && playlist[current] && playlist[current].bvid) {
+        radioContinue(function () {
+          if (window.BiliMusicNative && BiliMusicNative.playbackStopped) BiliMusicNative.playbackStopped();
+          try { audio.pause(); } catch (e) {}
+        });
+        return;
+      }
       if (delta === 1) { if (window.BiliMusicNative && BiliMusicNative.playbackStopped) BiliMusicNative.playbackStopped(); try { audio.pause(); } catch (e) {} } // 顺序模式到队尾：停
       return;
     }
@@ -631,14 +830,23 @@
   }
   function onEnded(e) {
     if (e.target !== audio) return;
-    if (repeatOne && albumQueueId === null) {
+    if (loopMode() === "one" && albumQueueId === null) {
       audio.currentTime = 0;
       audio.play().catch(function () {});
       return;
     }
     var i = chainNextIndex(1);
-    if (i >= 0) playSong(playlist[i]);
-    else { if (window.BiliMusicNative && BiliMusicNative.playbackStopped) BiliMusicNative.playbackStopped(); audio.pause(); }
+    if (i >= 0) { playSong(playlist[i]); return; }
+    // 队列放完：电台开着就按当前歌续播（∞ 的语义就是「播完不停」），否则停
+    if (radioOn() && playlist[current] && playlist[current].bvid) {
+      radioContinue(function () {
+        if (window.BiliMusicNative && BiliMusicNative.playbackStopped) BiliMusicNative.playbackStopped();
+        try { audio.pause(); } catch (err) {}
+      });
+      return;
+    }
+    if (window.BiliMusicNative && BiliMusicNative.playbackStopped) BiliMusicNative.playbackStopped();
+    audio.pause();
   }
   function onTimeUpdate(e) {
     if (e.target !== audio) return;
@@ -785,7 +993,7 @@
     };
   }
   function maybeNatural() {
-    if (naturalPlan || !smartEnabled() || repeatOne || transitionState) return;
+    if (naturalPlan || !smartEnabled() || loopMode() === "one" || transitionState) return;
     if (!audio.duration) return;
     var remaining = audio.duration - audio.currentTime;
     if (remaining > 30 || remaining <= 4) return;
@@ -838,29 +1046,208 @@
         .catch(function () { delete analysisPending[id]; });
     });
   }
-  // 单曲循环开关（独立于自动决策链）
-  var repeatToggle = $("repeat-one-toggle");
-  if (repeatToggle) {
-    repeatToggle.checked = repeatOne;
-    repeatToggle.addEventListener("change", function () {
-      repeatOne = repeatToggle.checked;
-      localStorage.setItem("bmRepeatOne", repeatOne ? "1" : "0");
-    });
+  // 队列行「···」菜单：从行取曲目 → 悬停按钮旁弹出一张小卡（外观复用 .pm-item，与 #song-menu 同族）。
+  // 菜单自己一份 DOM（#q-menu），不和 #song-menu 共用——那边是按「当前播放的歌」取数据的。
+  var qMenu = $("q-menu");
+  var qMenuItem = null;
+  function closeQueueMenu() {
+    if (qMenu) qMenu.hidden = true;
+    qMenuItem = null;
+  }
+  function openQueueMenu(anchor) {
+    if (!qMenu) return;
+    var item = rowSong(anchor.closest("li"));
+    if (!item) return;
+    var trial = !item.id; // 无曲库 id = 试听/电台行：不进「从队列移除」，改走不感兴趣
+    var items = trial
+      ? ['<button type="button" class="pm-item" data-qact="dismiss">不感兴趣</button>']
+      : ['<button type="button" class="pm-item" data-qact="remove">从队列移除</button>'];
+    items.push('<button type="button" class="pm-item" data-qact="pl">加入歌单</button>');
+    items.push('<button type="button" class="pm-item" data-qact="bili">在 B 站打开</button>');
+    qMenu.innerHTML = items.join("");
+    qMenu.hidden = false;
+    qMenuItem = item;
+    var r = anchor.getBoundingClientRect();
+    var mh = qMenu.offsetHeight, mw = qMenu.offsetWidth;
+    qMenu.style.left = Math.max(8, Math.min(window.innerWidth - mw - 8, r.right - mw)) + "px";
+    qMenu.style.top = (r.top - mh - 8 > 8 ? r.top - mh - 8 : r.bottom + 8) + "px";
+  }
+  // 主列表 [data-idx] 走 queueDisplayItems；电台列表 [data-radio] 走 __trialQueue 的 radio 子集
+  function rowSong(li) {
+    if (!li) return null;
+    if (li.hasAttribute("data-radio")) {
+      var rq = window.__trialQueue;
+      if (!rq || !rq.items) return null;
+      var rItems = rq.items.filter(function (it) { return it.radio; });
+      return rItems[Number(li.getAttribute("data-radio"))] || null;
+    }
+    var idx = Number(li.getAttribute("data-idx"));
+    return isFinite(idx) ? (queueDisplayItems[idx] || null) : null;
+  }
+  // 从队列移除：试听队列改 items 并修正游标；曲库队列删歌后重排决策链
+  function removeQueueItem(song) {
+    var q = window.__trialQueue;
+    var at = q && q.items ? q.items.indexOf(song) : -1;
+    if (at >= 0) {
+      q.items.splice(at, 1);
+      if (q.i > at) q.i -= 1;
+      else if (q.i === at) q.i = Math.min(at, q.items.length - 1);
+      renderQueue();
+      return;
+    }
+    var pi = playlist.indexOf(song);
+    if (pi < 0) return;
+    playlist.splice(pi, 1);
+    if (pi < current) current -= 1;
+    planChain();
+    if (window.__toast) window.__toast("已从队列移除");
+  }
+  // 清除：只清「后面待播的」，正在放的这首留着（与 Apple Music 继续播放的清除同语义）
+  function clearUpcoming() {
+    var q = window.__trialQueue;
+    if (q && q.items && q.items.length) {
+      var keep = q.i >= 0 ? q.items[q.i] : null;
+      q.items = keep ? [keep] : [];
+      q.i = keep ? 0 : -1;
+    }
+    if (playlist.length) {
+      var cur = playlist[current] || null;
+      playlist = cur ? [cur] : [];
+      current = cur ? 0 : -1;
+    }
+    planChain();
+    renderQueue();
+    if (window.__toast) window.__toast("已清空待播曲目");
   }
 
-  // 播放列表面板
-  var queuePanel = $("queue-panel");
-  $("btn-queue").addEventListener("click", function () {
-    queuePanel.classList.toggle("hidden");
-    if (!queuePanel.classList.contains("hidden")) renderQueue();
-  });
-  $("queue-list").addEventListener("click", function (e) {
-    var li = e.target.closest("li[data-idx]");
-    if (li) {
-      var song = queueDisplayItems[Number(li.getAttribute("data-idx"))];
-      if (song) playSongSmart(song);
+  // v2.1 队列双壳（手机=播放页内视图 / 桌面=右侧栏抽屉）。胶囊与行点击全部事件委托，
+  // 同一份逻辑同时服务两个壳里的 [data-qpill] / [data-qlist]。
+  document.addEventListener("click", function (e) {
+    // 「···」菜单：点菜单外或再点一次按钮即收（放在最前，避免又被下面的行点击吃掉）
+    if (qMenu && !qMenu.hidden && !e.target.closest("#q-menu") && !e.target.closest("[data-qmore]")) closeQueueMenu();
+    var qAct = e.target.closest("[data-qact]");
+    if (qAct && qMenuItem) {
+      var act = qAct.getAttribute("data-qact");
+      var item = qMenuItem;
+      closeQueueMenu();
+      if (act === "bili") { if (item.bvid) window.open("https://www.bilibili.com/video/" + item.bvid, "_blank"); return; }
+      if (act === "remove") { removeQueueItem(item); return; }
+      if (act === "dismiss") {
+        radioDismiss(item.bvid);
+        removeQueueItem(item);
+        if (window.__toast) window.__toast("已减少这类推荐");
+        return;
+      }
+      if (act === "pl" && window.__openPlMenu) {
+        var rect = qAct.getBoundingClientRect();
+        if (item.id) window.__openPlMenu(rect, "song", { song: item.id });
+        else if (item.bvid) window.__openPlMenu(rect, "url", { bvid: item.bvid, url: "https://www.bilibili.com/video/" + item.bvid });
+      }
+      return;
+    }
+    var moreBtn = e.target.closest("[data-qmore]");
+    if (moreBtn) { openQueueMenu(moreBtn); return; }
+    if (e.target.closest("[data-qclear]")) { clearUpcoming(); return; }
+    if (e.target.closest(".q-now")) return; // 正在播放行：点它不做事（免得又起播一遍）
+    var pill = e.target.closest("[data-qpill]");
+    if (pill) {
+      var kind = pill.dataset.qpill;
+      if (kind === "shuffle") setShuffleOn(!shuffleOn());
+      else if (kind === "loop") { var lm = loopMode(); setLoopMode(lm === "off" ? "all" : (lm === "all" ? "one" : "off")); }
+      else if (kind === "radio") lsSet("bmRadio", radioOn() ? "0" : "1");
+      planChain();       // 随机＝换一套顺序；循环＝队尾是否环绕。都要重算链
+      syncQueuePills();
+      return;
+    }
+    var radioRow = e.target.closest('li[data-radio]');
+    if (radioRow && window.playStream) {
+      var rq = window.__trialQueue;
+      var rItem = rowSong(radioRow);
+      if (!rq || !rq.items || !rItem) return;
+      rq.i = rq.items.indexOf(rItem);
+      window.playStream(rItem.bvid, rItem, null);
+      return;
+    }
+    var row = e.target.closest("li[data-idx]");
+    if (!row) return;
+    var song = rowSong(row);
+    if (!song) return;
+    if (song.id) { playSongSmart(song); return; } // 曲库行
+    // 试听/电台行（无曲库 id，playSongSmart 会静默无效）：起实时流并同步队列下标
+    if (song.bvid && window.playStream) {
+      var q = window.__trialQueue;
+      if (q && q.items) {
+        var fi = q.items.indexOf(song);
+        if (fi >= 0) q.i = fi;
+      }
+      window.playStream(song.bvid, song, null);
     }
   });
+
+  // 桌面抽屉（#q-drawer）：主界面保留，右侧滑出。播放条队列钮 / 歌词页底行队列钮 / Esc / 返回栈共用。
+  var qDrawer = $("q-drawer");
+  var qEnterTimer = 0;
+  function drawerOpen() { return !!qDrawer && document.body.classList.contains("qside-open"); }
+  window.__toggleQueueDrawer = function (force) {
+    if (!qDrawer) return;
+    var to = typeof force === "boolean" ? force : !drawerOpen();
+    if (!to) closeQueueMenu();
+    // 开合状态只挂在 body 上：右栏靠 CSS 的 translateX + visibility 过渡进出（display 切不出动画）
+    document.body.classList.toggle("qside-open", to);
+    // 镜像一个标记类：back-stack.js 靠 MutationObserver 盯 #q-drawer 的 class 变化来压/出栈，
+    // 状态本体在 body 上（CSS 用它驱动位移与让位），这里只是把信号喂给观察者
+    qDrawer.classList.toggle("is-open", to);
+    clearTimeout(qEnterTimer);
+    if (to) {
+      renderQueue();
+      // 打开时把「正在播放」那行滚进视野（长队列不必自己翻）
+      var nowRow = document.querySelector('#q-drawer .q-now');
+      if (nowRow && nowRow.scrollIntoView) nowRow.scrollIntoView({ block: "center" });
+      document.body.classList.add("qside-enter"); // 清单错峰入场，只在开栏这一下
+      qEnterTimer = setTimeout(function () { document.body.classList.remove("qside-enter"); }, 700);
+    } else {
+      document.body.classList.remove("qside-enter");
+    }
+    // 抽屉开合会收起/放出播放条的歌曲信息：让走马灯按新的可用宽度重测一次
+    if (window.BiliTicker) window.BiliTicker.set($("player-title"));
+  };
+  var qdClose = $("q-drawer-close");
+  if (qdClose) qdClose.addEventListener("click", function () { window.__toggleQueueDrawer(false); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") return;
+    if (qMenu && !qMenu.hidden) { closeQueueMenu(); return; } // 先收行菜单，再收抽屉
+    if (drawerOpen()) window.__toggleQueueDrawer(false);
+  });
+  window.__isDesktop = function () { return window.matchMedia("(min-width: 901px)").matches; };
+  window.__syncQueuePills = syncQueuePills; // 详情页「电台」按钮打开电台后同步胶囊态
+  // 播放页的随机 / 循环钮与队列胶囊共用同一套轴语义：换顺序、重排链、同步各处状态都收在这里
+  window.__togglePlayAxis = function (kind) {
+    if (kind === "shuffle") setShuffleOn(!shuffleOn());
+    else if (kind === "loop") { var lm = loopMode(); setLoopMode(lm === "off" ? "all" : (lm === "all" ? "one" : "off")); }
+    else return;
+    planChain();       // 随机＝换一套顺序；循环＝队尾是否环绕。都要重算链
+    syncQueuePills();
+  };
+
+  // v2.1 队列视图（手机）：住在歌词面板里的第二个视图（歌词 ⇄ 播放列表）。
+  var queueViewEl = $("queue-view");
+  function queueMode() { return !!queueViewEl && !queueViewEl.hidden; }
+  window.__setQueueView = function (toQueue) {
+    if (toQueue === false) { if (window.__goCoverView) window.__goCoverView(null); return; } // 队列返回 = 播放页
+    if (window.__goQueueView) window.__goQueueView(); // 队列态再按 = 回播放页（goQueue 内部翻转）
+  };
+  window.__renderQueueView = renderQueue; // v3.js goQueue 刷新列表用
+  $("btn-queue").addEventListener("click", function () {
+    if (window.__isDesktop()) { window.__toggleQueueDrawer(); return; } // 桌面：右侧栏抽屉
+    if (window.__toggleQueueView) window.__toggleQueueView();            // 手机：播放页内视图
+  });
+  window.__resetQueueView = function () { // 歌词页关闭时由 v3.js 钩子调用：复位视图状态
+    if (!queueViewEl) return;
+    queueViewEl.hidden = true;
+    var ls = $("lyrics-scroll");
+    if (ls) ls.hidden = false;
+    $("lyrics-panel").classList.remove("queue-mode");
+  };
 
   // ---------- 歌词面板（B站字幕 + LRCLIB 混合，后端返回 LRC/纯文本） ----------
   var NOTE_RE = /[♪♫♩♬]/g; // 歌词行装饰符号（LRCLIB/AI 字幕常见），展示前剥掉
@@ -1120,7 +1507,6 @@
     openLyricsForCurrent();
   };
   $("btn-lyrics").addEventListener("click", window.toggleLyrics);
-  $("ly-retry").addEventListener("click", retryLyrics);
   $("btn-lyrics-close").addEventListener("click", function () {
     if (window.__hidePanel) __hidePanel($("lyrics-panel"));
     else $("lyrics-panel").classList.add("hidden");
@@ -1731,7 +2117,7 @@
     pt.textContent = recAudio.dataset.title || "实时流试听";
     pt.title = pt.textContent;
     if (window.BiliTicker) BiliTicker.set(pt);
-    $("player-artist").textContent = recAudio.dataset.artist || "";
+    $("player-artist").textContent = (recAudio.dataset.artist || "") + (window.__qualityLabel() ? " · " + window.__qualityLabel() : "");
     if (recAudio.dataset.cover) $("player-cover").src = recAudio.dataset.cover;
     // 试听接管即重置进度显示（清掉曲库歌遗留的填充/时间码）
     var seekEl = $("seek");
@@ -1801,11 +2187,12 @@
     if (recAudio) recAudio.pause();
     resetRecButtons();
     pauseMainTracks(); // 主音轨让位（主音轨那首随时可切回；试听态会如实上报会话）
-    recAudio = new Audio("/api/stream/" + bvid);
+    recAudio = new Audio(withTier("/api/stream/" + bvid));
     recAudio.dataset.bvid = bvid;
     recAudio.dataset.title = meta.title || "实时流试听";
     recAudio.dataset.artist = meta.artist || "";
     recAudio.dataset.cover = meta.cover || "";
+    window.__qualityProbe(bvid, 0);
     pushHistory({ k: "v" + bvid, kind: "stream", bvid: bvid, title: meta.title || "实时流试听", artist: meta.artist || "", cover: meta.cover || "" });
     recActive = true;
     document.body.classList.add("trial");
@@ -1814,6 +2201,14 @@
       if (!recActive || recAudio.dataset.bvid !== bvid) return;
       var q = window.__trialQueue;
       if (q && q.items && q.items.length > 1) { skip(1); return; }
+      if (radioOn()) {
+        radioContinue(function () {
+          resetRecButtons();
+          setPlayerToggle(true);
+          if (audioA.paused && audioB.paused) document.body.classList.remove("playing");
+        });
+        return;
+      }
       resetRecButtons();
       setPlayerToggle(true);
       if (audioA.paused && audioB.paused) document.body.classList.remove("playing");

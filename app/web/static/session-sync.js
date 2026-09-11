@@ -115,8 +115,8 @@
       volume: media && typeof media.volume === "number" ? Math.round(media.volume * 100) : 100,
       index: trial ? trial.index : (pos && pos.index ? pos.index - 1 : 0),
       queue: q,
-      repeat: localStorage.getItem("bmPlayMode") || "off",
-      shuffle: false,
+      repeat: (function () { var v = localStorage.getItem("bmLoop"); return (v === "all" || v === "one") ? v : "off"; })(),
+      shuffle: localStorage.getItem("bmShuffle") === "1",
     };
   }
 

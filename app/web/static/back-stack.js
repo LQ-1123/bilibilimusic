@@ -95,9 +95,15 @@
     reg("lyrics", $("lyrics-panel"),
       function () { return !$("lyrics-panel").classList.contains("hidden"); },
       function () { var c = $("btn-lyrics-close"); if (c) c.click(); });
-    reg("queue", $("queue-panel"),
-      function () { return !$("queue-panel").classList.contains("hidden"); },
-      function () { var b = $("btn-queue"); if (b) b.click(); });
+    reg("queue", $("lyrics-panel"),
+      function () {
+        var qv = $("queue-view");
+        return !$("lyrics-panel").classList.contains("hidden") && !!qv && !qv.hidden;
+      },
+      function () { window.__setQueueView(false); }); // 队列视图的返回 = 退回歌词视图
+    reg("qdrawer", $("q-drawer"), // v2.1 桌面右侧栏抽屉：返回键/Esc 语义与 UI 关闭一致
+      function () { return document.body.classList.contains("qside-open"); },
+      function () { if (window.__toggleQueueDrawer) window.__toggleQueueDrawer(false); });
     reg("up", $("up-panel"),
       function () { return !$("up-panel").classList.contains("hidden"); },
       function () { var c = $("up-close"); if (c) c.click(); });

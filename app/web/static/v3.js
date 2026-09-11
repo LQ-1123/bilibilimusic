@@ -244,21 +244,40 @@
   (function () {
     var handle = $("side-handle"), app = $("app");
     if (!handle || !app) return;
+    var sidebar = handle.closest(".sidebar");
     var dragging = false;
+    function setWidth(width) {
+      var w = Math.min(420, Math.max(200, width));
+      // 放在 html 上，让主区与全屏覆盖层沿用同一侧栏宽度。
+      document.documentElement.style.setProperty("--side", w + "px");
+      handle.setAttribute("aria-valuenow", String(Math.round(w)));
+    }
     handle.addEventListener("pointerdown", function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault();
       dragging = true;
+      if (sidebar) sidebar.classList.add("is-resizing");
       handle.setPointerCapture(e.pointerId);
       document.body.style.cursor = "col-resize";
     });
     handle.addEventListener("pointermove", function (e) {
       if (!dragging) return;
-      var w = Math.min(420, Math.max(200, e.clientX));
-      // 设在 html 上：内容区、侧栏与全屏覆盖层（歌词/艺术家页）都能继承
-      document.documentElement.style.setProperty("--side", w + "px");
+      setWidth(e.clientX);
     });
-    var up = function () { dragging = false; document.body.style.cursor = ""; };
+    var up = function () {
+      dragging = false;
+      if (sidebar) sidebar.classList.remove("is-resizing");
+      document.body.style.cursor = "";
+    };
     handle.addEventListener("pointerup", up);
     handle.addEventListener("pointercancel", up);
+    handle.addEventListener("lostpointercapture", up);
+    handle.addEventListener("keydown", function (e) {
+      if (!sidebar || ["ArrowLeft", "ArrowRight", "Home", "End"].indexOf(e.key) === -1) return;
+      e.preventDefault();
+      var width = sidebar.getBoundingClientRect().width;
+      setWidth(e.key === "Home" ? 200 : e.key === "End" ? 420 : width + (e.key === "ArrowRight" ? 8 : -8));
+    });
   })();
 
   // ---------- 用户设置弹层（侧栏点头像：外观/同步/退出登录）；未登录则弹登录窗 ----------
@@ -273,7 +292,10 @@
         return;
       }
     }, true);
-    var setOpen = function (v) { host.classList.toggle("pop-open", v); };
+    var setOpen = function (v) {
+      host.classList.toggle("pop-open", v);
+      btn.setAttribute("aria-expanded", String(v));
+    };
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       setOpen(!host.classList.contains("pop-open"));
@@ -386,6 +408,40 @@
   // ---------- 歌单详情（user = 曲库歌单 / rec = 线上推荐歌单） ----------
   var dtState = { kind: "user", id: "0", name: "全部歌曲", hue: 340 };
   var detailOrigin = "home"; // #34：详情页从哪来（home/library），返回时回到原处而不是一律回主页
+
+  // 侧栏标记正在看的页面；收藏目标仍由 app.js 的歌单选择状态管理。
+  // 使用独立的 is-current，避免回到首页后旧歌单继续高亮，或异步刷新后丢失位置。
+  function syncSidebar() {
+    var app = $("app");
+    if (!app) return;
+    var view = app.dataset.view;
+    var nav = view === "detail" ? (dtState.kind === "rec" ? "recommend" : "") : view;
+    if (document.activeElement === $("search")) nav = "search";
+    var playlist = nav !== "search" && view === "detail" && dtState.kind === "user" ? String(dtState.id) : null;
+    document.querySelectorAll(".side-nav [data-nav]").forEach(function (button) {
+      var selected = button.dataset.nav === nav;
+      button.classList.toggle("on", selected);
+      if (selected) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    document.querySelectorAll("#playlists-bar [data-pl]").forEach(function (button) {
+      var selected = playlist !== null && button.dataset.pl === playlist;
+      button.classList.toggle("is-current", selected);
+      if (selected) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+  }
+  if ($("app") && window.MutationObserver) {
+    new MutationObserver(syncSidebar).observe($("app"), { attributes: true, attributeFilter: ["data-view"] });
+  }
+  if ($("search")) {
+    $("search").addEventListener("focus", syncSidebar);
+    $("search").addEventListener("blur", syncSidebar);
+  }
+  document.body.addEventListener("htmx:afterSwap", function (e) {
+    if (e.target && e.target.id === "playlists-bar") syncSidebar();
+  });
+  syncSidebar();
 
   var albumDetailGeneration = 0;
   document.body.addEventListener("htmx:beforeSwap", function (event) {
@@ -606,6 +662,12 @@
       if (row && window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
     });
   };
+  // v2.1 A5：详情页「电台」＝打开漫游电台并从当前详情第一首开始播；队列见底自动按种子续
+  window.playDetailRadio = function () {
+    try { localStorage.setItem("bmRadio", "1"); } catch (e) {}
+    if (window.__syncQueuePills) window.__syncQueuePills();
+    window.playDetailFirst();
+  };
   // 分享该歌单/专辑/合集：真实 B 站链接（#25 统一走 __share 的降级链：原生面板 → 系统分享 → 复制 → 弹窗）
   window.shareDetail = function () {
     if (dtState.kind === "album") {
@@ -688,16 +750,8 @@
     else goHome();
   });
 
-  // ---------- toast 轻提示 ----------
-  var toastTimer = null;
-  window.__toast = function (msg) {
-    var el = $("toast");
-    if (!el) return;
-    $("toast-txt").textContent = msg;
-    el.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2400);
-  };
+  // ---------- 轻提示已停用：全部操作反馈不再弹胶囊，调用点保留为空实现 ----------
+  window.__toast = function () {};
 
   // ---------- 界面切换过渡：覆盖层开（淡入上浮）/ 关（淡出后隐藏） ----------
   // #30：UP 详情页全屏不透明层会盖住底部 dock；`:has()` 在 minSdk 26 的老 WebView 里整条被丢弃，
@@ -717,6 +771,7 @@
   };
   window.__hidePanel = function (el) {
     if (!el || el.classList.contains("hidden")) return;
+    if (el.id === "lyrics-panel" && window.__resetQueueView) window.__resetQueueView(); // 关歌词页复位队列视图
     el.classList.add("closing");
     var ms = el.id === "lyrics-panel" ? 420 : 300; // 歌词页推拉动画更长，等它播完再隐藏
     setTimeout(function () {
@@ -1302,29 +1357,63 @@
     var c = $("player-cover"), lc = $("lyrics-cover");
     if (c && window.toggleLyrics) c.addEventListener("click", function () { toggleLyrics(); });
     if (lc && window.BiliPlayer) lc.addEventListener("click", function () {
-      // 手机端歌词视图：点顶栏小封面回到大封面视图；其余情况维持原"点封面播放/暂停"
+      // 手机端歌词视图：点顶栏小封面回到大封面视图（封面元素飞回居中）；其余情况维持原"点封面播放/暂停"
       var panel = $("lyrics-panel");
-      if (panel.classList.contains("showlyrics") && window.matchMedia("(max-width: 900px)").matches) {
-        panel.classList.remove("showlyrics");
+      if (panel.classList.contains("showlyrics") && matchMedia("(max-width: 900px)").matches) {
+        goCover($("lyrics-cover")); // 歌词视图点小封面 = 回播放页（无动效）
         return;
       }
       BiliPlayer.toggle();
     });
   })();
 
-  // ---------- 手机端播放页：封面视图 ↔ 歌词视图（Apple Music 式） ----------
+  // ---------- 手机端播放页：封面 ↔ 歌词 ↔ 队列 三视图切换（无动效，用户定稿 2026-09-11） ----------
+  // v2.1 共享元素封面飞行曾实现后按用户要求整体回退；切换均为瞬时。
   (function () {
     var panel = $("lyrics-panel");
     if (!panel) return;
-    var big = $("lyrics-cover-big");
-    if (big) big.addEventListener("click", function () { panel.classList.add("showlyrics"); });
+    // v2.1 三个视图的统一切换：封面飞行追踪 + 状态收口（手机端）
+  function queueViewActive() { var qv = $("queue-view"); return !!qv && !qv.hidden; }
+  function goCover() { // 任意视图 → 播放页（封面视图）
+    panel.classList.remove("showlyrics", "queue-mode");
+    var qv = $("queue-view"); if (qv) qv.hidden = true;
+    var ls = $("lyrics-scroll"); if (ls) ls.hidden = false;
+  }
+  function goLyrics() { // 播放页 → 歌词页
+    if (panel.classList.contains("hidden")) window.__showPanel(panel); // 桌面直进：面板可能还关着
+    panel.classList.add("showlyrics");
+    panel.classList.remove("queue-mode");
+    var qv = $("queue-view"); if (qv) qv.hidden = true;
+    var ls = $("lyrics-scroll"); if (ls) ls.hidden = false;
+  }
+  function goQueue() { // 任意视图 → 播放列表页
+    if (panel.classList.contains("hidden")) window.__showPanel(panel); // 桌面直进：面板可能还关着
+    panel.classList.add("showlyrics", "queue-mode");
+    var qv = $("queue-view"); if (qv) qv.hidden = false;
+    var ls = $("lyrics-scroll"); if (ls) ls.hidden = true;
+    if (window.__renderQueueView) window.__renderQueueView();
+  }
+  window.__goQueueView = goQueue;
+  window.__goCoverView = goCover;
+  window.__toggleQueueView = function () { queueViewActive() ? goCover($("lyrics-cover")) : goQueue(); };
+  var big = $("lyrics-cover-big");
+    if (big) big.addEventListener("click", function () { goLyrics(); });
+    var small = $("lyrics-cover");
+    if (small) small.addEventListener("click", function () {
+      if (panel.classList.contains("showlyrics") && matchMedia("(max-width: 900px)").matches) { goCover(small); return; }
+      BiliPlayer.toggle();
+    });
     var bubble = $("ly-bubble");
-    if (bubble) bubble.addEventListener("click", function () { panel.classList.toggle("showlyrics"); });
-    // 播放列表：复用播放条上的队列按钮（含它的 on 视觉态）
+    if (bubble) bubble.addEventListener("click", function () {
+      if (queueViewActive()) { goCover($("lyrics-cover")); return; } // 队列态 → 播放页（封面飞回）
+      panel.classList.contains("showlyrics") ? goCover($("lyrics-cover")) : goLyrics();
+    });
+    function queueViewActive() { var qv = $("queue-view"); return !!qv && !qv.hidden; }
+    // 播放列表：桌面=右侧栏抽屉，手机=播放页内视图（队列态再按 = 回播放页）
     var lq = $("ly-queue");
     if (lq) lq.addEventListener("click", function () {
-      var bq = $("btn-queue");
-      if (bq) bq.click();
+      if (window.__isDesktop && window.__isDesktop()) { window.__toggleQueueDrawer(); return; }
+      if (window.__toggleQueueView) window.__toggleQueueView();
     });
   })();
 
@@ -1394,30 +1483,51 @@
       BiliPlayer.skip(1);
     });
 
-    // 播放模式钮：顺序 → 列表循环 → 随机 循环切换（引擎行为见 app.js playMode()）
-    var MODES = [
-      { k: "order", name: "顺序播放", icon: "i-queue" },
-      { k: "loop", name: "列表循环", icon: "i-rep" },
-      { k: "random", name: "随机播放", icon: "i-shuf" },
+    // 循环钮：顺序 → 列表循环 → 单曲循环。只管 bmLoop 一条轴——随机与电台在队列面板里各自
+    // 独立开关，不再像旧版那样和循环挤在同一个 bmPlayMode 枚举里互相顶掉（引擎见 app.js）。
+    var LOOPS = [
+      { k: "off", name: "顺序播放" },
+      { k: "all", name: "列表循环" },
+      { k: "one", name: "单曲循环" },
     ];
-    var lm = $("ly-mode");
-    if (lm) {
-      var applyMode = function () {
-        var cur = localStorage.getItem("bmPlayMode") || "order";
-        var m = MODES.filter(function (x) { return x.k === cur; })[0] || MODES[0];
-        var use = lm.querySelector("use");
-        if (use) use.setAttribute("href", "#" + m.icon);
-        lm.title = "播放模式：" + m.name;
-      };
-      lm.addEventListener("click", function () {
-        var cur = localStorage.getItem("bmPlayMode") || "order";
-        var next = MODES[(MODES.findIndex(function (x) { return x.k === cur; }) + 1) % MODES.length];
-        localStorage.setItem("bmPlayMode", next.k);
-        applyMode();
-        window.__toast("播放模式：" + next.name);
-      });
+    var lm = $("ly-mode"), lsh = $("ly-shuffle");
+    var curLoop = function () {
+      var cur = localStorage.getItem("bmLoop") || "off";
+      return LOOPS.filter(function (x) { return x.k === cur; })[0] || LOOPS[0];
+    };
+    var toggleAxis = function (kind) {   // app.js 未就绪时兜底：只翻本地开关
+      if (window.__togglePlayAxis) { window.__togglePlayAxis(kind); return; }
+      if (kind === "shuffle") localStorage.setItem("bmShuffle", localStorage.getItem("bmShuffle") === "1" ? "0" : "1");
+      else { var cur = localStorage.getItem("bmLoop") || "off"; localStorage.setItem("bmLoop", cur === "off" ? "all" : (cur === "all" ? "one" : "off")); }
+    };
+    var applyShuffle = function () {
+      if (!lsh) return;
+      var on = localStorage.getItem("bmShuffle") === "1";
+      lsh.classList.toggle("on", on);
+      lsh.setAttribute("aria-pressed", on ? "true" : "false");
+      lsh.title = on ? "随机播放：开（点按恢复原顺序）" : "随机播放：关（点按打乱播放顺序）";
+    };
+    var applyMode = function () {
+      if (lm) {
+        var m = curLoop();
+        lm.title = "循环：" + m.name + (m.k === "off" ? "（点按开启列表循环）" : "（点按切换）");
+        lm.classList.toggle("on", m.k !== "off");
+        lm.classList.toggle("one", m.k === "one");
+      }
+      applyShuffle();
+    };
+    if (lm) lm.addEventListener("click", function () {
+      toggleAxis("loop");
       applyMode();
-    }
+      if (window.__toast) window.__toast("循环模式：" + curLoop().name);
+    });
+    if (lsh) lsh.addEventListener("click", function () {
+      toggleAxis("shuffle");
+      applyShuffle();
+      if (window.__toast) window.__toast("随机播放：" + (localStorage.getItem("bmShuffle") === "1" ? "开" : "关"));
+    });
+    applyMode();
+    window.__syncLyMode = applyMode; // 队列面板改了循环 / 随机 → 这边跟着刷新
 
     // ＋ 添加至歌单（当前歌）
     var la = $("ly-add");

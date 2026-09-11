@@ -12,16 +12,16 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=233">
+  <link rel="stylesheet" href="/static/style.css?v=265">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
-  <script src="/static/app.js?v=80" defer></script>
+  <script src="/static/app.js?v=102" defer></script>
   <script src="/static/export.js?v=8" defer></script>
-  <script src="/static/v3.js?v=90" defer></script>
+  <script src="/static/v3.js?v=106" defer></script>
   <script src="/static/nav-liquid.js?v=13" defer></script>
-  <script src="/static/session-sync.js?v=20" defer></script>
-  <script src="/static/back-stack.js?v=4" defer></script>
+  <script src="/static/session-sync.js?v=21" defer></script>
+  <script src="/static/back-stack.js?v=7" defer></script>
 </head>
 <body {% block bodyclass %}{% endblock %} data-auth="{{ '1' if logged_in else '0' }}" data-mid="{{ mid or '' }}">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -31,6 +31,10 @@
     <symbol id="i-search" viewBox="0 0 24 24"><path fill="currentColor" d="M10.2 3.6a6.6 6.6 0 104.7 11.3l5 5 1.4-1.4-5-5A6.6 6.6 0 0010.2 3.6zm0 2a4.6 4.6 0 110 9.2 4.6 4.6 0 010-9.2z"/></symbol>
     <symbol id="i-note" viewBox="0 0 24 24"><path fill="currentColor" d="M9 3v11.1A3.8 3.8 0 1011 17.6V7.6l8-1.8v7.3A3.8 3.8 0 1021 15.6V2z"/></symbol>
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 20.5c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/></symbol>
+    <symbol id="i-side-home" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m2.5 10 9.5-8 9.5 8M5 8v12a1 1 0 0 0 1 1h4v-7h4v7h4a1 1 0 0 0 1-1V8"/></symbol>
+    <symbol id="i-side-discover" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></g></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M21.3 13.2A9.2 9.2 0 1110.8 2.7a7.3 7.3 0 0010.5 10.5z"/></symbol>
     <symbol id="i-devices" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M13 4H5a2.5 2.5 0 0 0-2.5 2.5v8A2.5 2.5 0 0 0 5 17h3.5"/><rect x="13.5" y="7.5" width="8" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
     <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3" fill="currentColor"/><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"/></g></symbol>
@@ -78,30 +82,31 @@
     {% block content %}{% endblock %}
   </main>
 
-  <aside class="sidebar">
+  <aside class="sidebar" aria-label="侧边栏">
     <!-- #24：macOS Overlay 标题栏下的 40px 让位区兼作拖拽带（CSS 只在 html.tauri 下显示） -->
     <div class="tb-drag" data-tauri-drag-region="deep"></div>
     <!-- 主导航（Tauri 壳用 macOS Overlay 标题栏：系统画原生红绿灯，CSS 侧栏顶部让位） -->
     <nav class="side-nav" aria-label="主导航">
-      <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)"><svg><use href="#i-home"/></svg>首页</button>
-      <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg><use href="#i-compass"/></svg>推荐</button>
-      <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg><use href="#i-user"/></svg>UP 主</button>
+      <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)" aria-current="page"><svg aria-hidden="true"><use href="#i-side-home"/></svg>首页</button>
+      <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg aria-hidden="true"><use href="#i-side-discover"/></svg>推荐</button>
+      <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg aria-hidden="true"><use href="#i-user"/></svg>UP 主</button>
     </nav>
-    <div class="side-sec" style="margin-top:2px">
-      <span class="lb">我的歌单</span>
-      <button class="add" type="button" onclick="createPlaylist()" title="新建歌单">＋</button>
-    </div>
-    <nav class="side-pls" id="playlists-bar"
-         hx-get="/partials/playlists" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML"></nav>
+    <nav class="side-pls" id="playlists-bar" aria-label="资料库与歌单"
+         hx-get="/partials/playlists" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML">
+      <div class="side-sec side-pl-section">
+        <span class="lb">我的歌单</span>
+        <button class="add" type="button" onclick="createPlaylist()" title="新建歌单" aria-label="新建歌单"><svg aria-hidden="true"><use href="#i-plus"/></svg></button>
+      </div>
+    </nav>
     <div class="side-user">
-      <button class="su-row" type="button" id="side-user-btn" title="账号设置">
+      <button class="su-row" type="button" id="side-user-btn" title="账号设置" aria-expanded="false" aria-controls="user-pop">
         {% if user is defined and user.face %}
         <img class="ava" src="{{ user.face }}" alt="" referrerpolicy="no-referrer">
         {% else %}
-        <div class="ava">♪</div>
+        <div class="ava" aria-hidden="true">{% if user is defined and user.uname and user.uname != '已登录' %}{{ user.uname[:1] }}{% else %}<svg><use href="#i-user"/></svg>{% endif %}</div>
         {% endif %}
         <div class="un">{{ user.uname or "未登录 · 点击登录" }}</div>
-        <span class="su-more">›</span>
+        <svg class="su-more" aria-hidden="true"><use href="#i-chevron"/></svg>
       </button>
       <div class="user-pop" id="user-pop">
         <label class="up-row" title="切换深色 / 浅色外观">
@@ -113,7 +118,7 @@
         <button class="up-row danger" type="button" id="side-logout"><span>⏻</span><span>退出登录</span></button>
       </div>
     </div>
-    <div class="side-handle" id="side-handle" title="拖动调整侧栏宽度"></div>
+    <div class="side-handle" id="side-handle" role="separator" tabindex="0" aria-label="调整侧边栏宽度" aria-orientation="vertical" aria-valuemin="200" aria-valuemax="420" aria-valuenow="264" title="拖动或用左右方向键调整侧栏宽度"></div>
   </aside>
 
   <footer id="player-bar" class="hidden">
@@ -165,18 +170,6 @@
     </div>
   </section>
 
-  <div id="queue-panel" class="hidden">
-    <div class="q-head">
-      <div class="t">播放队列 <span id="queue-count"></span></div>
-      <div class="q-toggles">
-        <label class="smart-toggle" title="当前歌曲循环播放">
-          <input type="checkbox" id="repeat-one-toggle"> 单曲循环
-        </label>
-      </div>
-    </div>
-    <ul id="queue-list"></ul>
-  </div>
-
   <div id="lyrics-panel" class="hidden">
     <img id="lyrics-backdrop" alt="" aria-hidden="true" referrerpolicy="no-referrer">
     <div class="ly-volhost" aria-label="音量">
@@ -194,7 +187,6 @@
         </div>
         <div class="ly-morerow">
           <button id="ly-star" type="button" title="收藏到我的曲库（同步 B 站收藏夹）">★</button>
-          <button id="ly-retry" type="button" title="重新获取歌词">↻</button>
           <button id="ly-more" type="button" title="更多操作">···</button>
         </div>
       </div>
@@ -214,27 +206,43 @@
       </div>
     </div>
     <div id="lyrics-scroll"></div>
+    <!-- v2.1 队列视图：与歌词同屏切换（ly-queue / 播放条队列钮），共用头部/进度/走播 -->
+    <div id="queue-view" hidden>
+      {% include 'partials/queue_body.html' %}
+    </div>
     <div class="l-bottom">
       <div class="ly-prog">
         <input id="ly-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="歌词页进度">
         <div class="ly-times"><span id="ly-cur">0:00</span><span id="ly-rem">0:00</span></div>
       </div>
+      <!-- 控制行：随机 / 上一首 / 播放 / 下一首 / 循环——随机与循环贴在三大键两侧，不再单占一行 -->
       <div class="ly-ctl">
+        <button id="ly-shuffle" type="button" title="随机播放" aria-label="随机播放"><svg aria-hidden="true"><use href="#i-shuf"/></svg></button>
         <button id="ly-prev" type="button" title="上一首"><svg><use href="#a-prev"/></svg></button>
         <button id="ly-toggle" type="button" class="big" title="播放/暂停">
           <svg class="i-play"><use href="#a-play"/></svg><svg class="i-pause"><use href="#a-pause"/></svg>
         </button>
         <button id="ly-next" type="button" title="下一首"><svg><use href="#a-next"/></svg></button>
+        <button id="ly-mode" type="button" title="循环：关" aria-label="循环模式"><svg aria-hidden="true"><use href="#i-rep"/></svg></button>
       </div>
-      <!-- 第四行：歌词 + 播放列表；#40 桌面端左槽放「播放模式」（手机上这一格是歌词气泡），
-           与手机共用同一条底行排版 -->
+      <!-- 底行只剩手机需要的两颗（歌词气泡 / 播放列表）：手机端播放条收起了操作键，
+           队列只能从这里进；桌面端整行不显示。 -->
       <div class="ly-foot">
-        <button id="ly-mode" type="button" title="播放模式"><svg id="ly-mode-icon"><use href="#i-queue"/></svg></button>
         <button id="ly-bubble" type="button" title="歌词"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M6 3h12a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3h-7l-5 3v-3a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3ZM7 8h4v4l-2 3H7l2-3H7Zm6 0h4v4l-2 3h-2l2-3h-2Z"/></svg></button>
         <button id="ly-queue" type="button" title="播放列表" aria-label="播放列表"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h12M9 12h12M9 19h12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><g fill="currentColor"><circle cx="3" cy="5" r="1.5"/><circle cx="3" cy="12" r="1.5"/><circle cx="3" cy="19" r="1.5"/></g></svg></button>
       </div>
     </div>
   </div>
+
+  <!-- v2.1 桌面端队列：右侧栏抽屉（主界面保留，播放条队列钮 / 歌词页底行队列钮唤出）。
+       手机端不渲染显示（CSS 隐藏），队列走播放页内视图。 -->
+  <aside id="q-drawer">
+    <div class="qd-head">
+      <div class="qd-title">播放队列</div>
+      <button class="qd-close" id="q-drawer-close" type="button" title="收起播放队列">✕</button>
+    </div>
+    {% include 'partials/queue_body.html' %}
+  </aside>
 
   <div id="up-panel" class="hidden">
     <img id="up-ambient" alt="" referrerpolicy="no-referrer">
@@ -299,10 +307,9 @@
   <audio id="audio" preload="auto"></audio><!-- #45：尽早开始缓冲当前曲目，减少首帧与抖动等待 -->
   <audio id="audio2" preload="none"></audio>
 
-  <div class="toast" id="toast"><span class="h">♥</span><span id="toast-txt"></span></div>
-
   <div id="pl-menu" hidden></div>
   <div id="song-menu" hidden></div>
+  <div id="q-menu" hidden></div><!-- v2.1 队列行「···」菜单 -->
   <div id="mini-modal" class="modal hidden"><div class="modal-box" id="mini-modal-box"></div></div>
 
   <!-- 登录弹窗（B 站官方弹窗式双栏：左扫码 / 右短信）；未登录时任意操作触发 -->

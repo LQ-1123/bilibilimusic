@@ -8,8 +8,9 @@ function harness(pages) {
   let page = 0;
   const context = vm.createContext({
     albumQueueId: null, queueGeneration: 0, refreshGeneration: 0, currentQuery: '', playlist: [], current: -1,
-    sessionRestored: true, chainOrder: [], naturalPlan: null, recActive: false, repeatOne: true,
-    localStorage: {getItem: () => 'random'},
+    sessionRestored: true, chainOrder: [], naturalPlan: null, recActive: false,
+    // 随机开着（bmShuffle=1）；专辑队列必须无视它，仍按源顺序走
+    localStorage: {getItem: key => (key === 'bmShuffle' ? '1' : null), setItem() {}, removeItem() {}},
     window: {__toast: message => notices.push(message)},
     fetch: async (url, options) => {calls.push([url, options.method]); if (options.method === 'POST') page++; return {ok: true, json: async () => pages[page]};},
     fetchSongs: async () => [{id: 900, trackNo: 1}],
@@ -19,14 +20,15 @@ function harness(pages) {
     playSong(song) {context.current = context.playlist.findIndex(item => item.id === song.id); played.push(song.id); context.planChain();},
     stopTrial() {}, smartEnabled: () => false,
     mirror: null,   // app.js 的镜像态开关（#29）；skip() 切片执行时需要这个初始值
+    radioOn: () => false, radioDismiss: () => {}, radioContinue: () => {}, // v2.1 A5 电台 stub（切片里 skip 会引用）
   });
   vm.runInContext(source.slice(source.indexOf('  function orderedAlbumSongs('), source.indexOf('  function playSong(song)')), context);
-  vm.runInContext(source.slice(source.indexOf('  function playMode()'), source.indexOf('  // ---------- 会话记忆')), context);
+  vm.runInContext(source.slice(source.indexOf('  // ---------- 播放三轴'), source.indexOf('  // ---------- 会话记忆')), context);
   vm.runInContext(source.slice(source.indexOf('  function skip(delta)'), source.indexOf('  document.addEventListener("click"', source.indexOf('  function skip(delta)'))), context);
   return {context, calls, played, notices};
 }
 const song = n => ({id: n, trackNo: n});
-test('whole album loads bounded pages and clicked P follows source order despite random mode', async () => {
+test('whole album loads bounded pages and clicked P follows source order despite shuffle on', async () => {
   const {context: c, calls, played} = harness([
     {songs: [song(2)], hasMore: true, materializedPages: 1},
     {songs: [song(3), song(1), song(2)], hasMore: false, materializedPages: 3},

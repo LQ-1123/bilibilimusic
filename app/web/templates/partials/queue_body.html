@@ -1,0 +1,20 @@
+<div class="q-body">
+  <div class="q-pills">
+    <button class="q-pill" data-qpill="shuffle" type="button" title="随机播放"><svg aria-hidden="true"><use href="#i-shuf"/></svg></button>
+    <button class="q-pill" data-qpill="loop" type="button" title="顺序播放"><svg aria-hidden="true"><use href="#i-rep"/></svg></button>
+    <button class="q-pill" data-qpill="radio" type="button" title="漫游电台：队列播完自动按当前歌续播">∞</button>
+  </div>
+  <div class="q-sec" data-qsec="next" hidden>
+    <div class="q-sec-h">
+      <div class="q-sec-t">播放队列</div>
+      <button class="q-clear" type="button" data-qclear title="清空后面待播的曲目，当前这首继续放">清除</button>
+    </div>
+    <div class="q-sec-s" data-qsrc="next"></div>
+  </div>
+  <ul class="q-list" data-qlist="main"></ul>
+  <div class="q-sec" data-qsec="radio" hidden>
+    <div class="q-sec-t">∞ 自动播放</div>
+    <div class="q-sec-s">将继续播放类似音乐 · 跳过即少推同类</div>
+  </div>
+  <ul class="q-list" data-qlist="radio"></ul>
+</div>
