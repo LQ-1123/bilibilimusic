@@ -1228,20 +1228,24 @@
   if (loginCloseBtn) loginCloseBtn.addEventListener("click", window.closeLogin);
   if (location.search.indexOf("login=1") >= 0) window.openLogin(); // 兼容旧 /login 链接
 
-  // ---------- 二维码点击：存相册 + 打开 B 站 App（单机扫码登录） ----------
-  // 单手机上没法用同一台机器扫自己屏幕：点二维码 → 存进相册 → 拉起 B 站 App，
-  // 用「扫一扫 → 相册」选中它即可确认登录；后端轮询到确认会自动进入。
+  // ---------- 二维码点击：存入相册（单机扫码登录） ----------
+  // 单手机上没法用同一台机器扫自己屏幕：点二维码存进相册，再到 B 站 App「扫一扫 → 相册」选它；
+  // 后端轮询到确认会自动进入。（2026-09 用户拍板：不再自动拉起 B 站 App；触屏浏览器也不落
+  // 下载文件——只有长按二维码走系统「保存图片」才真正进相册。）
   function qrTap() {
     var src = qrImg && qrImg.src;
     if (!src || src.indexOf("data:image") !== 0) return;
     var nat = window.BiliMusicNative;
     if (nat && nat.saveQrToGallery) {
       nat.saveQrToGallery(src);
-      if (nat.openBilibiliApp) nat.openBilibiliApp();
       $("qr-status").textContent = "已存到相册 → B 站「扫一扫 → 相册」选它";
       return;
     }
-    var a = document.createElement("a"); // 浏览器/桌面：直接下载
+    if (("ontouchstart" in window) || (navigator.maxTouchPoints > 0)) {
+      $("qr-status").textContent = "长按二维码 → 「保存图片 / 存入相册」，再到 B 站 App 扫它";
+      return;
+    }
+    var a = document.createElement("a"); // 桌面浏览器/桌面壳：下载文件（桌面无相册概念）
     a.href = src;
     a.download = "bilimusic-login-qr.png";
     document.body.appendChild(a);
@@ -1252,7 +1256,7 @@
   if (qrImg) {
     qrImg.addEventListener("click", qrTap);
     qrImg.style.cursor = "pointer";
-    qrImg.title = "点击：保存到相册并打开 B 站 App";
+    qrImg.title = "点击保存二维码（手机/平板可长按 → 保存图片）";
   }
 
   // ---------- 浏览器登录兜底（#18）：WebView 里极验滑块可能起不来 ----------

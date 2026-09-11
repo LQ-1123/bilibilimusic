@@ -8,17 +8,17 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>
-  (function(){var t=null;try{t=localStorage.getItem("bmTheme")}catch(e){}
+  (function(){var t=null;try{t=localStorage.getItem("bmThemeChoice")}catch(e){}
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=232">
+  <link rel="stylesheet" href="/static/style.css?v=233">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
-  <script src="/static/app.js?v=78" defer></script>
+  <script src="/static/app.js?v=80" defer></script>
   <script src="/static/export.js?v=8" defer></script>
-  <script src="/static/v3.js?v=88" defer></script>
+  <script src="/static/v3.js?v=90" defer></script>
   <script src="/static/nav-liquid.js?v=13" defer></script>
   <script src="/static/session-sync.js?v=20" defer></script>
   <script src="/static/back-stack.js?v=4" defer></script>
@@ -317,7 +317,7 @@
         </div>
         <button id="qr-refresh" class="hidden" type="button">二维码已失效，点击刷新</button>
         <p class="bl-qr-sub">请使用<b>哔哩哔哩客户端</b>扫码登录<br>
-          <span id="qr-tap-hint">手机上点二维码 → 存相册并打开 B 站</span></p>
+          <span id="qr-tap-hint">手机/平板上点二维码存入相册（App 内），浏览器里长按二维码 → 保存图片；再到 B 站「扫一扫 → 相册」选它</span></p>
         <button id="bl-open-browser" type="button" title="在系统浏览器里完成登录">扫不了码？在系统浏览器登录</button>
         <div class="bl-foot">
           <p>登录或完成注册即代表你同意

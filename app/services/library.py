@@ -163,7 +163,7 @@ def clear_fav_folder(song_id: int) -> None:
 
 
 def uncollect_song(song_id: int) -> bool:
-    """#37：把子作品移出曲库（仍留在合集容器里，不取消 B 站收藏）。"""
+    """把 paged 子作品移出曲库（仅退这一行；B 站视频级收藏与容器不动，可再点星收回）。"""
     with new_session() as session:
         song = session.get(Song, song_id)
         if song is None:

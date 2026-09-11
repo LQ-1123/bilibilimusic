@@ -259,13 +259,9 @@ public class MainActivity extends Activity {
             @JavascriptInterface public void playbackStopped() {
                 stopService(new Intent(MainActivity.this, MediaPlaybackService.class));
             }
-            /** 登录二维码：存进相册（B 站 App「扫一扫 → 相册」能选到）。 */
+            /** 登录二维码：存进相册（B 站 App「扫一扫 → 相册」能选到）。用户拍板不再自动拉起 B 站 App。 */
             @JavascriptInterface public void saveQrToGallery(String dataUrl) {
                 runOnUiThread(() -> saveQr(dataUrl));
-            }
-            /** 拉起 B 站 App，让用户去扫刚存下的二维码。 */
-            @JavascriptInterface public void openBilibiliApp() {
-                runOnUiThread(MainActivity.this::launchBilibili);
             }
             /** #25 正向分享：拉起系统分享面板（微信/QQ/复制…），内容是真 B 站链接。 */
             @JavascriptInterface public void shareText(String title, String text, String url) {
@@ -395,18 +391,6 @@ public class MainActivity extends Activity {
         } catch (Exception e) {
             toast("保存失败：" + e.getClass().getSimpleName());
         }
-    }
-
-    /** 拉起 B 站 App；没装则打开下载页。 */
-    private void launchBilibili() {
-        Intent app = getPackageManager().getLaunchIntentForPackage("tv.danmaku.bili");
-        if (app != null) {
-            app.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try { startActivity(app); return; } catch (Exception ignored) {}
-        }
-        try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://app.bilibili.com/")));
-        } catch (Exception ignored) {}
     }
 
     private void toast(String msg) {

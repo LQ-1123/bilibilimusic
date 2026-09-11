@@ -360,10 +360,12 @@ def _album_songs_payload(album: Album, session) -> dict:
             "materializedPages": album.materialized_pages}
 
 
-@router.delete("/albums/{album_id}")
-async def delete_album(album_id: int, request: Request) -> dict:
-    # 语义矩阵：paged 删专辑 = 取消收藏该视频（B 站一次）+ 本地曲目清理；
-    # series（v0.5.0）删容器 = 逐视频批量取消收藏（失败登记 syncer 自愈）+ 本地整删。
+async def _purge_album(album_id: int, request: Request) -> None:
+    """删除专辑/合集容器与全部曲目行，并按语义矩阵取消 B 站收藏。
+
+    paged：整视频一条收藏，取消一次即可；series（v0.5.0）：逐视频批量取消
+    （失败登记 syncer 自愈）。删除专辑与「取消收藏 paged 子作品」共用（v2.0.1）。
+    """
     with new_session() as session:
         album = session.get(Album, album_id)
         if album is None:
@@ -397,6 +399,11 @@ async def delete_album(album_id: int, request: Request) -> dict:
         if album_row is not None:
             session.delete(album_row)
         session.commit()
+
+
+@router.delete("/albums/{album_id}")
+async def delete_album(album_id: int, request: Request) -> dict:
+    await _purge_album(album_id, request)
     return {"ok": True}
 
 
@@ -531,10 +538,10 @@ async def _remove_series_song_from_bili(request: Request, song) -> None:
 
 @router.post("/songs/{song_id}/collect")
 async def collect_song_api(song_id: int, request: Request, playlist_id: int = 0) -> dict:
-    """#37：把合集里的某个子作品收藏进曲库（可指定歌单）。
+    """把合集里的某个子作品收藏进曲库（可指定歌单）。
 
-    系列容器（v0.5.0）语义：星标 = 该视频在 B 站收藏一次（视频级），
-    后台尽力而为，失败由对账补收藏。
+    paged：只点亮这一行（B 站视频收藏导入时已成立，本地挑歌标记，逐分 P 星标）。
+    series（v0.5.0）：星标 = 该视频在 B 站收藏一次（后台尽力而为，失败由对账补收藏）。
     """
     song = library.collect_song(song_id, playlist_id)
     if song is None:
@@ -547,11 +554,13 @@ async def collect_song_api(song_id: int, request: Request, playlist_id: int = 0)
 
 @router.post("/songs/{song_id}/uncollect")
 async def uncollect_song_api(song_id: int, request: Request) -> dict:
-    """把子作品移出曲库。
+    """取消收藏：三处入口（播放条星/歌词页星/行内星）共用这一份语义。
 
-    paged（#37）：只动本地，B 站收藏不动（整视频收藏是导入时给的）。
-    series（v0.5.0）：移出 = 该视频退出曲库 + 取消 B 站收藏——同视频的
-    其他分 P 行一起退（收藏是视频级的），目录行保留在容器里可再星标。
+    单视频：删除本行 + 取消 B 站收藏（与 DELETE /songs/{id} 一致；星=B站收藏，
+    不留「应用里没了、收藏夹还在」的幽灵态——v2.0.1 修正）。
+    paged：仅该行退出曲库（目录态），B 站视频级收藏与专辑容器都不动——
+    逐分 P 挑歌是刻意设计（用户验收口径：「收藏的才星星」），可再点星收回。
+    series：该视频全部行退回目录态（容器保留）+ 取消该视频收藏。
     """
     song = library.get_song(song_id)
     if song is None:
@@ -560,8 +569,21 @@ async def uncollect_song_api(song_id: int, request: Request) -> dict:
     if album is not None and album.kind == "series":
         library.uncollect_bvid_rows(song.bvid, album.id or 0)
         asyncio.create_task(_remove_series_song_from_bili(request, song))
-    elif not library.uncollect_song(song_id):
-        raise HTTPException(status_code=404, detail="歌曲不存在")
+    elif album is not None:  # paged：仅退这一行
+        if not library.uncollect_song(song_id):
+            raise HTTPException(status_code=404, detail="歌曲不存在")
+    else:
+        if not library.delete_song(song_id, request.state.files):
+            raise HTTPException(status_code=404, detail="歌曲不存在")
+        bili: BiliClient = request.state.bili
+        if song.aid:
+            try:
+                if song.fav_folder_id:
+                    await bili.unfavorite_song(song.aid, folder_id=song.fav_folder_id)
+                else:
+                    asyncio.create_task(bili.unfavorite_song(song.aid))  # 旧数据：后台有界查找
+            except BiliApiError:
+                pass
     return {"ok": True}
 
 

@@ -187,6 +187,8 @@ class ImportService:
         )
         # #37：多 P「合集」的子作品默认不入曲库（collected=False、不归任何歌单），
         # 用户在合集容器里逐个收藏才置 1；单视频仍按原语义直接入库。
+        # （v2.0.1 曾短暂改为「视频收藏即全行点亮」，验收时被用户否决：
+        #   「多p不是让你全部星星，是收藏的才星星」——逐分 P 挑歌是刻意设计。）
         song = Song(
             bvid=info.bvid,
             aid=info.avid,

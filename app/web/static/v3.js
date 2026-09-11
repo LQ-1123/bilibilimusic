@@ -16,9 +16,20 @@
   }());
 
   // ---------- 主题（深/浅切换：顶栏圆钮 / 侧栏设置弹层 / 手机账号 Tab 三处入口共享） ----------
-  var setTheme = function (t) {
+  // 未手动选择过就跟随系统：localStorage 里没有显式 bmTheme 时实时跟随 prefers-color-scheme，
+  // 系统深浅切换（含日落自动切换）立即生效。只在用户真正点切换时才落盘——
+  // 旧版启动即写 localStorage，把第一次检测到的系统偏好「冻死」在本地，此后永不跟随（用户反馈）。
+  var systemDark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  // 显式选择存独立 key：旧版启动即写 bmTheme，人人都有存量值，读它等于永远 pinned；
+  // 换新 key 让所有老用户自然回到「跟随系统」，存量 bmTheme 弃用。
+  function storedTheme() {
+    try { return localStorage.getItem("bmThemeChoice") || ""; } catch (e) { return ""; }
+  }
+  var setTheme = function (t, persist) {
     document.documentElement.dataset.theme = t;
-    try { localStorage.setItem("bmTheme", t); } catch (e) {}
+    if (persist) {
+      try { localStorage.setItem("bmThemeChoice", t); } catch (e) {}
+    }
     // 原生壳跟随：系统栏图标明暗（#2 方案 B；桌面/浏览器无此桥自动跳过）
     try { if (window.BiliMusicNative && BiliMusicNative.setTheme) BiliMusicNative.setTheme(t); } catch (e) {}
     var lt = $("light-toggle");
@@ -28,16 +39,25 @@
     var sub = $("theme-mode-sub");
     if (sub) sub.textContent = t === "light" ? "当前 · 浅色" : "当前 · 深色";
   };
+  // 显式存储（light/dark）优先；否则按系统当前偏好。persist 只在用户主动操作时为 true。
+  var applyTheme = function (persist) {
+    var saved = storedTheme();
+    var t = saved === "light" || saved === "dark" ? saved : (systemDark && systemDark.matches ? "dark" : "light");
+    setTheme(t, persist);
+  };
   window.toggleTheme = function () {
-    setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light");
+    setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light", true);
   };
   var lightToggle = $("light-toggle");
   if (lightToggle) {
     lightToggle.addEventListener("change", function () {
-      setTheme(lightToggle.checked ? "light" : "dark");
+      setTheme(lightToggle.checked ? "light" : "dark", true);
     });
   }
-  setTheme(document.documentElement.dataset.theme === "light" ? "light" : "dark");
+  if (systemDark && systemDark.addEventListener) {
+    systemDark.addEventListener("change", function () { applyTheme(false); });
+  }
+  applyTheme(false);
 
   // ---------- 侧栏主导航：首页=返回主页；推荐=推荐视图；其余跳转待用户指定 ----------
   window.navGo = function (btn) {
@@ -902,50 +922,23 @@
   document.body.addEventListener("refreshSongs", loadCollected);
   loadCollected();
 
-  // 视频 → 分P专辑 映射（#33：取消收藏时，若当前曲目属于多分 P 专辑，整张一起处理）
-  var albumByBvid = null;
-  function albumForBvid(bvid) {
-    if (albumByBvid) return Promise.resolve(albumByBvid[bvid] || null);
-    return fetch("/api/albums", { headers: { Accept: "application/json" } })
-      .then(function (r) { return r.ok ? r.json() : { albums: [] }; })
-      .then(function (data) {
-        albumByBvid = {};
-        (data.albums || []).forEach(function (a) {
-          if (a.kind === "paged" && a.sourceBvid) albumByBvid[a.sourceBvid] = a;
-        });
-        return albumByBvid[bvid] || null;
-      })
-      .catch(function () { albumByBvid = {}; return null; });
-  }
-
-  // 取消收藏（#33）：单曲 → DELETE /api/songs/{id}；多分 P 专辑 → 确认后 DELETE /api/albums/{id}
+  // 取消收藏（v2.0.1 三处入口统一走 /uncollect，服务端按容器分流）：
+  // 单视频＝删行并取消 B 站收藏；paged＝仅该行退出曲库（逐分 P 挑歌，B 站与容器不动）；
+  // series＝该视频行退出并取消其 B 站收藏。整张专辑的移除走专辑详情页的删除按钮。
   function uncollectCurrent(ref) {
     var key = songKey(ref.bvid, ref.cid);
-    albumForBvid(ref.bvid).then(function (album) {
-      if (album) {
-        return window.__confirmModal(
-          "取消收藏「" + (album.title || "该专辑") + "」？",
-          "这个视频是多分 P 专辑（共 " + (album.totalPages || "?") + " 首）。\n\n" +
-            "· 会取消 B 站收藏夹里的这条收藏（B 站按视频收藏，无法只取消某一首）\n" +
-            "· 专辑内的全部曲目会一并移除\n\n确定继续？"
-        ).then(function (ok) {
-          if (!ok) return false;
-          return fetch("/api/albums/" + album.id, { method: "DELETE" })
-            .then(function (r) { if (!r.ok) throw new Error("uncollect"); return true; });
-        });
-      }
-      var id = collectedIds[key] || ref.id;
-      if (!id) { window.__toast("这首还没入库"); return false; }
-      return fetch("/api/songs/" + id, { method: "DELETE" })
-        .then(function (r) { if (!r.ok) throw new Error("uncollect"); return true; });
-    }).then(function (done) {
-      if (!done) return;
-      delete collected[key];
-      delete collectedIds[key];
-      markStar();
-      window.__toast("已取消收藏 · 已从 B 站收藏夹移除");
-      if (window.htmx) htmx.trigger(document.body, "refreshSongs");
-    }).catch(function () { window.__toast("取消收藏失败，请稍后重试"); });
+    var id = collectedIds[key] || ref.id;
+    if (!id) { window.__toast("这首还没入库"); return; }
+    fetch("/api/songs/" + id + "/uncollect", { method: "POST" })
+      .then(function (r) { if (!r.ok) throw new Error("uncollect"); })
+      .then(function () {
+        delete collected[key];
+        delete collectedIds[key];
+        markStar();
+        window.__toast("已移出曲库");
+        if (window.htmx) htmx.trigger(document.body, "refreshSongs");
+      })
+      .catch(function () { window.__toast("取消收藏失败，请稍后重试"); });
   }
 
   // 星星点击：未收藏 → 收藏当前播放的歌；已收藏 → 取消收藏（#33 / #44）

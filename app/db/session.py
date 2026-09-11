@@ -147,7 +147,7 @@ def _migrate(engine) -> None:
             conn.exec_driver_sql("ALTER TABLE song ADD COLUMN track_no INTEGER DEFAULT 0")
     if "collected" not in cols:
         # #37：新增「是否已收藏」列。存量数据按新语义一次性归位——多 P 合集的子作品
-        # 改为「未收藏」（合集=容器，子作品要在容器里逐个收藏），单视频歌曲保持已收藏。
+        # 改为「未收藏」（合集=容器，子作品逐分 P 挑歌收藏），单视频歌曲保持已收藏。
         with engine.begin() as conn:
             conn.exec_driver_sql("ALTER TABLE song ADD COLUMN collected INTEGER DEFAULT 1")
             if "album" in insp.get_table_names():

@@ -1,3 +1,40 @@
+## BiliMusic v2.0.1: 收藏语义定稿与体验修缮 / star semantics settled, polish release
+
+v2.0.1 是 v2.0.0 跨端串流之后的第一个打磨版：没有新功能，全是「用起来别扭」的清算。
+/ v2.0.1 is a polish release on top of the v2.0.0 streaming rework — no new features, just clearing everything that felt off.
+
+### 收藏星语义定稿 / Star semantics, settled
+
+- **三处入口（播放条星 / 歌词页星 / 歌单行内星）取消行为完全一致**，服务端按歌曲所在容器分流：单视频＝移出曲库并取消 B 站收藏；多 P 专辑＝仅该分 P 退出曲库（B 站视频级收藏与专辑容器都不动，可再点星收回）；系列合集＝该视频行退出并取消其 B 站收藏。 / The three star buttons now share one semantics, dispatched by container type on the server.
+- **修掉幽灵收藏**：此前单曲取消只动本地——歌在应用里消失、B 站收藏夹里却还在，且同步永远不再管它。现在取消即真正取消。 / Uncollecting a single video now actually unfavorites it on Bilibili instead of leaving a ghost.
+- **多 P 专辑保持「逐分 P 挑歌」**：导入后曲目默认不进曲库（星是灰的），点星才收进曲库；「整张专辑移除」只保留在专辑详情页的删除按钮。 / Multi-P albums keep per-track picking; whole-album removal lives only on the album page.
+
+### 音质与播放 / Audio & playback
+
+- **修复音质选档逻辑**：此前按「档位 id 数字最大」选流，而 B 站 id 数字大小与音质无关（Hi-Res 的 id 小于 192K）；现按带宽取最高、同带宽按感知优先级决胜。当前档位不变（192K），但为后续放开高音质扫清了地雷。 / Stream selection now picks by bandwidth with perceptual tie-break, not by id.
+
+### 界面 / UI
+
+- **主题跟随系统**：系统深浅色自动切换（含日落定时切换）时应用实时跟随；此前首次启动就把检测到的主题写死在本地、永不跟随。手动切换仍然有效。 / The app theme now follows the OS in real time until you override it manually.
+- **短歌名不再被磨砂吃掉**：播放条/歌词页标题的两侧羽化改挂在「真溢出才启用」的走马灯状态上，一行放得下的歌名完整清晰显示。 / Title edge-fade now applies only when the marquee actually overflows.
+- **登录二维码**：保存到相册后不再自动跳走 B 站 App；触屏浏览器改为提示长按保存（不再下载无用的文件）。 / QR save no longer yanks you into the Bilibili app; touch browsers get a long-press hint instead of a file download.
+
+### 其它 / Other
+
+- Android versionCode 13（2.0.1），覆盖安装不丢数据。
+- 台账遗留：#24 多 P 曲目名冗余已由「只保留分 P 名 + 存量一次性收敛迁移」解决（随本版发货确认）；#28 见上。
+
+### 安装 / Installers
+
+- macOS: `BiliMusic-2.0.1-mac-arm64.dmg` / `BiliMusic-2.0.1-mac-x64.dmg`
+- Windows: `BiliMusic-2.0.1-win-x64.exe`
+- Android: `BiliMusic-2.0.1-android.apk` (arm64-v8a / x86_64)
+- `SHA256SUMS.txt` for verification
+
+> 数据目录沿用旧版本，升级零迁移。 / Data directories are reused; no migration on upgrade.
+
+---
+
 ## BiliMusic v2.0.0: 跨端串流重做——手机一点就走 / streaming, reimagined
 
 Desktop v2.0.0 and Android v2.0.0 are a major feature release on top of v1.3.0.
