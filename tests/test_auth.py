@@ -20,7 +20,7 @@ async def make_client(tmp_path):
         client = BiliClient(store)
         await client.http.aclose()
         client.http = httpx.AsyncClient(
-            transport=httpx.MockTransport(handler), cookies=store.all()
+            transport=httpx.MockTransport(handler), cookies=store.session_cookies()
         )
         clients.append(client)
         return client

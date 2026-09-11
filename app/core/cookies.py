@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 LOGIN_COOKIE_NAMES = ("SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5", "sid")
-ACCOUNT_METADATA = ("mid", "fav_folder_id")
+ACCOUNT_METADATA = ("mid", "fav_folder_id", "uname", "face")
 LOGIN_KEYS = (*LOGIN_COOKIE_NAMES, "dedeuserid", "dedeuserid__ckmd5", *ACCOUNT_METADATA)
 
 
@@ -56,6 +56,10 @@ class CookieStore:
 
     def all(self) -> dict[str, str]:
         return dict(self._data)
+
+    def session_cookies(self) -> dict[str, str]:
+        """该发回 B 站的会话 Cookie；账号元数据（mid / 昵称 / 头像）只留本地。"""
+        return {k: v for k, v in self._data.items() if k not in ACCOUNT_METADATA}
 
     def get(self, key: str) -> str | None:
         return self._data.get(key)

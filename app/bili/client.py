@@ -15,7 +15,7 @@ from urllib.parse import parse_qsl, urlsplit
 import httpx
 import qrcode
 
-from app.core.cookies import ACCOUNT_METADATA, CookieStore, local_fingerprint, login_cookies
+from app.core.cookies import CookieStore, local_fingerprint, login_cookies
 from app.core.link_parser import VideoRef
 from app.core.url_guard import validate_bilibili_url
 from app.core.wbi import extract_wbi_keys, sign_params
@@ -65,6 +65,14 @@ class BiliApiError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+def profile_meta(data: dict) -> dict[str, str]:
+    """nav 响应里的账号资料：作为账号元数据落盘（页面渲染不必再打一次接口）。"""
+    return {
+        "uname": str(data.get("uname") or "").strip(),
+        "face": str(data.get("face") or "").strip(),
+    }
 
 
 def https_media_url(url: str) -> str:
@@ -211,9 +219,8 @@ class BiliClient:
         # httpx 自动接收的域 Cookie 与 dict.update 生成的无域 Cookie 会重名。
         # 从持久状态重建唯一的一组，账号元数据不作为 Cookie 发给 B 站。
         jar = httpx.Cookies()
-        for key, value in self.store.all().items():
-            if key not in ACCOUNT_METADATA:
-                jar.set(key, value, domain=".bilibili.com", path="/")
+        for key, value in self.store.session_cookies().items():
+            jar.set(key, value, domain=".bilibili.com", path="/")
         self.http.cookies = jar
 
     async def aclose(self) -> None:
@@ -429,24 +436,33 @@ class BiliClient:
 
         if cache[1] and _time.monotonic() - cache[0] < 600:
             return cache[1]
-        params = {"bvid": bvid, "cid": cid, "qn": 64, "fnval": 16, "fourk": 1}
+        # fnval 16|1024|256：DASH + Hi-Res(FLAC) + 杜比位（v2.1）。无大会员权益时
+        # B 站只是不下发 flac/dolby 字段，不影响基础 DASH 三档。
+        params = {"bvid": bvid, "cid": cid, "qn": 64, "fnval": 16 | 1024 | 256, "fourk": 1}
         data = await self._get_json_signed("/x/player/wbi/playurl", params)
         dash = data.get("dash") or {}
-        audios = dash.get("audio") or []
-        streams = []
-        for a in audios:
-            base = a.get("baseUrl") or a.get("base_url") or ""
+
+        def _collect(entry) -> None:
+            if not isinstance(entry, dict):
+                return
+            base = entry.get("baseUrl") or entry.get("base_url") or ""
             if not base:
-                continue
-            backups = a.get("backupUrl") or a.get("backup_url") or []
+                return
             streams.append(
                 AudioStream(
-                    quality_id=int(a.get("id", 0)),
+                    quality_id=int(entry.get("id", 0)),
                     base_url=base,
-                    backup_urls=list(backups),
-                    bandwidth=int(a.get("bandwidth") or 0),
+                    backup_urls=list(entry.get("backupUrl") or entry.get("backup_url") or []),
+                    bandwidth=int(entry.get("bandwidth") or 0),
                 )
             )
+
+        streams: list[AudioStream] = []
+        for a in dash.get("audio") or []:
+            _collect(a)
+        _collect(dash.get("flac"))  # Hi-Res 无损（30251），大会员字段
+        for a in (dash.get("dolby") or {}).get("audio") or []:  # 杜比（30250）
+            _collect(a)
         if not streams:
             raise BiliApiError(-404, "未取到音频流（视频可能太老，未提供 DASH 分离音轨）")
         self._playurl_cache[(bvid, cid)] = (_time.monotonic(), streams)
@@ -581,7 +597,10 @@ class BiliClient:
         return data.get("archives") or []
 
     async def my_info(self) -> dict:
-        """当前登录用户信息（nav：mid/uname/face 等），进程内缓存 10 分钟；失败返回空 dict。"""
+        """当前登录用户信息（nav：mid/uname/face 等），进程内缓存 10 分钟；失败返回空 dict。
+
+        成功时把昵称/头像写入账号元数据，页面渲染不再依赖这一次请求。
+        """
         if not self.store.logged_in:
             return {}
         now = time.time()
@@ -590,6 +609,7 @@ class BiliClient:
         try:
             data = await self._get_json("/x/web-interface/nav")
             self._me = (now + 600, data or {})
+            self.store.set_many(profile_meta(self._me[1]))
         except Exception:
             self._me = (now + 60, {})  # 失败短缓存，避免每次请求都打接口
         return self._me[1]
@@ -695,7 +715,7 @@ class BiliClient:
         cookie_mid = self.store.get("DedeUserID") or self.store.get("dedeuserid")
         if cookie_mid and cookie_mid != mid:
             raise BiliApiError(-101, "B 站登录凭据与账号不一致，请重新登录")
-        self.store.set_many({"mid": mid})
+        self.store.set_many({"mid": mid, **profile_meta(data)})
         self._me = (time.time() + 600, data)
         return data
 
@@ -986,6 +1006,8 @@ class BiliClient:
         data = await self._get_json("/x/web-interface/nav", ok_codes=(0, -101))
         if not data.get("isLogin"):
             self.logout()
+        else:
+            self.store.set_many(profile_meta(data))
         return {"loggedIn": bool(data.get("isLogin")), "username": data.get("uname") or ""}
 
     def logout(self) -> None:

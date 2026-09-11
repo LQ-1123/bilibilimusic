@@ -26,14 +26,14 @@ from app.bili.client import (
     VideoRef,
     https_media_url,
 )
-from app.bili.quality import pick_best_audio, quality_label
+from app.bili.quality import TIER_ALLOWED, pick_best_audio, quality_label
 from app.config import settings
 from app.core.cookies import CookieStore
 from app.core.share_links import album_share_url
 from app.core.url_guard import UnsafeUrlError, validate_bilibili_url
 from app.db.models import Album, ImportTask, Song
 from app.db.session import new_session
-from app.services import library, playlists, recs
+from app.services import library, playlists, radio, recs
 from app.services.importer import ImportService, part_display_title
 from app.services.session_bus import bus as session_bus
 from app.storage.files import FileStore
@@ -956,6 +956,21 @@ def recs_dismiss(bvid: str) -> dict:
     return {"ok": True}
 
 
+# ---- 漫游电台（v2.1 A5：池子只读消费；跳过走 DELETE /recs/{bvid} 出池即负反馈） ----
+
+class RadioBody(BaseModel):
+    seedBvid: str
+    exclude: list[str] = []
+
+
+@router.post("/radio/next")
+def radio_next(body: RadioBody) -> dict:
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", body.seedBvid):
+        raise HTTPException(status_code=400, detail="bvid 格式错误")
+    items = radio.next_batch(body.seedBvid, body.exclude)
+    return {"songs": [rec_out(i) for i in items]}
+
+
 # ---- 实时流代理（推荐试听：解析直链后边下边转发，不落盘） ----
 
 def _pick_stream_cid(cids: list[int], cid: int | None) -> int:
@@ -973,6 +988,7 @@ async def stream_bvid(
     bvid: str,
     request: Request,
     cid: int | None = None,
+    tier: str = "best",
     range_header: str | None = Header(default=None, alias="Range"),
 ):
     """推荐歌曲实时播放：现解析 playurl → 代理 CDN 音频流（支持 Range/206）。
@@ -980,6 +996,7 @@ async def stream_bvid(
     直链域名经 url_guard 白名单校验，仅放行 B 站 CDN；不写磁盘。
     cid：可选分 P 指定（曲库多分 P 歌曲按导入时存的 Song.cid 路由，避免播成 P1）；
     必须属于该视频，否则 400 而不是静默播错。
+    tier：档位帽（best/192/132/64，v2.1 弱网降档与流量策略），非法值按 best。
     """
     if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
         raise HTTPException(status_code=400, detail="bvid 格式错误")
@@ -993,7 +1010,7 @@ async def stream_bvid(
         streams = await bili.get_audio_streams(bvid, picked)
     except BiliApiError as exc:
         raise HTTPException(status_code=502, detail=exc.message)
-    best = pick_best_audio(streams)
+    best = pick_best_audio(streams, tier if tier in TIER_ALLOWED else "best")
 
     headers = {"Referer": BILIBILI_REFERER}
     if range_header:
@@ -1045,6 +1062,31 @@ async def stream_bvid(
     return StreamingResponse(
         gen(), status_code=upstream.status_code, media_type="audio/mp4", headers=out_headers
     )
+
+
+@router.get("/stream/{bvid}/quality")
+async def stream_quality(
+    bvid: str,
+    request: Request,
+    cid: int | None = None,
+    tier: str = "best",
+) -> dict:
+    """探测某视频在某档位帽下实际会选中的音质（v2.1：播放条档位标签 + 降档决策用）。
+
+    走 get_audio_streams 的 playurl 缓存（600s），起播后调用近乎零成本；
+    不发起任何 CDN 取流。
+    """
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
+        raise HTTPException(status_code=400, detail="bvid 格式错误")
+    tier = tier if tier in TIER_ALLOWED else "best"
+    bili: BiliClient = request.state.bili
+    try:
+        cids = await bili.video_page_cids(bvid)
+        streams = await bili.get_audio_streams(bvid, _pick_stream_cid(cids, cid))
+    except BiliApiError as exc:
+        raise HTTPException(status_code=502, detail=exc.message)
+    best = pick_best_audio(streams, tier)
+    return {"qualityId": best.quality_id, "qualityLabel": quality_label(best.quality_id)}
 
 
 # ---- 登录（免登录门禁） ----

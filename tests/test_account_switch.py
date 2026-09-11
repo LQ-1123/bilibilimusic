@@ -65,7 +65,7 @@ async def api(tmp_path, monkeypatch):
     def init(self, store, *args, **kwargs):
         original_init(self, store, *args, **kwargs)
         unused_http_clients.append(self.http)
-        self.http = httpx.AsyncClient(transport=httpx.MockTransport(passport), cookies=store.all())
+        self.http = httpx.AsyncClient(transport=httpx.MockTransport(passport), cookies=store.session_cookies())
         clients.append(self)
 
     # 自动同步另有服务测试；此处只禁用外部收藏副作用，登录/激活/数据库均用真实实现。

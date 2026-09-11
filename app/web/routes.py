@@ -25,6 +25,25 @@ router = APIRouter(include_in_schema=False)
 _ACTIVE = ("pending", "resolving", "downloading")
 _last_ready_count: int | None = None  # 用于检测新入库，触发前端曲库刷新
 
+
+async def _user_ctx(request: Request) -> dict:
+    """侧栏 / 账号页的账号资料：优先用登录时落盘的那份，缺了才回源 nav。
+
+    渲染页面不该被一次接口波动拖累——原来每次开页都现查 nav，nav 一失败侧栏就退化成
+    「已登录 + 默认头像」，昵称和头像双双丢失。
+    """
+    store = request.state.cookies
+    uname = store.get("uname") or ""
+    face = store.get("face") or ""
+    if not uname or not face:
+        me = await request.state.bili.my_info()
+        uname = uname or str(me.get("uname") or "")
+        face = face or str(me.get("face") or "")
+        if uname:
+            store.set_many({"uname": uname, "face": face})
+    return {"uname": uname or "已登录", "face": https_media_url(face)}
+
+
 _SEARCH_CACHE_TTL = 300  # B 站搜索风控较严：同词 5 分钟内直接复用结果
 _search_cache: dict[str, tuple[float, list]] = {}
 
@@ -162,8 +181,7 @@ async def home(request: Request):
         rec_count = len(recs.list_items())
     except Exception:
         rec_count = 0
-    me = await request.state.bili.my_info()
-    user = {"uname": str(me.get("uname") or "已登录"), "face": https_media_url(str(me.get("face") or ""))}
+    user = await _user_ctx(request)
     return templates.TemplateResponse(
         request,
         "library.html",

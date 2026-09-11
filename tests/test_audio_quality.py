@@ -33,3 +33,24 @@ def test_unknown_id_falls_back_to_bandwidth():
 def test_empty_raises():
     with pytest.raises(ValueError):
         pick_best_audio([])
+
+
+def test_tier_cap_192_excludes_hires_and_dolby():
+    streams = [_s(30251, 1_000_000), _s(30280, 320_000), _s(30232, 130_000), _s(30216, 60_000)]
+    assert pick_best_audio(streams, tier="192").quality_id == 30280
+
+
+def test_tier_64_picks_lowest():
+    streams = [_s(30280, 320_000), _s(30216, 60_000)]
+    assert pick_best_audio(streams, tier="64").quality_id == 30216
+
+
+def test_tier_cap_empty_falls_back_to_all():
+    # 帽内无可用档（未知 id 的流）时回退全量：帽只限流，不拦播放
+    streams = [_s(99999, 320_000)]
+    assert pick_best_audio(streams, tier="64").quality_id == 99999
+
+
+def test_unknown_tier_treated_as_best():
+    streams = [_s(30280, 320_000), _s(30216, 60_000)]
+    assert pick_best_audio(streams, tier="bogus").quality_id == 30280
