@@ -745,8 +745,16 @@ html[data-theme="light"] #player-bar.mirror{border-color:rgba(240,80,127,.5);
 #lyrics-panel.queue-mode #queue-view{grid-column:2;grid-row:1/span 4;overflow-y:auto} /* 桌面：占歌词滚区格位 */
 @media (max-width:900px){#lyrics-panel.queue-mode .l-hero{display:none}
   #lyrics-panel.queue-mode #queue-view{flex:1;min-height:0;grid-column:auto;grid-row:auto}} /* 手机：列表内部滚动，底行留在屏内 */
-/* 胶囊：等分撑满一行（Apple Music 队列的两枚大胶囊），开启态实心粉、静止态灰面 */
-.q-pills{display:flex;gap:8px;padding:6px 0 14px;max-width:520px} /* 宽版队列视图里别把胶囊拉成三条横幅 */
+/* 胶囊：等分撑满一行（Apple Music 队列的两枚大胶囊），开启态实心粉、静止态灰面。
+   滑动窗口（用户定稿红线）：胶囊与「播放队列」表头固定不动，滚动只发生在 .q-scroll 里，
+   列表到窗口上/下边缘 mask 渐隐软收——内容不穿过胶囊与表头，也不硬截断 */
+.q-pills{display:flex;gap:8px;max-width:520px;flex:none;padding:6px 0 14px}
+.q-scroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:40px;
+  -webkit-mask-image:linear-gradient(transparent 0,#000 22px,#000 calc(100% - 56px),transparent 100%);
+  mask-image:linear-gradient(transparent 0,#000 22px,#000 calc(100% - 56px),transparent 100%)}
+#lyrics-panel.queue-mode #queue-view{display:flex;flex-direction:column;overflow:hidden}
+#queue-view .q-body{display:flex;flex-direction:column;flex:1;min-height:0}
+#q-drawer .q-body{display:flex;flex-direction:column}
 .q-pill{flex:1 1 0;min-width:0;height:44px;border-radius:999px;background:var(--card2);border:none;
   position:relative;display:grid;place-items:center;color:var(--txt2);cursor:pointer;transition:.16s;font-size:16px}
 .q-pill svg{width:19px;height:19px}
@@ -908,6 +916,7 @@ body.qside-enter #q-drawer .q-list li{animation:qIn .32s cubic-bezier(.22,1,.36,
 .ly-prog,.ly-ctl,.ly-foot{width:var(--ly-desktop-col)}
 .ly-prog{padding:0}
 .ly-times{display:flex;justify-content:space-between;font-size:11px;color:var(--txt2);margin-top:2px;font-variant-numeric:tabular-nums}
+#ly-quality{opacity:.7} /* 档位小字比时间码更轻（Hi-Res/192K/杜比…，无值不占位） */
 /* 播放/暂停图标互斥（所有 .i-play/.i-pause 实例：歌词页控制条等） */
 body.playing .i-play{display:none}
 body:not(.playing) .i-pause{display:none}

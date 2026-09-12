@@ -115,6 +115,14 @@
       .catch(function () {});
   };
   window.__qualityLabel = function () { return qualityLabelNow; };
+  // 播放页进度条下方的档位小字：本地/试听随探测结果出现（v3.js 轮询驱动）；
+  // 镜像态声音在对面，本机探测值不代表远端档位，清空不显示
+  window.__paintLyQuality = function () {
+    var el = document.getElementById("ly-quality");
+    if (!el) return;
+    var q = mirror ? "" : qualityLabelNow;
+    if (el.textContent !== q) el.textContent = q;
+  };
 
   // v2.1 A5 漫游电台：队列面板 ∞ 开关（或详情页「电台」按钮）打开后，队列见底
   // 自动按当前歌为种子从推荐池续歌（试听流，不落盘）；跳过电台歌＝出池负反馈。
@@ -458,6 +466,16 @@
       cards[i].classList.toggle("playing", cards[i].dataset.play === String(songId));
     }
   }
+  // 播放标记只在播放动作时打；随后打开详情页 / htmx 重排会把行整批重渲染丢掉 .playing。
+  // 监听歌曲容器的 DOM 变化统一补打（去抖 60ms），新渲染路径无需逐处记得调 markPlayingCard。
+  var markTimer = 0;
+  new MutationObserver(function () {
+    if (markTimer) return;
+    markTimer = setTimeout(function () {
+      markTimer = 0;
+      markPlayingCard(playlist[current] ? playlist[current].id : null);
+    }, 60);
+  }).observe(document.body, { childList: true, subtree: true });
 
   function fmt(sec) {
     sec = Math.max(0, Math.floor(sec || 0));
@@ -1840,6 +1858,7 @@
         var lcur = $("ly-cur"), lrem = $("ly-rem"), lseek = $("ly-seek");
         if (lcur) lcur.textContent = fmt(pos);
         if (lrem && dur) lrem.textContent = "-" + fmt(Math.max(0, dur - pos));
+        window.__paintLyQuality && window.__paintLyQuality();
         if (lseek && !window.__lySeekDragging && dur) {
           lseek.value = Math.round((Math.min(pos, dur) / dur) * 1000);
           lseek.style.setProperty("--p", (lseek.value / 10) + "%");

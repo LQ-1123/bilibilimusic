@@ -11,10 +11,14 @@
     </div>
     <div class="q-sec-s" data-qsrc="next"></div>
   </div>
-  <ul class="q-list" data-qlist="main"></ul>
-  <div class="q-sec" data-qsec="radio" hidden>
-    <div class="q-sec-t">∞ 自动播放</div>
-    <div class="q-sec-s">将继续播放类似音乐 · 跳过即少推同类</div>
+  <!-- 滑动窗口（用户定稿）：滚动只发生在胶囊/表头以下的红线区——列表在这里滚，
+       上/下边缘用 mask 渐隐软收，内容不穿过胶囊与表头 -->
+  <div class="q-scroll">
+    <ul class="q-list" data-qlist="main"></ul>
+    <div class="q-sec" data-qsec="radio" hidden>
+      <div class="q-sec-t">∞ 自动播放</div>
+      <div class="q-sec-s">将继续播放类似音乐 · 跳过即少推同类</div>
+    </div>
+    <ul class="q-list" data-qlist="radio"></ul>
   </div>
-  <ul class="q-list" data-qlist="radio"></ul>
 </div>

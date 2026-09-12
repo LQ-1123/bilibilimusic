@@ -12,13 +12,13 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=265">
+  <link rel="stylesheet" href="/static/style.css?v=269">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
-  <script src="/static/app.js?v=102" defer></script>
+  <script src="/static/app.js?v=104" defer></script>
   <script src="/static/export.js?v=8" defer></script>
-  <script src="/static/v3.js?v=106" defer></script>
+  <script src="/static/v3.js?v=109" defer></script>
   <script src="/static/nav-liquid.js?v=13" defer></script>
   <script src="/static/session-sync.js?v=21" defer></script>
   <script src="/static/back-stack.js?v=7" defer></script>
@@ -213,7 +213,7 @@
     <div class="l-bottom">
       <div class="ly-prog">
         <input id="ly-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="歌词页进度">
-        <div class="ly-times"><span id="ly-cur">0:00</span><span id="ly-rem">0:00</span></div>
+        <div class="ly-times"><span id="ly-cur">0:00</span><span id="ly-quality"></span><span id="ly-rem">0:00</span></div>
       </div>
       <!-- 控制行：随机 / 上一首 / 播放 / 下一首 / 循环——随机与循环贴在三大键两侧，不再单占一行 -->
       <div class="ly-ctl">

@@ -460,7 +460,7 @@ class BiliClient:
         streams: list[AudioStream] = []
         for a in dash.get("audio") or []:
             _collect(a)
-        _collect(dash.get("flac"))  # Hi-Res 无损（30251），大会员字段
+        _collect((dash.get("flac") or {}).get("audio"))  # Hi-Res 无损（30251）：流在 flac.audio 包装层之下
         for a in (dash.get("dolby") or {}).get("audio") or []:  # 杜比（30250）
             _collect(a)
         if not streams:

@@ -956,6 +956,11 @@
         var k = songKey(s.bvid, s.cid);
         collected[k] = 1;
         if (s.id) collectedIds[k] = s.id; // #33：取消收藏要按 song.id 调 DELETE
+        // bvid 别名：UP 主页/推荐页的试听流没有 cid（键 bvid:0），没有它同一首歌
+        // 从曲库进来星亮、从试听进来星灭。别名让身份按 bvid 归一；多分 P 视频取
+        // 最后一条已收藏行，试听态取消收藏按它认领（试听默认播 P1，通常即目标行）。
+        collected[songKey(s.bvid, 0)] = 1;
+        if (s.id) collectedIds[songKey(s.bvid, 0)] = s.id;
       });
       markStar();
     }).catch(function () {});
@@ -1437,6 +1442,7 @@
       }
       $("ly-cur").textContent = fmtTime(m.currentTime);
       $("ly-rem").textContent = "-" + fmtTime(Math.max(0, m.duration - m.currentTime));
+      window.__paintLyQuality && window.__paintLyQuality(); // 进度条下方档位小字（探测结果异步到达后跟随出现）
     }, 500);
     function fmtTime(s) {
       s = Math.max(0, Math.floor(s || 0));
@@ -2047,4 +2053,24 @@
     sessionStorage.setItem("bm_synced_open", "1");
     setTimeout(function () { if (window.syncNow) syncNow(); }, 1200);
   }
+})();
+
+// ---------- Windows 滚轮 ↔ 横排：悬停在「只能横向滚」的容器上时，垂直滚轮平移为横向滚动 ----------
+// 覆盖专辑架 / UP 热门 / 风格胶囊 / 每日纵列等所有 overflow-x 横排；shift+滚轮留给浏览器
+// 原生横滚，触摸板双指横滚自带 deltaX 不碰；滚到头后不拦，让外层页面/面板自然接手（滚动链）。
+(function () {
+  var SEL = ".rack,.rec-grid,.rec-genres,.chips,.dc-track,.sr-ups,.up-hots";
+  document.addEventListener("wheel", function (e) {
+    if (!e.deltaY || e.deltaX || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+    var t = e.target;
+    var el = t && t.closest ? t.closest(SEL) : null;
+    if (!el) return;
+    var cs = getComputedStyle(el);
+    if (cs.overflowX !== "auto" && cs.overflowX !== "scroll") return;
+    if (el.scrollHeight > el.clientHeight + 1) return; // 纵向也可滚的容器：不抢，交给浏览器
+    var step = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY; // Firefox 行模式换算像素
+    var before = el.scrollLeft;
+    el.scrollLeft += step;
+    if (el.scrollLeft !== before) e.preventDefault();
+  }, { passive: false });
 })();
