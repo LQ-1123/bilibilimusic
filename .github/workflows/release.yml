@@ -114,7 +114,11 @@ jobs:
           arch: x86_64
           disable-animations: true
           script: bash packaging/smoke-android.sh
-      - run: cp android/app/build/outputs/apk/release/app-release.apk BiliMusic-2.0.1-android.apk
+      - run: |
+          VERSION="${RELEASE_TAG#v}"
+          cp android/app/build/outputs/apk/release/app-release.apk "BiliMusic-${VERSION}-android.apk"
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
       - uses: actions/upload-artifact@v4
         with:
           name: android

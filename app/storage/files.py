@@ -220,7 +220,9 @@ class FileStore:
                                     )
                                 offset = start
                                 async for chunk in resp.aiter_bytes(_CHUNK):
-                                    os.pwrite(fd, chunk, offset)
+                                    # lseek+write 之间无 await，单线程事件循环内不会被交错；POSIX/Windows 通用
+                                    os.lseek(fd, offset, os.SEEK_SET)
+                                    os.write(fd, chunk)
                                     offset += len(chunk)
                                     written = offset - start
                                     done += len(chunk)
