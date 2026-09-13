@@ -12,11 +12,12 @@
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=269">
+  <link rel="stylesheet" href="/static/style.css?v=271">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
-  <script src="/static/app.js?v=104" defer></script>
+  <script src="/static/norm.js?v=2" defer></script>
+  <script src="/static/app.js?v=109" defer></script>
   <script src="/static/export.js?v=8" defer></script>
   <script src="/static/v3.js?v=109" defer></script>
   <script src="/static/nav-liquid.js?v=13" defer></script>
@@ -113,7 +114,15 @@
           <input type="checkbox" id="light-toggle"><span>浅色外观</span>
           <span class="switch"><i></i></span>
         </label>
+        <label class="up-row" title="播放时自动对齐歌曲间响度（目标 -16dB）">
+          <input type="checkbox" class="norm-switch-input"><span>音量均衡</span>
+          <span class="switch"><i></i></span>
+        </label>
         <button class="up-row" type="button" id="side-sync"><span>⇅</span><span>同步 B 站收藏夹</span></button>
+        <button class="up-row" type="button" onclick="openStatsModal()"><span>◷</span><span>听歌统计</span></button>
+        <button class="up-row" type="button" onclick="clearListenCache()" title="清空本机听歌缓存（不影响曲库与收藏）">
+          <span>◇</span><span class="cache-label">听歌缓存</span>
+        </button>
         <div class="up-sep"></div>
         <button class="up-row danger" type="button" id="side-logout"><span>⏻</span><span>退出登录</span></button>
       </div>
@@ -333,6 +342,13 @@
           </p>
         </div>
       </div>
+    </div>
+  </div>
+  <div id="stats-modal" class="modal hidden">
+    <div class="modal-box stats-box">
+      <button id="stats-close" type="button" title="关闭">✕</button>
+      <div class="stats-box-title">听歌统计</div>
+      <div id="stats-body"></div>
     </div>
   </div>
 </div>

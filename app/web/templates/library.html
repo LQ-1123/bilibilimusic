@@ -132,6 +132,7 @@
     </div>
   </div>
   <!-- #42：行尾的解释性小字一律去掉（像半成品）；状态类信息交给界面本身表达 -->
+  <div class="acct-stats" hx-get="/partials/stats" hx-trigger="load" hx-swap="innerHTML"></div>
   <div class="acct-rows">
     {% if not logged_in %}
     <button class="acct-row" type="button" onclick="openLogin()"><span>◐</span>登录 B 站账号</button>
@@ -140,6 +141,8 @@
     <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接</button>
     {% endif %}
     <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗</button>
+    <button class="acct-row" type="button" onclick="toggleNorm()"><span>≡</span><span id="acct-norm-label">音量均衡 · 开</span></button>
+    <button class="acct-row" type="button" onclick="clearListenCache()"><span>◇</span><span id="acct-cache-label" class="cache-label">听歌缓存</span></button>
     {% if logged_in %}
     <!-- #41：手机端账号页补上「退出登录」（原来只在桌面侧栏的用户弹层里） -->
     <button class="acct-row danger" type="button" onclick="logoutNow()"><span>⏻</span>退出登录</button>

@@ -10,11 +10,12 @@ import logging
 import platform
 import re
 import urllib.parse
+from datetime import datetime
 from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
@@ -31,11 +32,12 @@ from app.config import settings
 from app.core.cookies import CookieStore
 from app.core.share_links import album_share_url
 from app.core.url_guard import UnsafeUrlError, validate_bilibili_url
-from app.db.models import Album, ImportTask, Song
+from app.db.models import Album, ImportTask, LoudnessRow, PlayLog, Song
 from app.db.session import new_session
-from app.services import library, playlists, radio, recs
+from app.services import library, playlists, radio, recs, stats
 from app.services.importer import ImportService, part_display_title
 from app.services.session_bus import bus as session_bus
+from app.storage import cache
 from app.storage.files import FileStore
 
 log = logging.getLogger(__name__)
@@ -993,24 +995,47 @@ async def stream_bvid(
 ):
     """推荐歌曲实时播放：现解析 playurl → 代理 CDN 音频流（支持 Range/206）。
 
-    直链域名经 url_guard 白名单校验，仅放行 B 站 CDN；不写磁盘。
+    直链域名经 url_guard 白名单校验，仅放行 B 站 CDN。
     cid：可选分 P 指定（曲库多分 P 歌曲按导入时存的 Song.cid 路由，避免播成 P1）；
     必须属于该视频，否则 400 而不是静默播错。
     tier：档位帽（best/192/132/64，v2.1 弱网降档与流量策略），非法值按 best。
+    v2.2 T1 轻缓存：播放穿写落盘（只缓存听过的），重听直接回本地；
+    解析或取流全挂时，兜底回放缓存里听过的部分——「听歌不被打断」。
     """
     if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
         raise HTTPException(status_code=400, detail="bvid 格式错误")
+    tier = tier if tier in TIER_ALLOWED else "best"
     bili: BiliClient = request.state.bili
+
+    # 显式 cid（曲库歌）：先于任何网络请求查缓存——离线时这是唯一能出声的路径
+    direct_key = cache.cache_key(bvid, cid, tier) if cid else None
+    if direct_key:
+        cached = cache.get(direct_key)
+        if cached:
+            return _file_response(cached, range_header)
+
     try:
         cids = await bili.video_page_cids(bvid)
     except BiliApiError as exc:
+        if direct_key:
+            hit = _cache_fallback(direct_key, range_header)
+            if hit:
+                return hit
         raise HTTPException(status_code=502, detail=exc.message)
     picked = _pick_stream_cid(cids, cid)
+    key = cache.cache_key(bvid, picked, tier)
+    if key != direct_key:
+        cached = cache.get(key)
+        if cached:
+            return _file_response(cached, range_header)
     try:
         streams = await bili.get_audio_streams(bvid, picked)
     except BiliApiError as exc:
+        hit = _cache_fallback(key, range_header)
+        if hit:
+            return hit
         raise HTTPException(status_code=502, detail=exc.message)
-    best = pick_best_audio(streams, tier if tier in TIER_ALLOWED else "best")
+    best = pick_best_audio(streams, tier)
 
     headers = {"Referer": BILIBILI_REFERER}
     if range_header:
@@ -1045,6 +1070,9 @@ async def stream_bvid(
             await asyncio.sleep(0.3 * (idx + 1))
 
     if upstream is None:
+        hit = _cache_fallback(key, range_header)
+        if hit:
+            return hit
         raise HTTPException(status_code=502, detail="B 站 CDN 拒绝了播放请求（已尝试全部镜像）")
 
     out_headers = {}
@@ -1052,16 +1080,173 @@ async def stream_bvid(
         if h in upstream.headers:
             out_headers[h] = upstream.headers[h]
 
+    # T1 穿写：只有从头读（无 Range 或 start=0）才有资格写——
+    # 中途 seek 拿到的是残段，拼不回完整文件。Writer 惰性创建：响应体没被
+    # 消费（测试/HEAD 类场景）就绝不碰磁盘。
+    can_cache = not range_header or str(range_header).startswith("bytes=0")
+    total = _upstream_total(upstream) if can_cache else None
+    writer = None
+
     async def gen():
+        nonlocal writer
         try:
             async for chunk in upstream.aiter_bytes(64 * 1024):
+                if can_cache and writer is None:
+                    writer = cache.Writer(key)
+                if writer:
+                    writer.write(chunk)
                 yield chunk
         finally:
+            if writer is not None:
+                # 客户端跳歌/断开也照常收尾：听过的那部分就是「听过的」，留作兜底
+                writer.finish(total)
+                writer = None
             await upstream.aclose()
 
     return StreamingResponse(
         gen(), status_code=upstream.status_code, media_type="audio/mp4", headers=out_headers
     )
+
+
+def _upstream_total(resp) -> int | None:
+    """上游声明的全长：200 看 content-length，206 看 content-range 末段。"""
+    m = re.search(r"/(\d+)\s*$", resp.headers.get("content-range", ""))
+    if m:
+        return int(m.group(1))
+    if resp.status_code == 200:
+        try:
+            return int(resp.headers.get("content-length") or 0) or None
+        except ValueError:
+            return None
+    return None
+
+
+def _file_response(path: Path, range_header: str | None) -> Response:
+    """本地音频按 Range 语义回源（缓存命中直出 / 断网兜底共用）。"""
+    size = path.stat().st_size
+    headers = {"accept-ranges": "bytes"}
+    m = re.match(r"bytes=(\d*)-(\d*)$", (range_header or "").strip())
+    if m and (m.group(1) or m.group(2)):
+        if m.group(1):
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else size - 1
+        else:  # bytes=-N：末尾 N 字节
+            start = max(0, size - int(m.group(2)))
+            end = size - 1
+        end = min(end, size - 1)
+        if start >= size or start > end:
+            return Response(status_code=416, headers={"content-range": f"bytes */{size}"})
+        with open(path, "rb") as fh:
+            fh.seek(start)
+            body = fh.read(end - start + 1)
+        headers["content-range"] = f"bytes {start}-{end}/{size}"
+        headers["content-length"] = str(len(body))
+        return Response(body, status_code=206, media_type="audio/mp4", headers=headers)
+    body = path.read_bytes()
+    headers["content-length"] = str(size)
+    return Response(body, status_code=200, media_type="audio/mp4", headers=headers)
+
+
+def _cache_fallback(key: str, range_header: str | None):
+    """在线路径全挂时的兜底：完整缓存优先，其次已听过的部分；都没有返回 None。"""
+    full = cache.get(key)
+    if full:
+        return _file_response(full, range_header)
+    partial = cache.get_partial(key)
+    if partial:
+        return _file_response(partial[0], range_header)
+    return None
+
+
+class LoudnessIn(BaseModel):
+    bvid: str
+    cid: int = 0
+    db: float
+    duration: float = 0
+
+
+@router.get("/cache/stats")
+async def cache_stats() -> dict:
+    """T1 轻缓存：账号页展示用（多少首、多大）。无管理界面，只有这一行状态。"""
+    return cache.stats()
+
+
+@router.post("/cache/clear")
+async def cache_clear() -> dict:
+    """T1 轻缓存：一键清空（T1 裁决的唯一管理动作）。"""
+    return cache.clear()
+
+
+class PlayLogIn(BaseModel):
+    bvid: str = ""
+    cid: int = 0
+    title: str
+    artist: str = ""
+    duration: int = 0
+    listened: int = 0
+
+
+@router.post("/stats/play")
+async def log_play(payload: PlayLogIn) -> dict:
+    """B6 听歌统计：一次有效收听（客户端听满 30s 或自然播完）记一行流水。
+
+    只收必要字段并截断长度——统计是本地的，别让它变成第二条上传通道。
+    """
+    title = payload.title.strip()[:120]
+    if not title:
+        raise HTTPException(status_code=422, detail="缺少曲名")
+    with new_session() as session:
+        session.add(
+            PlayLog(
+                bvid=payload.bvid.strip()[:16],
+                cid=payload.cid,
+                title=title,
+                artist=payload.artist.strip()[:80],
+                duration=max(0, min(payload.duration, 86400)),
+                listened=max(0, min(payload.listened, 86400)),
+            )
+        )
+        session.commit()
+    return {"ok": True}
+
+
+@router.get("/stats/summary")
+async def stats_summary() -> dict:
+    """B6 听歌统计汇总：本周/今日/累计、近 7 天、本周最常听。"""
+    return stats.summary()
+
+
+@router.get("/loudness")
+async def get_loudness(bvid: str, cid: int = 0) -> dict:
+    """A4 音量均衡：取某曲已学到的整曲响度（RMS dBFS，负值）；没学过返回 null。
+
+    纯在线模式没有本地音频文件，响度只能播放时由客户端实测；
+    这里是跨设备共享点——一台设备学过，其余设备首播即对齐。
+    """
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", bvid):
+        raise HTTPException(status_code=400, detail="bvid 格式错误")
+    with new_session() as session:
+        row = session.get(LoudnessRow, (bvid, cid))
+    return {"db": row.db if row else None}
+
+
+@router.post("/loudness")
+async def save_loudness(payload: LoudnessIn) -> dict:
+    """A4 音量均衡：落库客户端实测响度。越界值拒收（防脏数据把增益算上天）。"""
+    if not re.fullmatch(r"BV[0-9A-Za-z]{10}", payload.bvid):
+        raise HTTPException(status_code=400, detail="bvid 格式错误")
+    if not -60.0 <= payload.db <= 0.0:
+        raise HTTPException(status_code=422, detail="响度超出合理范围")
+    with new_session() as session:
+        row = session.get(LoudnessRow, (payload.bvid, payload.cid))
+        if row is None:
+            row = LoudnessRow(bvid=payload.bvid, cid=payload.cid)
+        row.db = payload.db
+        row.duration = payload.duration
+        row.updated_at = datetime.utcnow()
+        session.add(row)
+        session.commit()
+    return {"ok": True}
 
 
 @router.get("/stream/{bvid}/quality")

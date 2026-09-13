@@ -97,3 +97,30 @@ class TrackAnalysisRow(SQLModel, table=True):
     version: int = 0
     data: str  # TrackAnalysis JSON
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class LoudnessRow(SQLModel, table=True):
+    """A4 音量均衡的响度缓存：客户端播放时实测（纯在线模式没有本地文件可分析），
+    按 bvid+cid 键跨设备共享——一台设备学过的响度，其余设备首播即对齐。"""
+
+    bvid: str = Field(primary_key=True)
+    cid: int = Field(default=0, primary_key=True)
+    db: float = -16.0  # 整曲响度（RMS dBFS，负值）
+    duration: float = 0
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PlayLog(SQLModel, table=True):
+    """B6 听歌统计的播放流水：一次有效收听一行（客户端听满 30s 或自然播完时上报）。
+
+    本地数据、零算法——统计就是流水聚合，没有任何推荐语义。
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    bvid: str = Field(default="", index=True)
+    cid: int = 0
+    title: str
+    artist: str = ""
+    duration: int = 0  # 歌曲时长（秒）
+    listened: int = 0  # 实际收听秒数（分钟统计用真实值，不是拿时长凑）
+    played_at: datetime = Field(default_factory=datetime.utcnow, index=True)

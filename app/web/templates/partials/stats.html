@@ -1,0 +1,46 @@
+<div class="stat-card">
+  {% if s.total.plays == 0 %}
+  <div class="stat-empty">还没有听歌记录。<br>播放满 30 秒（或听完整首）就会记一笔，这里是你的本周报告。</div>
+  {% else %}
+  <div class="stat-hero">
+    <div class="stat-big"><b>{{ s.week.minutes }}</b><span>分钟 / 本周</span></div>
+    <div class="stat-hero-meta">
+      <div class="t">本周 <b>{{ s.week.plays }}</b> 次 · <b>{{ s.week.songs }}</b> 首不同的歌</div>
+      <div class="s">今天 {{ s.today.plays }} 次{% if s.today.minutes %} · {{ s.today.minutes }} 分钟{% endif %}</div>
+    </div>
+  </div>
+  {% set maxp = s.days | map(attribute='plays') | max %}
+  <div class="stat-bars">
+    {% for d in s.days %}
+    <div class="stat-bar-col{% if loop.last %} today{% endif %}" title="{{ d.label }}：{{ d.plays }} 次 · {{ d.minutes }} 分钟">
+      <div class="stat-bar" style="height:{% if maxp %}{{ ((d.plays * 100 / maxp) | round) | int }}{% else %}0{% endif %}%"></div>
+      <span>{{ d.label }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% if s.topSongs %}
+  <div class="stat-sec-title">本周最常听</div>
+  <ol class="stat-top">
+    {% for t in s.topSongs %}
+    <li>
+      <span class="n">{{ loop.index }}</span>
+      <div class="mtx">
+        <div class="tt">{{ t.title }}</div>
+        <div class="ar">{{ t.artist }}{% if t.minutes %} · {{ t.minutes }} 分钟{% endif %}</div>
+      </div>
+      <span class="p">{{ t.plays }} 次</span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+  {% if s.topArtists %}
+  <div class="stat-sec-title">本周歌手</div>
+  <div class="stat-artists">
+    {% for a in s.topArtists %}
+    <span class="stat-artist">{{ a.artist }} <b>{{ a.plays }}</b></span>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="stat-foot">累计听过 {{ s.total.plays }} 次 · {{ s.total.minutes }} 分钟 · {{ s.total.songs }} 首不同的歌</div>
+  {% endif %}
+</div>

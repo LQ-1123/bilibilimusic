@@ -16,7 +16,7 @@ from app.core.link_parser import BV_RE, parse_video_url
 from app.core.url_guard import validate_bilibili_url
 from app.db.models import Album, ImportTask, Song
 from app.db.session import new_session
-from app.services import library, playlists, recs, zone
+from app.services import library, playlists, recs, stats, zone
 from app.services.importer import ImportService
 
 templates = Jinja2Templates(directory=str(Path(os.environ.get("BM_WEB_DIR", Path(__file__).parent)) / "templates"))
@@ -658,6 +658,15 @@ def recent_partial(request: Request):
         return gate
     recent = [_song_ctx(s) for s in library.list_songs()[:8]]
     return templates.TemplateResponse(request, "partials/recent_rack.html", {"recent": recent})
+
+
+@router.get("/partials/stats", response_class=HTMLResponse)
+def stats_partial(request: Request):
+    """B6 听歌统计卡片：手机账号页嵌入与桌面统计弹窗共用这一份。"""
+    gate = _login_redirect(request)
+    if gate:
+        return gate
+    return templates.TemplateResponse(request, "partials/stats.html", {"s": stats.summary()})
 
 
 @router.get("/partials/albums", response_class=HTMLResponse)

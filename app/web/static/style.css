@@ -3,25 +3,29 @@
    桌面：玻璃侧栏 + 悬浮播放胶囊；窄屏：双胶囊 + Tab
    ============================================================ */
 
-/* ---------- 设计令牌 ---------- */
+/* ---------- 设计令牌 ----------
+   v2.2 暗色整体重做（北极星：Apple Music 暗色）：中性石墨体系，去掉旧版的蓝紫
+   偏色（旧 bg #0b0b10 一路 hue 240，和品牌粉叠在一起发闷发紫）。分层靠明度差，
+   文本走 Apple 深色语义（#f5f5f7 主 / rgba(235,235,245,.6) 次 / .3 三级），
+   品牌粉保持 B 站色相不变，只在中性底上做唯一彩色强调。 */
 :root, html[data-theme="dark"]{
-  --bg:#0b0b10; --bg2:#101017; --card:#16161e; --card2:#1d1d27; --raise:#262633;
-  --txt:#f4f4f7; --txt2:#9c9cab; --txt3:#62626e;
-  --pink:#fb7299; --pink-strong:#ff8fad; --pink-tint:rgba(251,114,153,.16); --pink-txt:#ffa8c1;
-  --glass:rgba(16,16,23,.66); --glass-strong:rgba(14,14,20,.84);
-  --sidebar-glass:rgba(24,24,30,.76); --sidebar-selected:rgba(255,255,255,.11);
-  --sidebar-hover:rgba(255,255,255,.07);
-  --stroke:rgba(255,255,255,.085); --stroke2:rgba(255,255,255,.16);
-  --shadow:0 16px 48px rgba(0,0,0,.5); --shadow-sm:0 6px 22px rgba(0,0,0,.36);
+  --bg:#131314; --bg2:#1b1b1e; --card:#212124; --card2:#29292d; --raise:#333338;
+  --txt:#f5f5f7; --txt2:rgba(235,235,245,.6); --txt3:rgba(235,235,245,.3);
+  --pink:#fb7299; --pink-strong:#ff87a8; --pink-tint:rgba(251,114,153,.15); --pink-txt:#ffa9c4;
+  --glass:rgba(24,24,27,.72); --glass-strong:rgba(19,19,22,.9);
+  --sidebar-glass:rgba(27,27,30,.8); --sidebar-selected:rgba(255,255,255,.1);
+  --sidebar-hover:rgba(255,255,255,.06);
+  --stroke:rgba(255,255,255,.09); --stroke2:rgba(255,255,255,.17);
+  --shadow:0 16px 48px rgba(0,0,0,.55); --shadow-sm:0 6px 22px rgba(0,0,0,.4);
   /* 搜索类表面（顶栏搜索框 / 手机搜索胶囊 / 搜索结果面板）：更透 + 更强模糊，磨砂才看得出来 */
-  --search-glass:rgba(20,20,28,.54);
-  --search-edge:rgba(255,255,255,.2);
-  --search-shadow:0 12px 34px rgba(0,0,0,.5);
+  --search-glass:rgba(28,28,31,.55);
+  --search-edge:rgba(255,255,255,.22);
+  --search-shadow:0 12px 34px rgba(0,0,0,.55);
   /* 手机底部导航的「液态玻璃」选中块：中性冷白，不带品牌粉色（用户反馈粉色渐变难看） */
   --nav-pill:linear-gradient(155deg,rgba(255,255,255,.30),rgba(255,255,255,.12) 55%,rgba(255,255,255,.07));
   --nav-pill-border:rgba(255,255,255,.24);
   --nav-pill-shadow:inset 0 1px 2px rgba(255,255,255,.34),0 4px 12px rgba(0,0,0,.36);
-  --hero-op:.55; --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.55'/></svg>");
+  --hero-op:.5; --grain:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix type='saturate' values='0'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.55'/></svg>");
   color-scheme:dark;
 }
 html[data-theme="light"]{
@@ -413,7 +417,7 @@ html[data-theme="light"] .sidebar{
   border:1px solid var(--stroke);box-shadow:var(--shadow)}
 /* Shared translucent material; inset highlights stay clear of interactive content. */
 .tb-search,#player-bar,.m-tabs,.m-orb,.topbar.searching{
-  background:rgba(24,24,30,.56);
+  background:rgba(27,27,30,.6);
   -webkit-backdrop-filter:blur(22px) saturate(1.65);backdrop-filter:blur(22px) saturate(1.65);
   border-color:rgba(255,255,255,.22);
   box-shadow:inset 0 1px 1px rgba(255,255,255,.32),inset 0 -1px 1px rgba(255,255,255,.09),0 8px 28px rgba(0,0,0,.2)}
@@ -979,7 +983,7 @@ body:not(.playing) .i-pause{display:none}
 
 /* ---------- UP 主作品页 · Apple Music 沉浸式艺术家页 ----------
    深色环境背景铺满全屏（侧栏玻璃浮于其上）；头像主色 --uph 驱动环境光；滚动时 hero 虚化融入（--upfog） */
-#up-panel{position:absolute;inset:0;z-index:90;display:flex;flex-direction:column;background:#0a0a10;overflow:hidden;
+#up-panel{position:absolute;inset:0;z-index:90;display:flex;flex-direction:column;background:var(--bg);overflow:hidden;
   color:#f5f5f7;
   --txt:#f5f5f7;--txt2:rgba(245,245,247,.62);--txt3:rgba(245,245,247,.42);
   --card:rgba(255,255,255,.07);--card2:rgba(255,255,255,.13);
@@ -993,7 +997,7 @@ body:not(.playing) .i-pause{display:none}
   background:
     radial-gradient(75% 55% at 28% 0%, hsl(var(--uph,340) 72% 44% / .5), transparent 72%),
     radial-gradient(60% 48% at 88% 26%, hsl(calc(var(--uph,340) + 42) 76% 40% / .34), transparent 72%),
-    linear-gradient(180deg, #0c0c13 0%, transparent 32%, transparent 58%, #0a0a10 100%)}
+    linear-gradient(180deg, var(--bg2) 0%, transparent 32%, transparent 58%, var(--bg) 100%)}
 /* 整页滚动容器：内容避开侧栏（侧栏玻璃浮在背景上） */
 .up-scroll{position:relative;z-index:2;flex:1;overflow-y:auto;overscroll-behavior:contain;padding-left:var(--side)}
 /* Hero：大头像融入背景（无卡片边界）+ 大标题 + 播放操作行 */
@@ -1173,6 +1177,43 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .acct-row .sub{margin-left:auto;font-size:11px;color:var(--txt3);font-weight:500}
 .acct-row.danger{color:#f87171}  /* #41：退出登录行 */
 .acct-row.danger:hover{background:rgba(248,113,113,.12)}
+
+/* ---------- B6 听歌统计（账号页卡片 / 桌面统计弹窗共用） ---------- */
+.acct-stats{margin-bottom:14px}
+.stat-card{background:var(--card);border:1px solid var(--stroke);border-radius:16px;padding:18px}
+.stat-hero{display:flex;align-items:center;gap:16px}
+.stat-big{display:flex;align-items:baseline;gap:5px;flex:none}
+.stat-big b{font-size:34px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.stat-big span{font-size:12px;color:var(--txt2)}
+.stat-hero-meta{min-width:0}
+.stat-hero-meta .t{font-size:13.5px;font-weight:600}
+.stat-hero-meta .t b{color:var(--pink-txt)}
+.stat-hero-meta .s{font-size:12px;color:var(--txt2);margin-top:4px}
+.stat-bars{display:flex;align-items:flex-end;gap:7px;height:64px;margin:18px 0 2px;padding:0 2px}
+.stat-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end;min-width:0}
+.stat-bar{width:100%;max-width:26px;border-radius:5px;background:var(--pink-tint);min-height:3px}
+.stat-bar-col.today .stat-bar{background:var(--pink)}
+.stat-bar-col span{font-size:10px;color:var(--txt3);white-space:nowrap}
+.stat-sec-title{font-size:12.5px;font-weight:700;color:var(--txt2);margin:16px 0 6px}
+.stat-top{list-style:none;display:flex;flex-direction:column;gap:2px}
+.stat-top li{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px}
+.stat-top li:hover{background:var(--card2)}
+.stat-top .n{width:16px;text-align:center;font-size:12px;color:var(--txt3);font-weight:700;flex:none;font-variant-numeric:tabular-nums}
+.stat-top li:first-child .n{color:var(--pink)}
+.stat-top .mtx{min-width:0;flex:1}
+.stat-top .tt{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-top .ar{font-size:11.5px;color:var(--txt2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stat-top .p{font-size:11.5px;color:var(--txt2);flex:none;font-variant-numeric:tabular-nums}
+.stat-artists{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
+.stat-artist{font-size:12px;padding:5px 12px;border-radius:999px;background:var(--card2);border:1px solid var(--stroke);color:var(--txt2)}
+.stat-artist b{color:var(--txt);font-weight:600;margin-left:2px}
+.stat-foot{font-size:11.5px;color:var(--txt3);margin-top:14px;border-top:1px solid var(--stroke);padding-top:12px}
+.stat-empty{font-size:13px;color:var(--txt2);line-height:1.9;text-align:center;padding:8px 0}
+.stats-box{width:min(480px,calc(100vw - 40px));position:relative}
+.stats-box-title{font-size:17px;font-weight:800;margin-bottom:4px}
+#stats-close{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;
+  color:var(--txt2);display:grid;place-items:center;font-size:12px;transition:.15s}
+#stats-close:hover{color:var(--txt);background:var(--card2)}
 
 /* ---------- 导出弹窗 / 登录 ---------- */
 .modal{position:absolute;inset:0;z-index:120;display:grid;place-items:center;background:rgba(5,5,10,.55);

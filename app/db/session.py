@@ -13,7 +13,7 @@ from pathlib import Path
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.config import settings
-from app.db.models import Album, ImportTask, Song  # noqa: F401  (导入以注册表结构)
+from app.db.models import Album, ImportTask, LoudnessRow, PlayLog, Song  # noqa: F401  (导入以注册表结构)
 
 _engines: dict[str, object] = {}
 _current_mid: str | None = None  # None = 待定库（legacy 路径 data/bilibili_music.db）
