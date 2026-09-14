@@ -15,7 +15,6 @@ import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
-import android.webkit.WebViewRendererPriorityPolicy;
 import android.webkit.CookieManager;
 import android.webkit.JsResult;
 import android.webkit.JsPromptResult;
@@ -502,9 +501,9 @@ public class MainActivity extends Activity {
         });
         web.addJavascriptInterface(nativeBridge(), "BiliMusicNative");
         // #45 后续：锁屏/切后台时 Chromium 会把 renderer 降优先级甚至回收，媒体/网络管道跟着断。
-        // 固定 IMPORTANT 让 renderer 常驻——后台放歌的应用值得这个内存代价（API 25+）。
+        // 固定 IMPORTANT（同步更新）让 renderer 常驻——后台放歌的应用值得这个内存代价（API 25+）。
         if (Build.VERSION.SDK_INT >= 25) {
-            web.setRendererPriorityPolicy(new WebViewRendererPriorityPolicy(false, WebView.RENDERER_PRIORITY_IMPORTANT));
+            web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         }
         // debug 构建开放 WebView 远程调试（验收手册的 chrome://inspect 依赖此项）
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true);
