@@ -49,28 +49,71 @@
   var audioB = $("audio2");
   var audio = audioA;
 
-  // #45 卡顿自愈：弱网或锁屏后台时流会短暂断供，浏览器只会一直转圈、不会自己恢复。
-  // 这里加一层兜底——停住超过 3 秒就在当前进度重开一次（15 秒冷却、连续 5 次后放弃，
-  // 正常播放（playing）即清零计数），避免「解锁回来卡一下要手动点播放」。
+  // #45 后续：锁屏/开屏/切应用瞬间的卡顿取证——每次自愈动作记一条到后端日志，
+  // 带上元素状态与前后台态，下次复现就有实锤（payload 见 /api/debug/stall）
+  function bufAhead(el) {
+    var b = el.buffered, at = el.currentTime || 0, ahead = 0;
+    for (var i = 0; i < b.length; i++) {
+      if (b.start(i) <= at && at <= b.end(i)) { ahead = b.end(i) - at; break; }
+    }
+    return ahead;
+  }
+  window.__stallLog = function (phase, tries) {
+    try {
+      fetch("/api/debug/stall", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phase: phase, tries: tries || 0,
+          readyState: audio.readyState, networkState: audio.networkState,
+          current: Math.round((audio.currentTime || 0) * 10) / 10,
+          duration: Math.round((audio.duration || 0) * 10) / 10,
+          bufferedAhead: Math.round(bufAhead(audio) * 10) / 10,
+          hidden: document.hidden, tier: netTier(),
+          src: (audio.src || "").replace(location.origin, "").slice(0, 90),
+        }),
+      }).catch(function () {});
+    } catch (e) {}
+  };
+
+  // #45 卡顿自愈 v2：先软后硬。停住 3 秒先「原地微退 0.25s」逼浏览器重发 Range 请求
+  // （后端会重新解析 playurl 换新 CDN 节点，通常 1 秒内接上、几乎无感）；2.5 秒仍停
+  // 才整段重开（重解析 + 新连接，会断 1-2 秒）。冷却 15s、重开上限 5 次、playing 复位不变。
   (function () {
-    var cooldownAt = 0, tries = 0, timer = null;
+    var cooldownAt = 0, tries = 0, timer = null, phase = 0; // phase: 0=待软推 1=已软推待硬重开
+    function stalled() {
+      return !audio.paused && audio.readyState < 3;
+    }
     function recover() {
+      if (!stalled()) { phase = 0; return; }
       var now = Date.now();
-      if (audio.paused || audio.readyState >= 3) return;
       if (now - cooldownAt < 15000 || tries >= 5) return;
-      cooldownAt = now; tries += 1;
+      if (phase === 0) {
+        cooldownAt = now;
+        phase = 1;
+        window.__stallLog("nudge", tries);
+        try {
+          var at = audio.currentTime || 0;
+          audio.currentTime = at < 0.3 ? at + 0.05 : Math.max(0, at - 0.25); // 起播段前挪，其余后推
+        } catch (e) {}
+        timer = setTimeout(recover, 2500);   // 还停着 → 升级硬重开
+        return;
+      }
+      phase = 0;
+      tries += 1;
+      window.__stallLog("reopen", tries);
       if (tries === 2) {
-        // v2.1 A6 弱网降档：同一首第二次停顿就换 64K 原地重开（保进度），
-        // 之后 10 分钟内的歌直接按低档起播，窗口过期自然回升到网络策略档。
+        // v2.1 A6 弱网降档：第二次硬重开就换 64K 原地重开（保进度），10 分钟窗口后自然回升
         window.__weakNetNow();
         try { audio.src = withTier(audio.src); } catch (e) {}
       }
-      var at = audio.currentTime || 0;
+      var pos = audio.currentTime || 0;
       var onMeta = function () {
         audio.removeEventListener("loadedmetadata", onMeta);
         try {
-          if (at > 1 && isFinite(audio.duration) && at < audio.duration - 1) audio.currentTime = at;
+          if (pos > 1 && isFinite(audio.duration) && pos < audio.duration - 1) audio.currentTime = pos;
         } catch (e) {}
+        resumeGraph(); // 重开后 ctx 若被 WebView 挂起，声音照样出不来——先推醒再 play
         audio.play().catch(function () {});
       };
       audio.addEventListener("loadedmetadata", onMeta);
@@ -83,8 +126,15 @@
     [audioA, audioB].forEach(function (el) {
       el.addEventListener("waiting", arm);
       el.addEventListener("stalled", arm);
-      el.addEventListener("error", arm);
-      el.addEventListener("playing", function () { clearTimeout(timer); tries = 0; });
+      el.addEventListener("error", function () {
+        // 元素级故障软推救不了：直接走硬重开
+        clearTimeout(timer);
+        phase = 1;
+        recover();
+      });
+      el.addEventListener("playing", function () {
+        clearTimeout(timer); tries = 0; phase = 0;
+      });
     });
   })();
 
@@ -577,7 +627,7 @@
     ensureGraph();
     setGain(audioA, audioA === audio ? 1 : 0);
     setGain(audioB, audioB === audio ? 1 : 0);
-    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    resumeGraph();
     cancelPreload();
     normPrepare(audio, song); // 均衡增益在 src 设置后立刻生效（置 1 或已知响度的对齐值）
     statBegin(audio, song, song.title, song.artist);
@@ -1147,6 +1197,18 @@
     el.addEventListener("change", function () { applyNormSetting(el.checked); });
   });
 
+  // ---------- #45 后续：Android 电池白名单（ROM 后台省电是锁屏断流的最后一块） ----------
+  function paintBatteryRow() {
+    var row = $("acct-battery");
+    if (!row || !window.BiliMusicNative || !BiliMusicNative.batteryOptimized) return;
+    try { row.classList.toggle("hidden", !BiliMusicNative.batteryOptimized()); } catch (e) {}
+  }
+  paintBatteryRow();
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) paintBatteryRow(); });
+  window.requestBatteryWhitelist = function () {
+    try { if (window.BiliMusicNative) BiliMusicNative.requestIgnoreBatteryOptimization(); } catch (e) {}
+  };
+
   // ---------- T1 轻缓存：只有一行状态 + 一键清空（无管理界面） ----------
   function refreshCacheRow() {
     fetch("/api/cache/stats")
@@ -1291,6 +1353,21 @@
     saveSession();
   }
 
+  function resumeGraph() {
+    if (audioCtx && audioCtx.state === "suspended") {
+      try {
+        var p = audioCtx.resume();
+        if (p && p.catch) p.catch(function () {});
+      } catch (e) {}
+    }
+  }
+  // WebView 切后台/锁屏可能挂起 AudioContext：媒体元素以为在放，routed 音频却停摆——
+  // 锁屏/切应用瞬卡的头号嫌疑。回前台可见与每个播放事件都推一把 resume。
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) resumeGraph(); });
+  [audioA, audioB].forEach(function (el) {
+    el.addEventListener("play", resumeGraph);
+    el.addEventListener("playing", resumeGraph);
+  });
   function cancelTransition() {
     if (!transitionState) return;
     clearTimeout(transitionState.timer);

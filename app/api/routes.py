@@ -1216,6 +1216,33 @@ async def stats_summary() -> dict:
     return stats.summary()
 
 
+class StallIn(BaseModel):
+    """卡顿自愈取证（#45 后续：锁屏/开屏/切应用瞬间的断流排查）。"""
+
+    phase: str = ""
+    tries: int = 0
+    ready_state: int = 0
+    network_state: int = 0
+    current: float = 0
+    duration: float = 0
+    buffered_ahead: float = 0
+    hidden: bool = False
+    tier: str = ""
+    src: str = ""
+
+
+@router.post("/debug/stall")
+async def debug_stall(payload: StallIn) -> dict:
+    """前端每次卡顿自愈动作记一条。只进日志不落库：这是排查证据，不是业务数据。"""
+    log.warning(
+        "stall-heal phase=%s tries=%s readyState=%s networkState=%s at=%.1f/%.1f bufAhead=%.1fs hidden=%s tier=%s src=%s",
+        payload.phase, payload.tries, payload.ready_state, payload.network_state,
+        payload.current, payload.duration, payload.buffered_ahead,
+        payload.hidden, payload.tier, payload.src,
+    )
+    return {"ok": True}
+
+
 @router.get("/loudness")
 async def get_loudness(bvid: str, cid: int = 0) -> dict:
     """A4 音量均衡：取某曲已学到的整曲响度（RMS dBFS，负值）；没学过返回 null。

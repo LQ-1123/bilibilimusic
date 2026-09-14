@@ -259,6 +259,20 @@ public class MainActivity extends Activity {
             @JavascriptInterface public void playbackStopped() {
                 stopService(new Intent(MainActivity.this, MediaPlaybackService.class));
             }
+            /** #45 后续：电池白名单——国产 ROM 后台省电杀得狠，WakeLock 也架不住，白名单是最有效的一道。 */
+            @JavascriptInterface public boolean batteryOptimized() {
+                if (Build.VERSION.SDK_INT < 23) return false;
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                return !pm.isIgnoringBatteryOptimizations(getPackageName());
+            }
+            @JavascriptInterface public void requestIgnoreBatteryOptimization() {
+                runOnUiThread(() -> {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:" + getPackageName())));
+                    } catch (Exception e) { toast("系统不支持该设置"); }
+                });
+            }
             /** 登录二维码：存进相册（B 站 App「扫一扫 → 相册」能选到）。用户拍板不再自动拉起 B 站 App。 */
             @JavascriptInterface public void saveQrToGallery(String dataUrl) {
                 runOnUiThread(() -> saveQr(dataUrl));
@@ -486,6 +500,11 @@ public class MainActivity extends Activity {
             }
         });
         web.addJavascriptInterface(nativeBridge(), "BiliMusicNative");
+        // #45 后续：锁屏/切后台时 Chromium 会把 renderer 降优先级甚至回收，媒体/网络管道跟着断。
+        // 固定 IMPORTANT 让 renderer 常驻——后台放歌的应用值得这个内存代价（API 25+）。
+        if (Build.VERSION.SDK_INT >= 25) {
+            web.setRendererPriorityPolicy(new WebViewRendererPriorityPolicy(false, WebView.RENDERER_PRIORITY_IMPORTANT));
+        }
         // debug 构建开放 WebView 远程调试（验收手册的 chrome://inspect 依赖此项）
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true);
         setContentView(web);

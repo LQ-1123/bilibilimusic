@@ -141,6 +141,7 @@
     <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接</button>
     {% endif %}
     <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗</button>
+    <button class="acct-row hidden" type="button" id="acct-battery" onclick="requestBatteryWhitelist()"><span>⚡</span><span>防卡顿 · 加入电池白名单</span></button>
     <button class="acct-row" type="button" onclick="toggleNorm()"><span>≡</span><span id="acct-norm-label">音量均衡 · 开</span></button>
     <button class="acct-row" type="button" onclick="clearListenCache()"><span>◇</span><span id="acct-cache-label" class="cache-label">听歌缓存</span></button>
     {% if logged_in %}
