@@ -1,3 +1,17 @@
+## BiliMusic v2.2.0: 音量均衡 + 轻缓存 + 听歌统计 / loudness normalization + listen cache + listening report
+
+v2.2 主题「背景音的最后一块拼图」：响度不再忽大忽小、断网有兜底、配色整体重做，外加本地听歌报告。
+
+- **音量均衡（A4）**：播放时客户端实测整曲响度并对齐到 -16dB（增益上限 +9/-12dB，防底噪放大与削波）；实测结果按曲落库、跨设备共享——电脑学过的歌手机首播即对齐；门内听满 20 秒才学习，跳过不污染统计；账号页开关（默认开），试听/电台流同样进均衡。 / Loudness is measured client-side while playing and aligned to -16dB; learned values sync via backend so every device starts aligned. Toggle on the account page.
+- **gapless**：距结尾 7 秒预载下一首到另一轨，播完瞬间换轨零等待；队列重排、弱网降档、拖进度时预载自动作废回退。 / Next track is preloaded 7s before the end for a gapless handover.
+- **轻缓存（T1）**：播放穿写落盘——只缓存听过的，池上限 500MB、满则淘汰最久未听；重播直出本地不碰 CDN；解析或 CDN 全挂时回放缓存里听过的部分（听到一半断网，也能放完那半首）；账号页一行状态 + 一键清空，无管理界面。 / A 500MB write-through cache of what you actually listened to: replays never touch the CDN, and offline fallback serves the heard part.
+- **暗色配色整体重做**（北极星 Apple Music）：中性石墨体系替换旧版蓝紫偏色，文本走 Apple 深色语义（#f5f5f7 / 60% / 30%）；播放胶囊与 UP 主面板的硬编码紫黑一并 token 化；亮色主题不动。 / Dark palette rebuilt on neutral graphite with Apple dark text semantics.
+- **听歌统计（B6）**：本地播放流水，切歌/播完/停试听/关页四个落账点；分钟用真实收听秒数、跳过不计；本周分钟 + 近 7 天柱状 + 本周最常听 + 本周歌手。手机在账号页，桌面在用户弹层「听歌统计」，两处共用一份模板。 / A local, algorithm-free listening report: weekly minutes, 7-day bars, top songs and artists.
+- **锁屏/切后台瞬卡三连修**（#45 后续）：停顿自愈改「先软后硬」——先原地微退 0.25s 重发 Range 请求（后端重新解析换新 CDN 节点，无感接上），2.5s 仍停才整段重开；AudioContext 被 WebView 后台挂起时在回前台/播放事件自动 resume；Android renderer 固定 IMPORTANT 优先级 + 电池优化白名单引导（账号页「防卡顿 · 加入电池白名单」）。每次自愈向服务端日志发一条取证（元素状态/缓冲/前后台/档位），复现有实锤。 / Tiered stall recovery, AudioContext auto-resume, background renderer kept alive, battery-optimization whitelist prompt.
+- **CI**：APK 产物名随 tag 动态生成（修 v2.1.0 产物名错版）；分段下载 `os.pwrite` 改跨平台 `lseek+write`（Windows 测试真实跑绿）。
+- 版本号：android 2.2.0(15)、desktop 2.2.0
+- 回归：pytest 246 过 / node --test 61 过
+
 ## BiliMusic v2.1.0: 不断播 + 电台 / never-ending playback + radio
 
 v2.1 主题「不断播 + 电台」落地：发现的活外包给 B 站相关推荐，自己只管调度；播放的底线是不断。
