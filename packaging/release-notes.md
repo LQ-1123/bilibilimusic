@@ -1,3 +1,17 @@
+## BiliMusic v2.3.0: 播放历史 + 音质设置 + 主题跟随修复 / play history + quality setting + theme-follow fix
+
+v2.3 主题「把反馈清单清完」：播放历史重设计成独立页面、音质可显式选档、深浅色跟随系统修复，外加播放中继与多分 P 路由两块底层加固。
+
+- **播放历史（全新页面）**：桌面侧栏「播放历史」+ 手机底部新增「最近播放」Tab 共用同一视图——累计收听大字时长、最常听全量 Top 10 组成可连播的歌单（▶ 播放全部）、最近流水按天分组；全部为横滑大封面卡片（名次徽章 / 时刻角标），无图表。手机账号页的统计卡（柱状图）已移除。 / A redesigned play-history page (desktop sidebar + new mobile tab): total listening time, all-time top-10 playlist, and day-grouped recent plays as horizontal card racks — no charts.
+- **封面保真**：播放流水落账即带封面；老流水按曲库回填，仍缺的经 B 站 view 接口一次性懒补并回写库——此后零外呼，每一行都有真实封面。 / Covers are written into play logs at playback time, backfilled from the library, then lazily fetched once from bilibili and persisted — every row has a real cover.
+- **音质设置**：侧栏弹层与账号页新增「音质」选项（自动 / 最高 / 192K / 132K / 64K），切换立即对正在放的歌生效（保进度换流）。自动 = 每首都取当前可用最高档（Hi-Res 随会员权益）；移除了蜂窝自动降 192K 与弱网静默 64K 两个糊音来源（显式选档后弱网自愈不再降档）。 / Explicit quality setting that re-streams the current song in place; auto now means always-best (cellular 192K cap and silent 64K downgrade removed).
+- **主题跟随修复**：顶栏圆钮改会话级切换（不再永久钉死偏好），持久化入口收敛到三态循环（自动/浅色/深色）；存储键迁移让老用户自然回到「跟随系统」；Android 壳 uiMode 已入 configChanges，系统切换实时推送。 / Theme toggle is now session-scoped so manual toggles can no longer pin the app away from system theme; storage-key migration resets everyone back to "follow system".
+- **播放中继（v2.2 遗产）**：起播即后台整曲预取边下边读，客户端全程只吃本地磁盘——锁屏/切应用/网络瞬断不再打进播放流。 / Relay mode: full-track background prefetch on play start; playback only ever reads local disk.
+- **多分 P 路由（#44）**：曲库歌按导入时存的 cid 路由（不再一律播 P1），播放历史/试听同样带 cid；响度与统计按正确键落账。 / Multi-part songs route by stored cid everywhere, including history playback.
+- **CI**：tag 驱动三平台构建 + 模拟器冒烟不变；APK 产物名随 tag。
+- 版本号：android 2.3.0(16)、desktop 2.3.0
+- 回归：pytest 252 过 / node --test 64 过
+
 ## BiliMusic v2.2.0: 音量均衡 + 轻缓存 + 听歌统计 / loudness normalization + listen cache + listening report
 
 v2.2 主题「背景音的最后一块拼图」：响度不再忽大忽小、断网有兜底、配色整体重做，外加本地听歌报告。
