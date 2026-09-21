@@ -16,48 +16,111 @@
   }());
 
   // ---------- 主题（深/浅切换：顶栏圆钮 / 侧栏设置弹层 / 手机账号 Tab 三处入口共享） ----------
-  // 未手动选择过就跟随系统：localStorage 里没有显式 bmTheme 时实时跟随 prefers-color-scheme，
-  // 系统深浅切换（含日落自动切换）立即生效。只在用户真正点切换时才落盘——
-  // 旧版启动即写 localStorage，把第一次检测到的系统偏好「冻死」在本地，此后永不跟随（用户反馈）。
+  // v2.3 重构（用户反馈「还是不随手机切换」的主因是顶栏圆钮把手动切换永久落盘）：
+  //  · 跟随系统是默认且唯一「无需操作」的行为；顶栏圆钮＝会话级快速切换，不落盘，
+  //    重载后自动回到跟随系统——手动玩过一轮也不会把系统跟随「冻死」。
+  //  · 弹层/账号页的三态循环（自动/浅色/深色）是唯一持久化入口，选「自动」即恢复跟随。
+  //  · 存储键换 bmThemePref：bmThemeChoice 时代被顶栏钮钉死的存量值整体作废，
+  //    所有人升级后自然回到「跟随系统」（bmTheme→bmThemeChoice 已作废过一轮，同法）。
   var systemDark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
-  // 显式选择存独立 key：旧版启动即写 bmTheme，人人都有存量值，读它等于永远 pinned；
-  // 换新 key 让所有老用户自然回到「跟随系统」，存量 bmTheme 弃用。
-  function storedTheme() {
-    try { return localStorage.getItem("bmThemeChoice") || ""; } catch (e) { return ""; }
-  }
-  var setTheme = function (t, persist) {
-    document.documentElement.dataset.theme = t;
-    if (persist) {
-      try { localStorage.setItem("bmThemeChoice", t); } catch (e) {}
+  // v2.2 验收反馈②：部分 ROM/WebView 的 matchMedia 不随系统实时更新（用户实测「自动」恒黑）。
+  // Android 壳把真实 uiMode 推过来（启动/回前台/系统切换时），有桥优先用桥，浏览器退回 matchMedia。
+  var shellDark = null;
+  var sessionTheme = null; // 顶栏圆钮的会话级覆盖：重载即弃，不写盘
+  window.__bmSystemDark = function (dark) {
+    shellDark = !!dark;
+    applyTheme();
+    paintThemeUI();
+  };
+  function systemDarkNow() {
+    if (window.BiliMusicNative && BiliMusicNative.systemDark) {
+      try { return !!BiliMusicNative.systemDark(); } catch (e) {}
     }
+    if (shellDark !== null) return shellDark;
+    return !!(systemDark && systemDark.matches);
+  }
+  function storedTheme() {
+    try { return localStorage.getItem("bmThemePref") || ""; } catch (e) { return ""; }
+  }
+  var setTheme = function (t) {
+    document.documentElement.dataset.theme = t;
     // 原生壳跟随：系统栏图标明暗（#2 方案 B；桌面/浏览器无此桥自动跳过）
     try { if (window.BiliMusicNative && BiliMusicNative.setTheme) BiliMusicNative.setTheme(t); } catch (e) {}
-    var lt = $("light-toggle");
-    if (lt) lt.checked = t === "light";
     var meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", t === "light" ? "#f0f1f5" : "#0b0b10");
-    var sub = $("theme-mode-sub");
-    if (sub) sub.textContent = t === "light" ? "当前 · 浅色" : "当前 · 深色";
   };
-  // 显式存储（light/dark）优先；否则按系统当前偏好。persist 只在用户主动操作时为 true。
-  var applyTheme = function (persist) {
+  // 优先级：会话覆盖 > 显式持久选择 > 系统当前偏好。
+  var applyTheme = function () {
     var saved = storedTheme();
-    var t = saved === "light" || saved === "dark" ? saved : (systemDark && systemDark.matches ? "dark" : "light");
-    setTheme(t, persist);
+    var t = sessionTheme || (saved === "light" || saved === "dark" ? saved : (systemDarkNow() ? "dark" : "light"));
+    setTheme(t);
   };
   window.toggleTheme = function () {
-    setTheme(document.documentElement.dataset.theme === "light" ? "dark" : "light", true);
+    sessionTheme = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+    setTheme(sessionTheme);
   };
-  var lightToggle = $("light-toggle");
-  if (lightToggle) {
-    lightToggle.addEventListener("change", function () {
-      setTheme(lightToggle.checked ? "light" : "dark", true);
-    });
+  // 外观三态循环 自动 → 浅色 → 深色 → 自动（弹层/账号页）：唯一持久化入口。
+  function themeMode() {
+    if (sessionTheme) return sessionTheme;
+    var saved = storedTheme();
+    return saved === "light" || saved === "dark" ? saved : "auto";
   }
+  function paintThemeUI() {
+    var mode = themeMode();
+    var text = "外观 · " + (mode === "auto" ? "自动" : mode === "light" ? "浅色" : "深色");
+    var mobile = $("acct-theme-label");
+    if (mobile) mobile.textContent = text;
+    var pop = $("pop-theme-label");
+    if (pop) pop.textContent = text;
+  }
+  window.cycleTheme = function () {
+    sessionTheme = null; // 显式三态选择接管：会话覆盖让位
+    var order = ["auto", "light", "dark"];
+    var next = order[(order.indexOf(themeMode()) + 1) % 3];
+    if (next === "auto") {
+      try { localStorage.removeItem("bmThemePref"); } catch (e) {}
+      applyTheme();
+    } else {
+      try { localStorage.setItem("bmThemePref", next); } catch (e) {}
+      setTheme(next);
+    }
+    paintThemeUI();
+  };
   if (systemDark && systemDark.addEventListener) {
-    systemDark.addEventListener("change", function () { applyTheme(false); });
+    systemDark.addEventListener("change", function () { applyTheme(); paintThemeUI(); });
   }
-  applyTheme(false);
+  applyTheme();
+  paintThemeUI();
+
+  // ---------- 音质档位（v2.3：设置里显式选档；自动 = 每首都取当前可用的最高档） ----------
+  // 档位是「帽」：后端在帽内选最高（best 不限，Hi-Res/杜比随会员权益下发）。
+  // app.js 的 netTier/__qualityApply 消费同一存储键 bmQuality。
+  var QUALITY_CYCLE = ["auto", "best", "192", "132", "64"];
+  function qualityMode() {
+    var v = "";
+    try { v = localStorage.getItem("bmQuality") || ""; } catch (e) {}
+    return QUALITY_CYCLE.indexOf(v) >= 0 ? v : "auto";
+  }
+  function qualityText(v) {
+    return v === "auto" ? "自动" : v === "best" ? "最高" : v + "K";
+  }
+  function paintQualityUI() {
+    var text = "音质 · " + qualityText(qualityMode());
+    var mobile = $("acct-quality-label");
+    if (mobile) mobile.textContent = text;
+    var pop = $("pop-quality-label");
+    if (pop) pop.textContent = text;
+  }
+  window.cycleQuality = function () {
+    var next = QUALITY_CYCLE[(QUALITY_CYCLE.indexOf(qualityMode()) + 1) % QUALITY_CYCLE.length];
+    try {
+      if (next === "auto") localStorage.removeItem("bmQuality");
+      else localStorage.setItem("bmQuality", next);
+    } catch (e) {}
+    paintQualityUI();
+    if (window.__qualityApply) window.__qualityApply(); // 正在放的歌原地换档
+  };
+  paintQualityUI();
 
   // ---------- 侧栏主导航：首页=返回主页；推荐=推荐视图；其余跳转待用户指定 ----------
   window.navGo = function (btn) {
@@ -75,6 +138,13 @@
       $("app").dataset.view = "up";
       document.body.classList.remove("in-detail");
       if (window.switchView) switchView("up");
+      if (mainEl) mainEl.scrollTop = 0;
+    } else if (nav === "stats") {
+      // B6 听歌统计：桌面独立视图；内容由 bm-stats 事件驱动 htmx 重拉（进页即最新）
+      collapseOverlays();
+      $("app").dataset.view = "stats";
+      document.body.classList.remove("in-detail");
+      if (window.htmx) htmx.trigger(document.body, "bm-stats");
       if (mainEl) mainEl.scrollTop = 0;
     } else {
       return; // 未接行为的导航项
@@ -659,7 +729,9 @@
         return;
       }
       var row = document.querySelector("#dt-songs [data-play]");
-      if (row && window.BiliPlayer) BiliPlayer.playById(row.dataset.play);
+      // 走真实点击：行上若带 data-album 会被委托进 playAlbum（专辑详情行为不变，
+      // 专辑 kind 在上面已短路走 playAlbum）；playById 本体已不再按 albumId 展开接管队列。
+      if (row) row.click();
     });
   };
   // v2.1 A5：详情页「电台」＝打开漫游电台并从当前详情第一首开始播；队列见底自动按种子续
@@ -712,10 +784,29 @@
 
   // 推荐行点击 → 实时流试听（胶囊接管）；同列表的歌组成试听队列（上一首/下一首在队列内切换）
   window.__trialQueue = null;
+
+  // 播放历史「最常听 · 播放全部」：把榜单行组成试听队列，从第一首开跑（上一首/下一首在榜单内切换）
+  window.hvPlayAll = function (btn) {
+    if (!window.playStream) return;
+    var sec = btn.closest(".hv-sec");
+    var rows = sec ? sec.querySelectorAll("li[data-bvid]") : [];
+    var items = [];
+    rows.forEach(function (r) {
+      if (!r.dataset.bvid) return;
+      items.push({
+        bvid: r.dataset.bvid, title: r.dataset.title || "", artist: r.dataset.artist || "",
+        cover: r.dataset.cover || "", cid: Number(r.dataset.cid) || 0,
+      });
+    });
+    if (!items.length) return;
+    window.__trialQueue = { items: items, i: 0 };
+    window.playStream(items[0].bvid, items[0], null);
+  };
+
   window.playRecRow = function (row) {
     if (!window.playStream) return;
     var scope = row.closest(
-      ".rack,.tracklist,.dc-track,.sr-grid,.rec-grid,.up-songs,.up-videos,#history-rack,#sd-web"
+      ".rack,.tracklist,.dc-track,.sr-grid,.rec-grid,.up-songs,.up-videos,#sd-web"
     ) || row.parentElement;
     if (scope) {
       var items = [], seen = {};
@@ -1891,6 +1982,15 @@
     });
     // Tab 切换不压栈且清空已压栈（#1）；任何 Tab 都先退出详情态（#17：原来到不了曲库的根因）
     if (name === "library") { window.openLibraryTab(); return; } // #34：资料库有自己的视图
+    if (name === "history") {
+      // v2.3 最近播放：与桌面侧栏「播放历史」同一视图（#view-stats），进页即拉最新流水
+      collapseOverlays();
+      $("app").dataset.view = "stats";
+      document.body.classList.remove("in-detail");
+      if (window.htmx) htmx.trigger(document.body, "bm-stats");
+      if (mainEl) mainEl.scrollTop = 0;
+      return;
+    }
     goHome();
     if (mainEl) mainEl.scrollTop = 0;
   };

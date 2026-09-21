@@ -2,13 +2,10 @@ package io.github.lq1123.bilimusic;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.ContentValues;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.MediaStore;
 import android.view.View;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -261,21 +258,14 @@ public class MainActivity extends Activity {
             }
             /** #45 后续：电池白名单——国产 ROM 后台省电杀得狠，WakeLock 也架不住，白名单是最有效的一道。 */
             @JavascriptInterface public boolean batteryOptimized() {
-                if (Build.VERSION.SDK_INT < 23) return false;
-                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
-                return !pm.isIgnoringBatteryOptimizations(getPackageName());
+                return isBatteryOptimized();
             }
             @JavascriptInterface public void requestIgnoreBatteryOptimization() {
-                runOnUiThread(() -> {
-                    try {
-                        startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                            Uri.parse("package:" + getPackageName())));
-                    } catch (Exception e) { toast("系统不支持该设置"); }
-                });
+                runOnUiThread(() -> promptIgnoreBattery());
             }
-            /** 登录二维码：存进相册（B 站 App「扫一扫 → 相册」能选到）。用户拍板不再自动拉起 B 站 App。 */
-            @JavascriptInterface public void saveQrToGallery(String dataUrl) {
-                runOnUiThread(() -> saveQr(dataUrl));
+            /** v2.2 验收反馈②：真实系统深浅推给页面——部分 ROM/WebView 的 matchMedia 不随系统更新。 */
+            @JavascriptInterface public boolean systemDark() {
+                return isSystemDark();
             }
             /** #25 正向分享：拉起系统分享面板（微信/QQ/复制…），内容是真 B 站链接。 */
             @JavascriptInterface public void shareText(String title, String text, String url) {
@@ -368,47 +358,32 @@ public class MainActivity extends Activity {
             "window.__receiveShare&&window.__receiveShare(" + org.json.JSONObject.quote(text) + ")", null);
     }
 
-    /** 登录二维码存进系统相册：B 站 App 的「扫一扫 → 相册」能选到它（单机扫码登录）。 */
-    private void saveQr(String dataUrl) {
-        if (Build.VERSION.SDK_INT < 29
-                && checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, 91);
-            toast("请允许存储权限后，再点一次二维码");
-            return;
-        }
-        try {
-            int comma = dataUrl == null ? -1 : dataUrl.indexOf(',');
-            if (comma < 0) return;
-            byte[] png = android.util.Base64.decode(
-                dataUrl.substring(comma + 1), android.util.Base64.DEFAULT);
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Images.Media.DISPLAY_NAME, "bilimusic-login-qr.png");
-            values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-            if (Build.VERSION.SDK_INT >= 29) {
-                values.put(MediaStore.Images.Media.RELATIVE_PATH,
-                    Environment.DIRECTORY_PICTURES + "/BiliMusic");
-                values.put(MediaStore.Images.Media.IS_PENDING, 1);
-            }
-            Uri uri = getContentResolver().insert(
-                MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-            if (uri == null) { toast("保存失败：相册不可写"); return; }
-            try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
-                if (out != null) out.write(png);
-            }
-            if (Build.VERSION.SDK_INT >= 29) {
-                ContentValues done = new ContentValues();
-                done.put(MediaStore.Images.Media.IS_PENDING, 0);
-                getContentResolver().update(uri, done, null, null);
-            }
-            toast("二维码已存到相册");
-        } catch (Exception e) {
-            toast("保存失败：" + e.getClass().getSimpleName());
-        }
-    }
-
     private void toast(String msg) {
         android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_SHORT).show();
+    }
+
+    /** 真实系统深浅：WebView 的 matchMedia 在部分 ROM/WebView 版本上不随系统更新，主题跟随以壳层为准。 */
+    private boolean isSystemDark() {
+        int mask = getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+        return mask == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+    }
+    private void pushSystemTheme() {
+        final WebView view = web;
+        if (view == null) return;
+        final boolean dark = isSystemDark();
+        view.post(() -> view.evaluateJavascript(
+            "window.__bmSystemDark&&window.__bmSystemDark(" + dark + ")", null));
+    }
+    private boolean isBatteryOptimized() {
+        if (Build.VERSION.SDK_INT < 23) return false;
+        android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+        return !pm.isIgnoringBatteryOptimizations(getPackageName());
+    }
+    private void promptIgnoreBattery() {
+        try {
+            startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + getPackageName())));
+        } catch (Exception e) { toast("系统不支持该设置"); }
     }
 
     private void copyAssets(String source, File target) throws Exception {
@@ -452,9 +427,12 @@ public class MainActivity extends Activity {
                         // 页面导航会清掉内联样式：就绪后按当前 insets 重推 CSS 变量
                         pushInsets(insTop, insBottom, insLeft, insRight);
                         flushShare();  // #25：冷启动带进来的分享文本，页面就绪后再交前端
-                        // #29：局域网自动发现改由页面前端驱动（session-sync.js 就绪 1.5s 后调
-                        // BiliMusicNative.autoConnect(mid)，此后每 20s / 回前台再补扫）——那里拿得到
-                        // 当前登录 mid，能只连「同一账号」的电脑端，这里不再重复扫描。
+                        // v2.2 验收反馈③：电池白名单首开主动问一次（设置入口仅作被拒后的兜底）
+                        if (isBatteryOptimized() && !prefs().getBoolean("batteryAsked", false)) {
+                            prefs().edit().putBoolean("batteryAsked", true).apply();
+                            runOnUiThread(() -> promptIgnoreBattery());
+                        }
+                        pushSystemTheme();
                     }
                 });
             }
@@ -533,6 +511,14 @@ public class MainActivity extends Activity {
         runOnUiThread(() -> {
             if (web != null && web.canGoBack()) web.goBack(); else super.onBackPressed();
         });
+    }
+    @Override protected void onResume() {
+        super.onResume();
+        pushSystemTheme();  // 后台期间错过的系统主题切换在这里补推
+    }
+    @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        pushSystemTheme();  // uiMode 已加入 configChanges：系统深浅切换不重建 Activity，原地推给页面
     }
     @Override protected void onDestroy() {
         if (web != null) web.destroy();

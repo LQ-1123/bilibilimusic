@@ -23,11 +23,7 @@
          hx-get="/partials/recent" hx-trigger="load, refreshSongs from:body" hx-swap="innerHTML"></div>
   </div>
 
-  <!-- 最近播放：本机播放记录（localStorage），无记录时整栏隐藏 -->
-  <div class="sec sec-history" id="sec-history" hidden>
-    <div class="sec-head"><h2>最近播放</h2><span class="hint">本机记录</span></div>
-    <div class="rack" id="history-rack"></div>
-  </div>
+  <!-- 最近播放：前端暂砍（等重新设计），本机也不再写播放记录 -->
 
   <!-- 流派货架：每个风格一栏，池子优先+搜索补位到 15 首；采集/收藏后 recsChanged 刷新 -->
   <div id="genre-shelves" hx-get="/partials/genre-shelves" hx-trigger="load, recsChanged from:body" hx-swap="innerHTML"></div>
@@ -119,6 +115,11 @@
   <div id="sr-body"></div>
 </section>
 
+<!-- 播放历史（v2.3 重设计）：桌面侧边栏独立视图——累计时长 + 最常听歌单 + 最近流水（手机端仍走账号页卡片；窄屏隐藏） -->
+<section class="view" id="view-stats">
+  <div class="sv-host" hx-get="/partials/stats-view" hx-trigger="load, bm-stats from:body" hx-swap="innerHTML"></div>
+</section>
+
 <section class="view" id="view-account">
   <div class="acct-card">
     {% if user.face %}
@@ -132,7 +133,7 @@
     </div>
   </div>
   <!-- #42：行尾的解释性小字一律去掉（像半成品）；状态类信息交给界面本身表达 -->
-  <div class="acct-stats" hx-get="/partials/stats" hx-trigger="load" hx-swap="innerHTML"></div>
+  <!-- v2.3：手机端不再展示听歌统计卡（统计集中在电脑端「播放历史」页） -->
   <div class="acct-rows">
     {% if not logged_in %}
     <button class="acct-row" type="button" onclick="openLogin()"><span>◐</span>登录 B 站账号</button>
@@ -140,7 +141,8 @@
     <button class="acct-row" type="button" onclick="syncNow()"><span>⇅</span>同步 B 站收藏夹</button>
     <button class="acct-row" type="button" onclick="document.getElementById('btn-export').click()"><span>⤴</span>导出歌单链接</button>
     {% endif %}
-    <button class="acct-row" type="button" onclick="toggleTheme()"><span>◐</span>外观 · 亮 / 暗</button>
+    <button class="acct-row" type="button" onclick="cycleTheme()"><span>◐</span><span id="acct-theme-label">外观 · 自动</span></button>
+    <button class="acct-row" type="button" onclick="cycleQuality()"><span>♪</span><span id="acct-quality-label">音质 · 自动</span></button>
     <button class="acct-row hidden" type="button" id="acct-battery" onclick="requestBatteryWhitelist()"><span>⚡</span><span>防卡顿 · 加入电池白名单</span></button>
     <button class="acct-row" type="button" onclick="toggleNorm()"><span>≡</span><span id="acct-norm-label">音量均衡 · 开</span></button>
     <button class="acct-row" type="button" onclick="clearListenCache()"><span>◇</span><span id="acct-cache-label" class="cache-label">听歌缓存</span></button>

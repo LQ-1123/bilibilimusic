@@ -1089,17 +1089,17 @@ body.playing #up-panel .i-pause{display:block}
 #lyrics-panel.closing{pointer-events:none}
 /* 歌曲播放大页面（歌词全屏）自带控制条：打开时全局播放条不叠显 */
 body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
-#view-home,#view-detail,#view-account,#view-recommend,#view-up,#view-search,#view-library{animation:viewIn .34s cubic-bezier(.3,.85,.3,1)}
+#view-home,#view-detail,#view-account,#view-recommend,#view-up,#view-search,#view-library,#view-stats{animation:viewIn .34s cubic-bezier(.3,.85,.3,1)}
 @keyframes viewIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){
   #q-drawer,#player-bar{transition:none !important}
   body.qside-enter #q-drawer .q-pills,body.qside-enter #q-drawer .q-sec,
   body.qside-enter #q-drawer .q-list li{animation:none !important}
-  #up-panel,#lyrics-panel,#view-home,#view-detail,#view-account,#view-recommend,#view-up{transition:none !important;animation:none !important}
+  #up-panel,#lyrics-panel,#view-home,#view-detail,#view-account,#view-recommend,#view-up,#view-stats{transition:none !important;animation:none !important}
 }
 
 /* ---------- 歌单详情 ---------- */
-#view-home,#view-detail,#view-account,#view-recommend,#view-up,#view-search,#view-library,#view-devices{display:none}
+#view-home,#view-detail,#view-account,#view-recommend,#view-up,#view-search,#view-library,#view-devices,#view-stats{display:none}
 .app[data-view="home"] #view-home{display:block}
 .app[data-view="detail"] #view-detail{display:block}
 .app[data-view="recommend"] #view-recommend{display:block}
@@ -1107,6 +1107,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .app[data-view="search"] #view-search{display:block}
 .app[data-view="library"] #view-library{display:block}
 .app[data-view="devices"] #view-devices{display:block}   /* #26 设备页 */
+.app[data-view="stats"] #view-stats{display:block}       /* 播放历史：桌面侧栏与手机「最近播放」Tab 共用同一视图（v2.3 起手机端可见） */
 .app[data-view="detail"] .topbar{display:none}
 /* 详情 / 歌单视图里点搜索仍要能弹出来（上面那条 display:none 优先级更高，这里显式放行） */
 .app[data-view="detail"] .topbar.searching{display:flex}
@@ -1165,6 +1166,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 /* ---------- 账号（移动端 Tab 用） ---------- */
 /* 顶部要叠加安全区 inset（--inset-top），否则卡片顶到状态栏/刘海下面 */
 #view-account{padding-top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)))}
+/* 播放历史同款让位：手机端「最近播放」Tab 打开的也是这个视图（v2.3，桌面不受影响） */
+@media (max-width:900px){#view-stats{padding-top:calc(20px + var(--inset-top, env(safe-area-inset-top, 0px)))}}
 .acct-card{background:var(--card);border:1px solid var(--stroke);border-radius:16px;padding:18px;display:flex;gap:14px;align-items:center}
 .acct-card .ava{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px;object-fit:cover;
   background:radial-gradient(120% 120% at 20% 15%, #ff9db9, #fb7299 55%, #b23a67)}
@@ -1178,42 +1181,57 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
 .acct-row.danger{color:#f87171}  /* #41：退出登录行 */
 .acct-row.danger:hover{background:rgba(248,113,113,.12)}
 
-/* ---------- B6 听歌统计（账号页卡片 / 桌面统计弹窗共用） ---------- */
-.acct-stats{margin-bottom:14px}
-.stat-card{background:var(--card);border:1px solid var(--stroke);border-radius:16px;padding:18px}
-.stat-hero{display:flex;align-items:center;gap:16px}
-.stat-big{display:flex;align-items:baseline;gap:5px;flex:none}
-.stat-big b{font-size:34px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-.stat-big span{font-size:12px;color:var(--txt2)}
-.stat-hero-meta{min-width:0}
-.stat-hero-meta .t{font-size:13.5px;font-weight:600}
-.stat-hero-meta .t b{color:var(--pink-txt)}
-.stat-hero-meta .s{font-size:12px;color:var(--txt2);margin-top:4px}
-.stat-bars{display:flex;align-items:flex-end;gap:7px;height:64px;margin:18px 0 2px;padding:0 2px}
-.stat-bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end;min-width:0}
-.stat-bar{width:100%;max-width:26px;border-radius:5px;background:var(--pink-tint);min-height:3px}
-.stat-bar-col.today .stat-bar{background:var(--pink)}
-.stat-bar-col span{font-size:10px;color:var(--txt3);white-space:nowrap}
-.stat-sec-title{font-size:12.5px;font-weight:700;color:var(--txt2);margin:16px 0 6px}
-.stat-top{list-style:none;display:flex;flex-direction:column;gap:2px}
-.stat-top li{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:9px}
-.stat-top li:hover{background:var(--card2)}
-.stat-top .n{width:16px;text-align:center;font-size:12px;color:var(--txt3);font-weight:700;flex:none;font-variant-numeric:tabular-nums}
-.stat-top li:first-child .n{color:var(--pink)}
-.stat-top .mtx{min-width:0;flex:1}
-.stat-top .tt{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stat-top .ar{font-size:11.5px;color:var(--txt2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.stat-top .p{font-size:11.5px;color:var(--txt2);flex:none;font-variant-numeric:tabular-nums}
-.stat-artists{display:flex;flex-wrap:wrap;gap:8px;margin-top:2px}
-.stat-artist{font-size:12px;padding:5px 12px;border-radius:999px;background:var(--card2);border:1px solid var(--stroke);color:var(--txt2)}
-.stat-artist b{color:var(--txt);font-weight:600;margin-left:2px}
-.stat-foot{font-size:11.5px;color:var(--txt3);margin-top:14px;border-top:1px solid var(--stroke);padding-top:12px}
-.stat-empty{font-size:13px;color:var(--txt2);line-height:1.9;text-align:center;padding:8px 0}
-.stats-box{width:min(480px,calc(100vw - 40px));position:relative}
-.stats-box-title{font-size:17px;font-weight:800;margin-bottom:4px}
-#stats-close{position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:50%;
-  color:var(--txt2);display:grid;place-items:center;font-size:12px;transition:.15s}
-#stats-close:hover{color:var(--txt);background:var(--card2)}
+/* ---------- 播放历史（桌面侧边栏独立视图，v2.3 重设计）：排版极简，无图表 ----------
+   大字累计时长 + 两段列表（最常听带封面成歌单 / 最近播放按天分组），细分隔线。 */
+.hv{padding:6px 2px 40px}
+.hv-empty{font-size:13.5px;color:var(--txt2);line-height:1.9;background:var(--card);border:1px solid var(--stroke);
+  border-radius:16px;padding:28px;text-align:center;margin-top:20px;max-width:840px}
+/* 文字块限宽保可读；卡片架不限宽——宽屏下横滑到主区右缘，与主页货架一致
+   （原来整列 max-width:860 会把末尾卡片裁一半、右侧留大片空白，桌面端显示 bug） */
+.hv-hero{padding:26px 0 24px;border-bottom:1px solid var(--stroke);max-width:840px}
+.hv-hero .lb{font-size:12.5px;font-weight:700;color:var(--txt2);letter-spacing:.4px}
+.hv-num{margin-top:10px;font-size:46px;font-weight:800;letter-spacing:-1.2px;line-height:1.05;font-variant-numeric:tabular-nums}
+.hv-num i{font-style:normal;font-size:15px;font-weight:600;color:var(--txt2);margin:0 8px 0 3px;letter-spacing:0}
+.hv-sub{margin-top:9px;font-size:12.5px;color:var(--txt3)}
+.hv-sec{margin-top:30px}
+.hv-sec-head{display:flex;align-items:baseline;gap:10px;max-width:840px}
+.hv-sec-head h3{font-size:15px;font-weight:800;letter-spacing:.3px}
+.hv-playall{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--pink);background:none;border:none;
+  cursor:pointer;padding:5px 10px;border-radius:9px}
+.hv-playall:hover{background:var(--pink-tint)}
+/* 最常听＝大封面横滑卡片架（与主页货架同一设计语言，砍掉纵向榜单降密度） */
+.hv-rack{display:flex;gap:18px;overflow-x:auto;list-style:none;margin:14px -2px 4px;padding:4px 2px 14px;
+  scroll-snap-type:x proximity;scrollbar-width:none}
+.hv-rack::-webkit-scrollbar{display:none}
+.hv-card{width:168px;flex:none;cursor:pointer;background:none;padding:0;text-align:left;scroll-snap-align:start}
+.hv-card .im{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:14px;corner-shape:superellipse(2);
+  overflow:hidden;background:var(--raise);box-shadow:var(--shadow-sm);transition:transform .28s cubic-bezier(.2,.7,.3,1)}
+.hv-card:hover .im{transform:translateY(-5px)}
+.hv-card .im img{width:100%;height:100%;object-fit:cover;display:block}
+.hv-card .cv{width:100%;height:100%;border-radius:0;font-size:30px;display:grid;place-items:center;
+  color:var(--txt3);background:var(--card2)}  /* ♪ 占位在卡片里铺满 */
+.hv-card .rank{position:absolute;top:8px;left:8px;min-width:22px;height:22px;padding:0 7px;border-radius:999px;
+  background:rgba(10,10,16,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  color:#fff;font-size:11.5px;font-weight:800;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.hv-card:first-child .rank{background:var(--pink)}
+.hv-card .t1{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px;
+  font-size:12.5px;font-weight:700;line-height:1.35;margin-top:9px}
+.hv-card .t2{display:block;font-size:11px;color:var(--txt2);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 最近播放＝按天一栏，每天一条横滑卡片架；时刻做成封面右下角的小角标 */
+.hv-day{margin-top:22px}
+.hv-day-label{font-size:11.5px;font-weight:700;color:var(--txt3);letter-spacing:.5px}
+.hv-card .at{position:absolute;right:8px;bottom:8px;padding:2.5px 8px;border-radius:999px;
+  background:rgba(10,10,16,.55);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  color:#fff;font-size:10.5px;font-weight:700;font-variant-numeric:tabular-nums}
+/* 窄屏（手机「最近播放」Tab）：主区已有 16px 边距，大字稍收 */
+@media (max-width:900px){
+  .hv{padding:0 0 30px}
+  .hv-num{font-size:38px;letter-spacing:-.8px}
+  .hv-hero{padding:18px 0 18px}
+  .hv-sec{margin-top:22px}
+  .hv-rack{margin:14px -16px 4px;padding:4px 16px 14px;scroll-padding-left:16px}  /* 卡片架通栏到屏幕边 */
+  .hv-card{width:158px}
+}
 
 /* ---------- 导出弹窗 / 登录 ---------- */
 .modal{position:absolute;inset:0;z-index:120;display:grid;place-items:center;background:rgba(5,5,10,.55);
@@ -1306,7 +1324,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
      否则在手机上结果列表会被键盘盖住。
      宽度与上方播放条完全对齐（同一条公式 + 居中），手机端搜索框与播放条左右齐平（#39） */
   .topbar.searching{display:flex;position:fixed;left:12px;right:12px;margin-inline:auto;
-    width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
+    width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
     max-width:calc(100% - 24px);
     bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--kb, 0px));top:auto;z-index:130;
     border-width:1px;border-style:solid;border-radius:999px;padding:8px 10px;gap:8px;
@@ -1327,7 +1345,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   /* 结果面板从胶囊上方展开（导航条高 66px + 底距 14px + 8px 间隙）。
      max-height 里再减去 --kb：键盘弹起时面板同样收窄，保证整块都在键盘之上 */
   .search-drop{top:auto;left:12px;right:12px;margin-inline:auto;
-    width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
+    width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
     max-width:calc(100% - 24px);
     bottom:calc(88px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--kb, 0px));
     /* 面板高度预算里给「播放条(66) + 两个 10px 间隙 + 顶部留白」留位置：
@@ -1351,7 +1369,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
      进度条、上一首、收藏/歌词/队列都不显示（歌词仍可点封面打开） */
   #player-bar{left:12px;right:12px;bottom:calc(96px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));
     /* 与下方悬浮组同宽同高（导航条 + 间距 + 圆钮），居中 */
-    width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
+    width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px + var(--nav-gap) + var(--nav-orb));
     max-width:calc(100% - 24px);min-height:var(--nav-h);
     grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"meta ctl";padding:8px 14px;gap:10px;
     transition:bottom .26s cubic-bezier(.3,.85,.3,1)}  /* 搜索时被顶到结果面板之上，动起来别跳 */
@@ -1493,14 +1511,15 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .dt-hero .dt-cvr{width:130px;height:130px}
   .dt-title{font-size:24px}
   .dt-info{flex-basis:100%}
-  /* 底部悬浮组的公共尺寸：导航条与上方播放条共用，保证两条宽度/高度相当 */
-  body{--nav-pad:6px;--nav-tabw:84px;--nav-gap:10px;--nav-orb:64px;--nav-h:66px}
+  /* 底部悬浮组的公共尺寸：导航条与上方播放条共用，保证两条宽度/高度相当
+     v2.3 起导航条 4 格，--nav-tabw 按最窄 375px 屏反推（4×64 + 圆钮 + 边距 ≤ 375） */
+  body{--nav-pad:6px;--nav-tabw:64px;--nav-gap:10px;--nav-orb:64px;--nav-h:66px}
   #m-dock{display:flex;align-items:center;justify-content:center;gap:var(--nav-gap);position:absolute;left:12px;right:12px;bottom:calc(14px + var(--inset-bottom, env(safe-area-inset-bottom, 0px)));z-index:65}
   /* 导航条：只包住内容（不再撑满屏宽），更高更「胖」；--nav-pad 是选中块四周留白，
      nav-liquid.js 会读同一个变量来算位移，改这里就能整体缩放留白 */
   /* #29：导航条尺寸只认 body 上的 --nav-*（此前这里又写死了一份 84px，窄屏 ≤370px 的响应式收窄被盖掉，
      播放条与「导航条 + 搜索圆钮」宽度就对不齐了）。 */
-  .m-tabs{flex:none;width:calc(var(--nav-tabw)*3 + var(--nav-pad)*2 + 2px);max-width:100%;height:var(--nav-h);border-radius:999px;
+  .m-tabs{flex:none;width:calc(var(--nav-tabw)*4 + var(--nav-pad)*2 + 2px);max-width:100%;height:var(--nav-h);border-radius:999px;
     display:flex;align-items:center;position:relative;isolation:isolate;
     border-width:1px;border-style:solid;padding:var(--nav-pad);box-sizing:border-box;touch-action:pan-y}
   /* 选中块（液态玻璃）：位置与形变由 nav-liquid.js 写入
@@ -1508,7 +1527,7 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
      无 JS 时退回 :not(.liquid) 的百分比定位 */
   .m-tabs::before{content:"";position:absolute;
     inset:var(--nav-pad) auto var(--nav-pad) var(--nav-pad);
-    width:var(--pill-w,calc((100% - var(--nav-pad)*2)/3));
+    width:var(--pill-w,calc((100% - var(--nav-pad)*2)/4));
     border-radius:999px;pointer-events:none;z-index:-1;
     background:var(--nav-pill);
     border:1px solid var(--nav-pill-border);
@@ -1518,7 +1537,8 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
     transform:translate3d(var(--pill-x,0px),0,0) scale(var(--pill-sx,1),var(--pill-sy,1))}
   .m-tabs:not(.liquid)::before{transform:translateX(0);transition:transform .55s cubic-bezier(.22,1.28,.36,1)}
   .m-tabs:not(.liquid):has([data-mtab="library"].on)::before{transform:translateX(100%)}
-  .m-tabs:not(.liquid):has([data-mtab="account"].on)::before{transform:translateX(200%)}
+  .m-tabs:not(.liquid):has([data-mtab="history"].on)::before{transform:translateX(200%)}
+  .m-tabs:not(.liquid):has([data-mtab="account"].on)::before{transform:translateX(300%)}
   .m-tab{flex:0 0 var(--nav-tabw);min-width:0;height:52px;margin:0;display:flex;justify-content:center;flex-direction:column;align-items:center;gap:4px;
     color:var(--txt);font-size:10px;font-weight:700;padding:0;border-radius:999px;letter-spacing:0;
     transition:color .22s,transform .3s cubic-bezier(.22,1.28,.36,1);background:none;border:none;-webkit-tap-highlight-color:transparent}
@@ -1539,9 +1559,9 @@ body:has(#lyrics-panel:not(.hidden)) #player-bar{display:none !important}
   .m-orb{width:var(--nav-orb);height:var(--nav-orb);flex:none;border-radius:50%;display:grid;place-items:center;color:var(--txt);
     border-width:1px;border-style:solid}
   .m-orb svg{width:22px;height:22px}
-  /* 窄屏（iPhone SE 等）：整体收窄，保证两条 + 圆钮都不撑出屏幕 */
+  /* 窄屏（iPhone SE 等）：整体收窄，保证「四格 + 圆钮」不撑出屏幕 */
   @media (max-width:370px){
-    body{--nav-tabw:66px;--nav-orb:58px;--nav-h:62px}
+    body{--nav-tabw:58px;--nav-orb:58px;--nav-h:62px}
   }
   /* 搜索下拉跟随悬浮胶囊定位：统一由上面那条 .search-drop 规则负责（同宽同位置 + 键盘避让），
      这里不再写第二份（原来重复定义会盖掉 --kb 的 max-height） */

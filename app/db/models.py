@@ -123,4 +123,5 @@ class PlayLog(SQLModel, table=True):
     artist: str = ""
     duration: int = 0  # 歌曲时长（秒）
     listened: int = 0  # 实际收听秒数（分钟统计用真实值，不是拿时长凑）
+    cover: str = ""  # 播放历史页封面（v2.3：起播时随流水落账；老流水由 view 接口懒补回写）
     played_at: datetime = Field(default_factory=datetime.utcnow, index=True)

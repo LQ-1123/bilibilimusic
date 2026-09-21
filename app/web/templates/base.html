@@ -8,18 +8,19 @@
   <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/png" href="/static/icon-192.png">
   <script>
-  (function(){var t=null;try{t=localStorage.getItem("bmThemeChoice")}catch(e){}
+  (function(){var t=null;try{t=localStorage.getItem("bmThemePref")}catch(e){}
   if(!t&&window.matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)t="light";
   document.documentElement.dataset.theme=t||"dark";})();
   </script>
-  <link rel="stylesheet" href="/static/style.css?v=271">
+  <link rel="stylesheet" href="/static/style.css?v=278">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/ticker.js?v=3" defer></script>
   <script src="/static/share.js?v=1" defer></script>
   <script src="/static/norm.js?v=2" defer></script>
-  <script src="/static/app.js?v=110" defer></script>
+  <script src="/static/play_route.js?v=1" defer></script>
+  <script src="/static/app.js?v=118" defer></script>
   <script src="/static/export.js?v=8" defer></script>
-  <script src="/static/v3.js?v=109" defer></script>
+  <script src="/static/v3.js?v=116" defer></script>
   <script src="/static/nav-liquid.js?v=13" defer></script>
   <script src="/static/session-sync.js?v=21" defer></script>
   <script src="/static/back-stack.js?v=7" defer></script>
@@ -34,6 +35,8 @@
     <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="7.5" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M4.5 20.5c1-3.6 4-5.5 7.5-5.5s6.5 1.9 7.5 5.5"/></symbol>
     <symbol id="i-side-home" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m2.5 10 9.5-8 9.5 8M5 8v12a1 1 0 0 0 1 1h4v-7h4v7h4a1 1 0 0 0 1-1V8"/></symbol>
     <symbol id="i-side-discover" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.4"/><rect x="14" y="3" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><rect x="14" y="14" width="7" height="7" rx="1.4"/></g></symbol>
+    <symbol id="i-stats" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 20h16"/><path d="M7.5 16v-4.5M12 16V5.5M16.5 16v-7"/></g></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3.6 9.2A9 9 0 1 1 3 12"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M3 4.5V9h4.5"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 7.5V12l3.2 1.9"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m9 5 7 7-7 7"/></symbol>
     <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M21.3 13.2A9.2 9.2 0 1110.8 2.7a7.3 7.3 0 0010.5 10.5z"/></symbol>
@@ -91,6 +94,7 @@
       <button class="side-item on" type="button" id="navHome" data-nav="home" onclick="navGo(this)" aria-current="page"><svg aria-hidden="true"><use href="#i-side-home"/></svg>首页</button>
       <button class="side-item" type="button" data-nav="recommend" onclick="navGo(this)"><svg aria-hidden="true"><use href="#i-side-discover"/></svg>推荐</button>
       <button class="side-item" type="button" data-nav="up" onclick="navGo(this)"><svg aria-hidden="true"><use href="#i-user"/></svg>UP 主</button>
+      <button class="side-item" type="button" data-nav="stats" onclick="navGo(this)"><svg aria-hidden="true"><use href="#i-history"/></svg>播放历史</button>
     </nav>
     <nav class="side-pls" id="playlists-bar" aria-label="资料库与歌单"
          hx-get="/partials/playlists" hx-trigger="load, playlistsChanged from:body" hx-swap="innerHTML">
@@ -110,16 +114,17 @@
         <svg class="su-more" aria-hidden="true"><use href="#i-chevron"/></svg>
       </button>
       <div class="user-pop" id="user-pop">
-        <label class="up-row" title="切换深色 / 浅色外观">
-          <input type="checkbox" id="light-toggle"><span>浅色外观</span>
-          <span class="switch"><i></i></span>
-        </label>
+        <button class="up-row" type="button" onclick="cycleTheme()" title="自动 = 跟随系统深浅色">
+          <span>◐</span><span id="pop-theme-label">外观 · 自动</span>
+        </button>
+        <button class="up-row" type="button" onclick="cycleQuality()" title="自动 = 每首都取当前可用的最高音质（Hi-Res 随会员权益）；手动切换立即对正在放的歌生效">
+          <span>♪</span><span id="pop-quality-label">音质 · 自动</span>
+        </button>
         <label class="up-row" title="播放时自动对齐歌曲间响度（目标 -16dB）">
           <input type="checkbox" class="norm-switch-input"><span>音量均衡</span>
           <span class="switch"><i></i></span>
         </label>
         <button class="up-row" type="button" id="side-sync"><span>⇅</span><span>同步 B 站收藏夹</span></button>
-        <button class="up-row" type="button" onclick="openStatsModal()"><span>◷</span><span>听歌统计</span></button>
         <button class="up-row" type="button" onclick="clearListenCache()" title="清空本机听歌缓存（不影响曲库与收藏）">
           <span>◇</span><span class="cache-label">听歌缓存</span>
         </button>
@@ -308,6 +313,7 @@
     <div class="m-tabs">
       <button type="button" class="m-tab on" data-mtab="home" onclick="mTab('home',this)"><svg><use href="#i-home"/></svg>主页</button>
       <button type="button" class="m-tab" data-mtab="library" onclick="mTab('library',this)"><svg><use href="#i-note"/></svg>资料库</button>
+      <button type="button" class="m-tab" data-mtab="history" onclick="mTab('history',this)"><svg><use href="#i-history"/></svg>最近播放</button>
       <button type="button" class="m-tab" data-mtab="account" onclick="mTab('account',this)"><svg><use href="#i-user"/></svg>账号</button>
     </div>
     <button type="button" class="m-orb" onclick="orbSearch(event)" title="搜索"><svg><use href="#i-search"/></svg></button>
@@ -332,8 +338,7 @@
           <div id="qr-status">正在生成二维码…</div>
         </div>
         <button id="qr-refresh" class="hidden" type="button">二维码已失效，点击刷新</button>
-        <p class="bl-qr-sub">请使用<b>哔哩哔哩客户端</b>扫码登录<br>
-          <span id="qr-tap-hint">手机/平板上点二维码存入相册（App 内），浏览器里长按二维码 → 保存图片；再到 B 站「扫一扫 → 相册」选它</span></p>
+        <p class="bl-qr-sub">请使用<b>哔哩哔哩客户端</b>扫码登录</p>
         <button id="bl-open-browser" type="button" title="在系统浏览器里完成登录">扫不了码？在系统浏览器登录</button>
         <div class="bl-foot">
           <p>登录或完成注册即代表你同意
@@ -341,15 +346,6 @@
             <a href="https://www.bilibili.com/blackboard/privacy-pc.html" target="_blank" rel="noopener">隐私政策</a>
           </p>
         </div>
-      </div>
-    </div>
-  </div>
-  <div id="stats-modal" class="modal hidden">
-    <div class="modal-box stats-box">
-      <button id="stats-close" type="button" title="关闭">✕</button>
-      <div class="stats-box-title">听歌统计</div>
-      <div id="stats-body"></div>
-    </div>
   </div>
 </div>
 </body>

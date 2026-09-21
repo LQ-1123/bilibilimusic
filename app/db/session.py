@@ -90,6 +90,12 @@ def _migrate(engine) -> None:
         if "mid" not in album_cols:
             with engine.begin() as conn:
                 conn.exec_driver_sql("ALTER TABLE album ADD COLUMN mid INTEGER DEFAULT 0")
+    # v2.3 播放历史封面：老库的 playlog 补 cover 空列（老流水由 view 接口懒补回写）。
+    if "playlog" in tables:
+        playlog_cols = {c["name"] for c in insp.get_columns("playlog")}
+        if "cover" not in playlog_cols:
+            with engine.begin() as conn:
+                conn.exec_driver_sql("ALTER TABLE playlog ADD COLUMN cover VARCHAR DEFAULT ''")
     if "song" not in tables:
         return
     # SQLite cannot drop the implicit index created by `bvid UNIQUE`; rebuild

@@ -138,13 +138,16 @@
     });
   })();
 
-  // v2.1 A3/A6 音质策略：Wi-Fi/桌面 → 最高档（Hi-Res 随会员权益）；蜂窝 → 192K 省流量；
-  // 弱网降档后 10 分钟内直接 64K，窗口过期下一首自然回升。tier 由后端 /api/stream 消费。
+  // v2.3 音质策略：设置里可显式选档（bmQuality：best/192/132/64，v3.js cycleQuality 写入）。
+  // 选了档就用它——弱网自愈也不再降档（用户已表态）。自动（默认）＝每首都取当前可用的
+  // 最高档（Hi-Res/杜比随会员权益下发），仅卡顿自愈第二次硬重开时临时 64K 保命，
+  // 10 分钟窗口后自然回升。（v2.1 的蜂窝自动降 192K 已移除：那是「音质糊」反馈的来源之一，
+  // 省流量请显式选 192K 档。）
   var weakNetUntil = 0;
   function netTier() {
+    var pref = lsGet("bmQuality");
+    if (pref === "best" || pref === "192" || pref === "132" || pref === "64") return pref;
     if (Date.now() < weakNetUntil) return "64";
-    var c = navigator.connection || window.connection;
-    if (c && c.type === "cellular") return "192";
     return "best";
   }
   function withTier(src) {
@@ -153,6 +156,37 @@
     if (/(?:[?&])tier=[^&]*/.test(src)) return src.replace(/([?&])tier=[^&]*/, "$1tier=" + t);
     return src + (src.indexOf("?") >= 0 ? "&" : "?") + "tier=" + t;
   }
+  // 音质档位切换后立即生效：正在放的歌原地换 src（保进度续播），并重探测档位标签。
+  // 主队列在放（非镜像态）优先；推荐试听在放时同样换档。
+  window.__qualityApply = function () {
+    var song = playlist[current];
+    if (song && audio.src && !mirror) {
+      var el = audio, pos = audio.currentTime || 0, wasPaused = audio.paused;
+      var onMeta = function () {
+        el.removeEventListener("loadedmetadata", onMeta);
+        try {
+          if (pos > 1 && isFinite(el.duration) && pos < el.duration - 1) el.currentTime = pos;
+        } catch (e) {}
+        if (!wasPaused) { resumeGraph(); el.play().catch(function () {}); }
+      };
+      el.addEventListener("loadedmetadata", onMeta);
+      el.src = withTier(song.audioUrl);
+      window.__qualityProbe(song.bvid, song.cid);
+      return;
+    }
+    if (recAudio && recAudio.src && !recAudio.paused && recAudio.dataset.bvid) {
+      var rp = recAudio.currentTime || 0;
+      var onMeta2 = function () {
+        recAudio.removeEventListener("loadedmetadata", onMeta2);
+        try {
+          if (rp > 1 && isFinite(recAudio.duration) && rp < recAudio.duration - 1) recAudio.currentTime = rp;
+        } catch (e) {}
+        recAudio.play().catch(function () {});
+      };
+      recAudio.addEventListener("loadedmetadata", onMeta2);
+      recAudio.src = withTier("/api/stream/" + recAudio.dataset.bvid);
+    }
+  };
   window.__weakNetNow = function () { weakNetUntil = Date.now() + 10 * 60 * 1000; };
   // 档位标签：起播后探测实际选中的档位，播放条歌手位显示「歌手 · Hi-Res」（零提示文化：不弹胶囊）
   var qualityLabelNow = "";
@@ -516,7 +550,7 @@
   }
 
   function markPlayingCard(songId) {
-    var cards = document.querySelectorAll("#songs .card, #dt-songs .card, #history-rack .card");
+    var cards = document.querySelectorAll("#songs .card, #dt-songs .card");
     for (var i = 0; i < cards.length; i++) {
       cards[i].classList.toggle("playing", cards[i].dataset.play === String(songId));
     }
@@ -635,13 +669,8 @@
     window.__qualityProbe(song.bvid, song.cid);
     audio.play().catch(function () {});
     updateNowPlaying(song);
-    recordHistory(song);
     if (smartEnabled()) prefetchAnalyses();
     planChain(); // 以新歌为起点重排自动决策链
-  }
-  function recordHistory(song) {
-    if (song.id) pushHistory({ k: "s" + song.id, kind: "song", id: song.id, title: song.title, artist: song.artist, cover: song.coverUrl });
-    else if (song.bvid) pushHistory({ k: "v" + song.bvid, kind: "stream", bvid: song.bvid, title: song.title, artist: song.artist, cover: song.coverUrl });
   }
 
   // #23：跨端队列项 → 本机播放条目（接收端自己向后端取流，B 站按视频+分 P 路由）
@@ -847,14 +876,12 @@
       var wasAlbum = albumQueueId !== null;
       albumQueueId = null; ++queueGeneration;
       var want = playEl.dataset.play, gen = queueGeneration;
+      // 曲库/队列点歌＝只播这首、队列不动（findSong 只认 id）。此前这里看到 song.albumId
+      // 就 playAlbum 整张接管队列——合集单曲被收藏进曲库后一点播，原队列就被合集顶掉。
+      // 「从这首播整张」只属于专辑/合集详情行的显式入口（上面 data-album 分支）。
       var playFound = function () {
-        for (var i = 0; i < playlist.length; i++) {
-          if (String(playlist[i].id) === want) {
-            if (playlist[i].albumId) playAlbum(playlist[i].albumId, playlist[i].id);
-            else playSongSmart(playlist[i]);
-            return true;
-          }
-        }
+        var hit = window.BiliPlayRoute.findSong(playlist, want);
+        if (hit) { playSongSmart(hit); return true; }
         return false;
       };
       var ready = playlist.length && !wasAlbum ? Promise.resolve() : refreshPlaylist();
@@ -1210,6 +1237,13 @@
   };
 
   // ---------- T1 轻缓存：只有一行状态 + 一键清空（无管理界面） ----------
+  // 听歌统计与缓存行联动刷新（验收反馈②：别让数字停在旧值）：落账/清缓存/回前台/
+  // 账号 Tab 点开/播放中每 30s 都会刷一次；stats 卡片经 bm-stats 事件由 htmx 重拉。
+  // B6 听歌统计桌面入口改为侧边栏独立视图（/partials/stats-view），弹窗版已移除。
+  function refreshStatsUI() {
+    if (window.htmx) htmx.trigger(document.body, "bm-stats");
+    refreshCacheRow();
+  }
   function refreshCacheRow() {
     fetch("/api/cache/stats")
       .then(function (r) { return r.ok ? r.json() : null; })
@@ -1222,12 +1256,39 @@
       .catch(function () {});
   }
   refreshCacheRow();
+  setInterval(function () {
+    if (document.hidden) return;
+    var playing = (audio && !audio.paused) || (recAudio && !recAudio.paused);
+    if (playing) refreshStatsUI();
+  }, 30000);
+  document.addEventListener("click", function (e) {
+    var tab = e.target.closest && e.target.closest(".m-tab");
+    if (tab && tab.dataset && tab.dataset.mtab === "account") setTimeout(refreshStatsUI, 300);
+  });
+  // 播放历史页（最常听/最近播放）点歌：优先在当前队列里找同一首（队列不动），
+  // 曲库/队列里没有就走实时流试听（推荐/搜索同一套路），绝不展开改队列。
+  document.addEventListener("click", function (e) {
+    var row = e.target.closest && e.target.closest("#view-stats li[data-bvid]");
+    if (!row) return;
+    var bvid = row.dataset.bvid, cid = Number(row.dataset.cid) || 0;
+    if (!bvid) return;
+    for (var i = 0; i < playlist.length; i++) {
+      if (playlist[i].bvid === bvid && (!cid || !playlist[i].cid || Number(playlist[i].cid) === cid)) {
+        playSongSmart(playlist[i]);
+        return;
+      }
+    }
+    if (window.playStream) window.playStream(bvid, {
+      title: row.dataset.title || "", artist: row.dataset.artist || "",
+      cover: row.dataset.cover || "", cid: cid,
+    }, null);
+  });
   window.clearListenCache = function () {
     window.__confirmModal("清空听歌缓存？", "只删本机缓存的音乐文件，不影响曲库、歌单与 B 站收藏。")
       .then(function (ok) {
         if (!ok) return;
         fetch("/api/cache/clear", { method: "POST" })
-          .then(function () { refreshCacheRow(); if (window.__toast) window.__toast("听歌缓存已清空"); })
+          .then(function () { refreshStatsUI(); if (window.__toast) window.__toast("听歌缓存已清空"); })
           .catch(function () {});
       });
   };
@@ -1246,6 +1307,7 @@
       title: title || "",
       artist: artist || "",
       duration: Math.round((song && song.duration) || 0),
+      cover: (song && song.coverUrl) || "",  // v2.3 播放历史行级封面（随流水落账）
       listened: 0,
     };
     statLast = 0;
@@ -1265,7 +1327,7 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
       keepalive: !!keepalive,
-    }).catch(function () {});
+    }).then(function () { refreshStatsUI(); }).catch(function () {});
   }
   function statFlush(minListened) {
     if (!statState) return;
@@ -1274,7 +1336,7 @@
     if (!s.title || s.listened < (minListened || 30)) return; // 跳过不算听
     statPost({
       bvid: s.bvid, cid: s.cid, title: s.title, artist: s.artist,
-      duration: s.duration, listened: Math.round(s.listened),
+      duration: s.duration, listened: Math.round(s.listened), cover: s.cover || "",
     });
   }
   // 兜底：会话恢复/壳层直接 play() 不经过 playSong——play 事件上认歌，歌没变就续记
@@ -1293,27 +1355,10 @@
     if (statState && statState.title && statState.listened >= 30) {
       statPost({
         bvid: statState.bvid, cid: statState.cid, title: statState.title, artist: statState.artist,
-        duration: statState.duration, listened: Math.round(statState.listened),
+        duration: statState.duration, listened: Math.round(statState.listened), cover: statState.cover || "",
       }, true);
     }
   });
-
-  // ---------- B6 听歌统计：桌面弹窗（手机端在账号页内嵌） ----------
-  var statsModal = $("stats-modal");
-  window.openStatsModal = function () {
-    if (!statsModal) return;
-    statsModal.classList.remove("hidden");
-    var body = $("stats-body");
-    if (body) body.innerHTML = '<div class="stat-empty">加载中…</div>';
-    fetch("/partials/stats")
-      .then(function (r) { return r.ok ? r.text() : ""; })
-      .then(function (html) { if (body) body.innerHTML = html; })
-      .catch(function () { if (body) body.innerHTML = ""; });
-  };
-  if (statsModal) {
-    $("stats-close").addEventListener("click", function () { statsModal.classList.add("hidden"); });
-    statsModal.addEventListener("click", function (e) { if (e.target === statsModal) statsModal.classList.add("hidden"); });
-  }
 
   // ---------- v2.2 A4 gapless：结尾前预载下一首，ended 即换轨零等待 ----------
   function cancelPreload() { preload = null; }
@@ -1348,7 +1393,6 @@
     var p = audio.play();
     if (p && p.catch) p.catch(function () {});
     updateNowPlaying(nx);
-    recordHistory(nx);
     planChain();
     saveSession();
   }
@@ -1384,7 +1428,7 @@
     var mainEl = audio;
     var nextEl = mainEl === audioA ? audioB : audioA;
     var D = Math.max(0.3, plan.duration);
-    nextEl.src = nextSong.audioUrl;
+    nextEl.src = withTier(nextSong.audioUrl);
     nextEl.currentTime = plan.entryT;
     var gMain = gains[mainEl.id], gNext = gains[nextEl.id];
     var t0 = audioCtx.currentTime, steps = 40;
@@ -2037,36 +2081,8 @@
   if (loginCloseBtn) loginCloseBtn.addEventListener("click", window.closeLogin);
   if (location.search.indexOf("login=1") >= 0) window.openLogin(); // 兼容旧 /login 链接
 
-  // ---------- 二维码点击：存入相册（单机扫码登录） ----------
-  // 单手机上没法用同一台机器扫自己屏幕：点二维码存进相册，再到 B 站 App「扫一扫 → 相册」选它；
-  // 后端轮询到确认会自动进入。（2026-09 用户拍板：不再自动拉起 B 站 App；触屏浏览器也不落
-  // 下载文件——只有长按二维码走系统「保存图片」才真正进相册。）
-  function qrTap() {
-    var src = qrImg && qrImg.src;
-    if (!src || src.indexOf("data:image") !== 0) return;
-    var nat = window.BiliMusicNative;
-    if (nat && nat.saveQrToGallery) {
-      nat.saveQrToGallery(src);
-      $("qr-status").textContent = "已存到相册 → B 站「扫一扫 → 相册」选它";
-      return;
-    }
-    if (("ontouchstart" in window) || (navigator.maxTouchPoints > 0)) {
-      $("qr-status").textContent = "长按二维码 → 「保存图片 / 存入相册」，再到 B 站 App 扫它";
-      return;
-    }
-    var a = document.createElement("a"); // 桌面浏览器/桌面壳：下载文件（桌面无相册概念）
-    a.href = src;
-    a.download = "bilimusic-login-qr.png";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    $("qr-status").textContent = "二维码已保存 → B 站「扫一扫 → 相册」";
-  }
-  if (qrImg) {
-    qrImg.addEventListener("click", qrTap);
-    qrImg.style.cursor = "pointer";
-    qrImg.title = "点击保存二维码（手机/平板可长按 → 保存图片）";
-  }
+  // ---------- 二维码点按保存：已按用户要求砍掉（2026-09-17） ----------
+  // 手机/桌面都只保留系统级「长按/右键 → 保存图片」这一种方式，无任何自动行为。
 
   // ---------- 浏览器登录兜底（#18）：WebView 里极验滑块可能起不来 ----------
   // 点击 → 桥/新窗口打开系统浏览器登录页（同一后端，Cookie 存服务端互通）→
@@ -2281,23 +2297,16 @@
         return refreshPlaylist().then(function () { window.BiliPlayer.playById(id); });
       }
       ++queueGeneration;
-      // data-play 传来的是字符串、数组里是数字：必须字符串化后再比（严格 === 会全部失配）
-      var want = String(id);
+      var want = id; // data-play 传来的是字符串、数组里是数字：findSong 内部统一字符串化后再比
       function lookup() {
-        for (var i = 0; i < playlist.length; i++) {
-          if (String(playlist[i].id) === want) return playlist[i];
-        }
-        return null;
+        return window.BiliPlayRoute.findSong(playlist, want);
       }
       var song = lookup();
-      if (song) {
-        if (song.albumId) return playAlbum(song.albumId, song.id);
-        playSongSmart(song); return;
-      }
-      // 曲目数组是异步装载的（页面刚开就点播放的竞态）：拉一次全量再重试，不再静默吞掉
+      if (song) { playSongSmart(song); return; }
+      // 曲目数组是异步装载的（页面刚开就点播放的竞态）：拉一次全量再重试，不再静默吞掉。
+      // 同 playFound：不按 albumId 展开整张专辑，队列保持不动。
       refreshPlaylist().then(function () {
         var again = lookup();
-        if (again && again.albumId) return playAlbum(again.albumId, again.id);
         if (again) playSongSmart(again);
       });
     },
@@ -2341,7 +2350,7 @@
       stopTrial();
       cancelTransition();
       naturalPlan = null;
-      audio.src = song.audioUrl;
+      audio.src = withTier(song.audioUrl);
       updateNowPlaying(song);
       var seekTo = Math.max(0, Number(at) || 0);
       return new Promise(function (resolve, reject) {
@@ -2595,7 +2604,9 @@
 
   function playStreamLocal(bvid, meta, btn) {
     ++queueGeneration; // A new trial selection cancels any pending album preparation.
-    if (recAudio && recAudio.dataset.bvid === bvid) {
+    var mCid = Number(meta && meta.cid) || 0;
+    // 同一首（bvid+cid 都同）才走「续播/暂停」；多分 P 的另一集要换 src 重开
+    if (recAudio && recAudio.dataset.bvid === bvid && (Number(recAudio.dataset.cid) || 0) === mCid) {
       if (recAudio.paused || recAudio.ended) {
         pauseMainTracks();   // ← 让主音轨停：否则「主音轨那首 + 这条试听」两首一起放（用户报的 bug）
         recActive = true;
@@ -2614,16 +2625,17 @@
     resetRecButtons();
     pauseMainTracks(); // 主音轨让位（主音轨那首随时可切回；试听态会如实上报会话）
     cancelPreload();   // 试听接管播放：gapless 预载作废
-    recAudio = new Audio(withTier("/api/stream/" + bvid));
+    // v2.3 播放历史：多分 P 曲目按 meta.cid 路由（此前一律播第一分 P）
+    recAudio = new Audio(withTier("/api/stream/" + bvid + (mCid ? "?cid=" + mCid : "")));
     normAttach(recAudio); // 试听/电台流也进均衡（挂不上图就裸放）
-    normPrepare(recAudio, { bvid: bvid, cid: 0 });
-    statBegin(recAudio, { bvid: bvid, cid: 0, duration: Number(meta.duration) || 0 }, meta.title || "实时流试听", meta.artist || "");
+    normPrepare(recAudio, { bvid: bvid, cid: mCid });
+    statBegin(recAudio, { bvid: bvid, cid: mCid, duration: Number(meta.duration) || 0, coverUrl: meta.cover || "" }, meta.title || "实时流试听", meta.artist || "");
     recAudio.dataset.bvid = bvid;
+    recAudio.dataset.cid = mCid;
     recAudio.dataset.title = meta.title || "实时流试听";
     recAudio.dataset.artist = meta.artist || "";
     recAudio.dataset.cover = meta.cover || "";
-    window.__qualityProbe(bvid, 0);
-    pushHistory({ k: "v" + bvid, kind: "stream", bvid: bvid, title: meta.title || "实时流试听", artist: meta.artist || "", cover: meta.cover || "" });
+    window.__qualityProbe(bvid, mCid);
     recActive = true;
     document.body.classList.add("trial");
     syncTrialUI();
@@ -2723,47 +2735,7 @@
     }
   });
 
-  // ---------- 最近播放（本机 localStorage 记录；曲库歌与实时流统一进货架；按账号 mid 隔离） ----------
-  function historyKey() {
-    return "bmHistory:" + (document.body.dataset.mid || "0");
-  }
-  function bmHistory() {
-    try { return JSON.parse(localStorage.getItem(historyKey()) || "[]"); } catch (e) { return []; }
-  }
-  function escHtml(s) {
-    return String(s || "").replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
-  function historyCardHtml(x) {
-    var inner =
-      '<span class="im">' +
-      '<img src="' + escHtml(x.cover) + '" alt="" loading="lazy" referrerpolicy="no-referrer">' +
-      '</span>' +
-      '<span class="t1">' + escHtml(x.title) + "</span>" +
-      '<span class="t2">' + escHtml(x.artist) + "</span>";
-    // 曲库歌走 data-play 委托（点选即播）；实时流走 playRecRow（bvid 试听）
-    return x.kind === "song"
-      ? '<div class="rec-card card" data-play="' + escHtml(x.id) + '" title="' + escHtml(x.title) + '">' + inner + "</div>"
-      : '<div class="rec-card" data-bvid="' + escHtml(x.bvid) + '" onclick="playRecRow(this)" title="' + escHtml(x.title) + '">' + inner + "</div>";
-  }
-  function renderHistory() {
-    var sec = document.getElementById("sec-history");
-    var rack = document.getElementById("history-rack");
-    if (!sec || !rack) return;
-    var h = bmHistory();
-    sec.hidden = h.length === 0;
-    rack.innerHTML = h.map(historyCardHtml).join("");
-  }
-  window.pushHistory = function (entry) {
-    if (!entry || !entry.k) return;
-    var h = bmHistory().filter(function (x) { return x.k !== entry.k; });
-    entry.ts = Date.now();
-    h.unshift(entry);
-    try { localStorage.setItem(historyKey(), JSON.stringify(h.slice(0, 20))); } catch (e) {}
-    renderHistory();
-  };
-  renderHistory();
+  // ---------- 最近播放：前端已砍（等重新设计），本机 localStorage 记录一并停写 ----------
 
   // 播放起播 → 以当前歌为种子搭车采集推荐（服务端频控，失败静默）
   var mainAudio = document.getElementById("audio");

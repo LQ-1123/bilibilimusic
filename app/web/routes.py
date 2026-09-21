@@ -660,13 +660,57 @@ def recent_partial(request: Request):
     return templates.TemplateResponse(request, "partials/recent_rack.html", {"recent": recent})
 
 
-@router.get("/partials/stats", response_class=HTMLResponse)
-def stats_partial(request: Request):
-    """B6 听歌统计卡片：手机账号页嵌入与桌面统计弹窗共用这一份。"""
+@router.get("/partials/stats-view", response_class=HTMLResponse)
+async def stats_view_partial(request: Request):
+    """播放历史（v2.3 重设计）：桌面侧边栏独立视图——累计时长 + 最常听歌单 + 最近流水
+    （bm-stats 事件驱动刷新）。封面三级来源：流水自带（起播落账）→ 曲库回填 →
+    B 站 view 接口懒补（仅限本页仍缺封面的 bvid，取回即写回流水，此后零外呼）。"""
     gate = _login_redirect(request)
     if gate:
         return gate
-    return templates.TemplateResponse(request, "partials/stats.html", {"s": stats.summary()})
+    from app.api.routes import song_out
+    from app.core.link_parser import VideoRef
+
+    data = stats.history()
+    covers: dict[str, str] = {}
+    for s in library.list_songs():
+        out = song_out(s)
+        covers[f"{s.bvid}:{s.cid}"] = out["coverUrl"]
+        covers.setdefault(f"{s.bvid}:0", out["coverUrl"])
+
+    def lib_cover(bvid: str, cid: int) -> str:
+        return covers.get(f"{bvid}:{cid}", covers.get(f"{bvid}:0", ""))
+
+    rows = list(data["top"]) + [r for g in data["recent"] for r in g["items"]]
+    missing: set[str] = set()
+    for item in rows:
+        if not item["bvid"]:
+            continue
+        item["cover"] = item["cover"] or lib_cover(item["bvid"], item["cid"])
+        if not item["cover"] and BV_RE.fullmatch(item["bvid"]):
+            missing.add(item["bvid"])
+
+    fetched: dict[str, str] = {}
+    if missing:
+        bili = request.state.bili
+        sem = asyncio.Semaphore(4)  # 外呼限并发：一次性懒补，回写后不再发生
+
+        async def fetch(bvid: str) -> None:
+            async with sem:
+                try:
+                    info = await bili.get_video_info(VideoRef(bvid=bvid))
+                    url = info.cover_url or ""
+                except Exception:
+                    return
+                if url.startswith("https://") or url.startswith("http://"):
+                    fetched[bvid] = url
+
+        await asyncio.gather(*(fetch(b) for b in sorted(missing)))
+        stats.backfill_covers(fetched)
+    for item in rows:
+        if not item["cover"] and item["bvid"]:
+            item["cover"] = fetched.get(item["bvid"], "")
+    return templates.TemplateResponse(request, "partials/history_view.html", {"s": data})
 
 
 @router.get("/partials/albums", response_class=HTMLResponse)

@@ -76,21 +76,24 @@ def test_stream_uses_primary_when_healthy():
     bili = _Bili(STREAM, {STREAM.base_url: "ok"})
     resp = _run(stream_bvid("BV1xx411c7mD", _request(bili), cid=111, range_header=None))
     assert resp.status_code == 200
-    assert bili.http.calls == [STREAM.base_url]
+    # v2.2 中继探针（bytes=0-0，mock 全长 1234 < 64KB 不进中继）+ 实时代理各打一次
+    assert bili.http.calls == [STREAM.base_url, STREAM.base_url]
 
 
 def test_stream_falls_back_to_backup_on_connect_error():
     bili = _Bili(STREAM, {STREAM.base_url: "connect_error"})
     resp = _run(stream_bvid("BV1xx411c7mD", _request(bili), cid=111, range_header="bytes=0-1"))
     assert resp.status_code == 200
-    assert bili.http.calls == [STREAM.base_url, STREAM.backup_urls[0]]
+    # 探针与实时代理各自「primary 连接失败 → backup 成功」轮转一遍
+    assert bili.http.calls == [STREAM.base_url, STREAM.backup_urls[0],
+                               STREAM.base_url, STREAM.backup_urls[0]]
 
 
 def test_stream_falls_back_when_primary_returns_5xx():
     bili = _Bili(STREAM, {STREAM.base_url: "http_503"})
     resp = _run(stream_bvid("BV1xx411c7mD", _request(bili), cid=111, range_header=None))
     assert resp.status_code == 200
-    assert len(bili.http.calls) == 2
+    assert len(bili.http.calls) == 4  # 探针（primary 503 → backup 成）+ 代理（同样换源）
 
 
 def test_stream_reports_502_only_after_all_mirrors():
@@ -99,7 +102,9 @@ def test_stream_reports_502_only_after_all_mirrors():
         _run(stream_bvid("BV1xx411c7mD", _request(bili), cid=111, range_header=None))
     assert err.value.status_code == 502
     assert "镜像" in err.value.detail
-    assert bili.http.calls == [STREAM.base_url, STREAM.backup_urls[0]]
+    # 探针两连败 + 代理两连败，各自轮转全部镜像后才放弃
+    assert bili.http.calls == [STREAM.base_url, STREAM.backup_urls[0],
+                               STREAM.base_url, STREAM.backup_urls[0]]
 
 
 def test_stream_forwards_range_header():

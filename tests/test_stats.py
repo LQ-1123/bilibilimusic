@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pytest
 from fastapi import HTTPException
+from sqlmodel import select
 
 from app.api.routes import PlayLogIn, log_play, stats_summary
 from app.config import settings
@@ -55,6 +56,19 @@ async def test_log_play_inserts_row(db_env):
     assert s["total"]["songs"] == 1
 
 
+async def test_log_play_stores_cover_and_rejects_non_http(db_env):
+    # v2.3 播放历史行级封面：http(s) 直链入库；非 http(s)（含注入样式的相对值）置空
+    ok = await log_play(PlayLogIn(bvid="BV1xx411c7mD", title="有封面",
+                                  cover="https://i0.hdslb.com/bfs/archive/x.jpg"))
+    assert ok == {"ok": True}
+    assert await log_play(PlayLogIn(bvid="BV2xx411c7mD", title="坏封面",
+                                    cover="javascript:alert(1)")) == {"ok": True}
+    h = stats.history()
+    covers = {t["title"]: t["cover"] for t in h["top"]}
+    assert covers["有封面"] == "https://i0.hdslb.com/bfs/archive/x.jpg"
+    assert covers["坏封面"] == ""
+
+
 async def test_log_play_rejects_empty_title(db_env):
     with pytest.raises(HTTPException):
         await log_play(PlayLogIn(title="   "))
@@ -103,3 +117,49 @@ def test_summary_empty(db_env):
     assert s["total"]["plays"] == 0
     assert s["week"]["plays"] == 0
     assert len(s["days"]) == 7
+
+
+def test_history_total_top_and_day_groups(db_env):
+    # 播放历史页：全量 Top（不限本周）+ 最近流水按天分组（今天/昨天）
+    _add("BVold", "老歌", plays=9, listened=60, played_at=datetime.utcnow() - timedelta(days=10))
+    _add("BVnew", "新歌", plays=2, listened=90, played_at=datetime.utcnow())
+    _add("BVyest", "昨天的歌", plays=1, listened=30, played_at=datetime.utcnow() - timedelta(days=1))
+
+    h = stats.history()
+
+    assert h["total"]["plays"] == 12
+    assert h["total"]["minutes"] == (9 * 60 + 2 * 90 + 30) // 60
+    assert h["total"]["songs"] == 3
+    # 最常听是全量口径：上周听 9 次的老歌排第一
+    assert h["top"][0]["title"] == "老歌"
+    assert h["top"][0]["plays"] == 9
+    assert all("minutes" in t and "cover" in t for t in h["top"])
+    # 分组标签与顺序：第一组是今天（最新流水），昨天在后
+    assert h["recent"][0]["label"] == "今天"
+    assert h["recent"][0]["items"][0]["title"] == "新歌"
+    assert h["recent"][1]["label"] == "昨天"
+    assert h["recent"][1]["items"][0]["title"] == "昨天的歌"
+
+
+def test_history_empty(db_env):
+    h = stats.history()
+    assert h["total"]["plays"] == 0
+    assert h["top"] == []
+    assert h["recent"] == []
+
+
+def test_history_backfill_covers_only_fills_empty(db_env):
+    # 懒补回写：只补空 cover 的行；已有封面的行不被覆盖
+    _add("BVsolo", "歌", plays=2, listened=60, played_at=datetime.utcnow())
+    with dbs.new_session() as session:
+        rows = session.exec(select(PlayLog)).all()  # type: ignore[arg-type]
+        rows[0].cover = "https://i0.hdslb.com/bfs/archive/keep.jpg"
+        session.commit()
+
+    stats.backfill_covers({"BVsolo": "https://i0.hdslb.com/bfs/archive/new.jpg"})
+
+    with dbs.new_session() as session:
+        covers = sorted(r.cover for r in session.exec(select(PlayLog)).all())  # type: ignore[arg-type]
+    # 空行已补、已有封面原样保留
+    assert covers == ["https://i0.hdslb.com/bfs/archive/keep.jpg",
+                      "https://i0.hdslb.com/bfs/archive/new.jpg"]

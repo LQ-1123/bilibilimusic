@@ -1036,6 +1036,58 @@ async def stream_bvid(
             return hit
         raise HTTPException(status_code=502, detail=exc.message)
     best = pick_best_audio(streams, tier)
+    candidates = bili.candidate_urls(best)
+
+    # 完整缓存直出（探针之前：重放零 CDN 请求）
+    cached = cache.get(key)
+    if cached:
+        return _file_response(cached, range_header)
+
+    # ---------- v2.2 中继模式：起播即后台整曲预取，播放只吃本地磁盘 ----------
+    # 对应成熟流媒体方案里的「提高水位预缓冲 / 本地磁盘级分片缓存」：锁屏、切应用、
+    # 网络瞬断只影响后台预取任务（可重试续传），客户端永远在跟 localhost 说话，
+    # CDN 抖动不再打进播放流。探不到全长或预取额满时，落回旧的实时代理路径。
+    total = await _probe_total(bili, best)
+    if total and total > 64 * 1024:
+
+        async def relay_fetch(w, start):
+            pos = start
+            try:
+                for attempt in range(max(4, len(candidates) * 2)):
+                    url = candidates[attempt % len(candidates)]
+                    try:
+                        validate_bilibili_url(url)
+                    except UnsafeUrlError:
+                        continue
+                    try:
+                        async with bili.http.stream(
+                            "GET", url,
+                            headers={"Referer": BILIBILI_REFERER, "Range": f"bytes={pos}-"},
+                        ) as resp:
+                            if resp.status_code >= 400:
+                                raise httpx.HTTPStatusError(
+                                    f"HTTP {resp.status_code}", request=resp.request, response=resp)
+                            async for chunk in resp.aiter_bytes(64 * 1024):
+                                if not await w.append(chunk):
+                                    return  # 磁盘写失败：append 已标记失败，播放走兜底
+                                pos = w.pos
+                        await w.finish(ok=True)  # 整曲下载完成，落 meta（complete）
+                        return
+                    except (httpx.HTTPError, OSError) as exc:
+                        log.info("relay %s 第 %d 次预取失败：%s", key, attempt + 1, exc)
+                        pos = w.pos
+                        await asyncio.sleep(0.3 * (attempt + 1))
+                await w.finish(ok=False)  # 候选轮转两圈仍失败：标记失败，播放落回旧代理
+            except asyncio.CancelledError:
+                await w.finish(ok=False)  # 取消（清缓存/停服）也要收口，别留僵尸条目
+                raise
+
+        writer, _task = cache.start_relay(key, total, relay_fetch)
+        if writer is not None:
+            start = _range_start(range_header, total)
+            if start is not None:
+                return _relay_response(writer, start, total, range_header)
+            # Range 头解析不了（异常客户端）：落回旧代理，不影响播放
 
     headers = {"Referer": BILIBILI_REFERER}
     if range_header:
@@ -1045,7 +1097,6 @@ async def stream_bvid(
     # 以前只用 base_url，首选节点拥塞/故障就直接 502。这里按候选顺序换源重试，
     # 每次之间留一点退避，全失败才报错（只在首字节之前换源，已经开始推流就不再切）。
     upstream = None
-    candidates = bili.candidate_urls(best)
     for idx, url in enumerate(candidates):
         try:
             validate_bilibili_url(url)
@@ -1083,7 +1134,8 @@ async def stream_bvid(
     # T1 穿写：只有从头读（无 Range 或 start=0）才有资格写——
     # 中途 seek 拿到的是残段，拼不回完整文件。Writer 惰性创建：响应体没被
     # 消费（测试/HEAD 类场景）就绝不碰磁盘。
-    can_cache = not range_header or str(range_header).startswith("bytes=0")
+    # 同 key 已有中继在写最终文件时不再穿写：旧 Writer 的 tmp+rename 会截断它。
+    can_cache = (not range_header or str(range_header).startswith("bytes=0")) and cache.relay_active(key) is None
     total = _upstream_total(upstream) if can_cache else None
     writer = None
 
@@ -1106,6 +1158,96 @@ async def stream_bvid(
     return StreamingResponse(
         gen(), status_code=upstream.status_code, media_type="audio/mp4", headers=out_headers
     )
+
+
+async def _probe_total(bili: BiliClient, best) -> int | None:
+    """bytes=0-0 探整曲全长（playurl 有 600s 缓存，近乎零成本）；失败返回 None。"""
+    for url in bili.candidate_urls(best):
+        try:
+            validate_bilibili_url(url)
+        except UnsafeUrlError:
+            continue
+        try:
+            resp = await bili.http.send(
+                bili.http.build_request("GET", url, headers={"Referer": BILIBILI_REFERER, "Range": "bytes=0-0"}),
+                stream=True,
+            )
+        except (httpx.HTTPError, OSError):
+            continue
+        try:
+            if resp.status_code == 206:
+                m = re.search(r"/(\d+)\s*$", resp.headers.get("content-range", ""))
+                if m:
+                    return int(m.group(1))
+            if resp.status_code == 200:
+                try:
+                    return int(resp.headers.get("content-length") or 0) or None
+                except ValueError:
+                    return None
+        finally:
+            await resp.aclose()
+    return None
+
+
+def _range_start(range_header: str | None, total: int) -> int | None:
+    """解析客户端 Range 起点为绝对字节；无 Range = 0；解析不了返回 None。"""
+    if not range_header:
+        return 0
+    m = re.match(r"bytes=(\d*)-(\d*)$", range_header.strip())
+    if not m or (not m.group(1) and not m.group(2)):
+        return 0 if not range_header.strip() else None
+    if m.group(1):
+        return min(int(m.group(1)), total - 1)
+    return max(0, total - int(m.group(2)))  # bytes=-N：末尾 N 字节
+
+
+def _read_at(path: Path, offset: int, length: int) -> bytes:
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(offset)
+            return fh.read(length)
+    except OSError:
+        return b""
+
+
+def _relay_response(writer, start: int, total: int, range_header: str | None):
+    """本地中继响应：客户端按 Range 读「正在增长的缓存文件」。
+
+    预取落后于播放位置时空转等待（12s 预算），耗尽即断流——浏览器会以新
+    Range 重进（届时预取多半已续上），仍失败则由旧代理路径接管。
+    """
+    headers = {"accept-ranges": "bytes"}
+    if range_header:
+        status = 206
+        headers["content-range"] = f"bytes {start}-{total - 1}/{total}"
+        headers["content-length"] = str(total - start)
+    else:
+        status = 200
+        headers["content-length"] = str(total)
+
+    async def gen():
+        offset = start
+        budget = 12.0
+        while offset < total:
+            if writer.done:
+                pos = writer.pos
+                if offset >= pos:
+                    break  # 预取已结束且没有更多字节：交给浏览器重进/自愈
+            else:
+                pos = await writer.wait_pos(offset, 2.0)
+            if offset >= pos:
+                budget -= 2.0
+                if budget <= 0:
+                    log.info("relay %s 预取持续滞后，断流让客户端自愈重进", writer.key)
+                    break
+                continue
+            chunk = _read_at(writer.path, offset, min(256 * 1024, pos - offset))
+            if not chunk:
+                break
+            yield chunk
+            offset += len(chunk)
+
+    return StreamingResponse(gen(), status_code=status, media_type="audio/mp4", headers=headers)
 
 
 def _upstream_total(resp) -> int | None:
@@ -1184,6 +1326,7 @@ class PlayLogIn(BaseModel):
     artist: str = ""
     duration: int = 0
     listened: int = 0
+    cover: str = ""  # v2.3 播放历史页行级封面（起播时的封面直链）
 
 
 @router.post("/stats/play")
@@ -1191,10 +1334,14 @@ async def log_play(payload: PlayLogIn) -> dict:
     """B6 听歌统计：一次有效收听（客户端听满 30s 或自然播完）记一行流水。
 
     只收必要字段并截断长度——统计是本地的，别让它变成第二条上传通道。
+    封面只收 http(s) 直链，其余一律置空。
     """
     title = payload.title.strip()[:120]
     if not title:
         raise HTTPException(status_code=422, detail="缺少曲名")
+    cover = payload.cover.strip()[:500]
+    if not (cover.startswith("http://") or cover.startswith("https://")):
+        cover = ""
     with new_session() as session:
         session.add(
             PlayLog(
@@ -1204,6 +1351,7 @@ async def log_play(payload: PlayLogIn) -> dict:
                 artist=payload.artist.strip()[:80],
                 duration=max(0, min(payload.duration, 86400)),
                 listened=max(0, min(payload.listened, 86400)),
+                cover=cover,
             )
         )
         session.commit()

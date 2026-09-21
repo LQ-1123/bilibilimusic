@@ -3,8 +3,12 @@
 定位是「防打断兜底」而非下载器（2026-09-11 T1 裁决）：无管理界面、容量封顶、
 越界即淘汰。键 = (bvid, cid, tier)：同一首不同档位帽各存一份（弱网降档的
 64K 同样值得兜底）。所有写失败都静默降级——缓存永远不能弄断播放。
+
+v2.2 中继模式：起播即后台整曲预取（RelayWriter 直接写最终路径，边下边可读），
+客户端全程只吃本地磁盘——锁屏/切应用/网络瞬断不再打进播放流。
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -136,6 +140,8 @@ def evict_if_over() -> None:
         return
     entries = []  # (at, stem, bytes)
     for p in d.glob("*.json"):
+        if p.stem in _RELAYS:
+            continue  # 有预取在写的文件不淘汰（Windows 上文件也被占用）
         try:
             m = json.loads(p.read_text(encoding="utf-8"))
             if isinstance(m, dict):
@@ -171,6 +177,7 @@ def stats() -> dict:
 
 
 def clear() -> dict:
+    cancel_relays()  # 有预取在写时先停，避免清完又被写回
     d = _cache_dir()
     removed = 0
     if d.exists():
@@ -181,3 +188,126 @@ def clear() -> dict:
             except OSError:
                 pass
     return {"cleared": removed}
+
+
+# ---------- v2.2 中继模式：整曲预取，播放只吃本地磁盘 ----------
+
+_RELAYS: dict[str, dict] = {}  # key -> {"writer": RelayWriter, "task": Task}
+MAX_ACTIVE_RELAYS = 3  # 并发预取上限，避免一屏歌单起播就把 CDN 打满
+
+
+class RelayWriter:
+    """中继写手：后台预取直接追加到最终路径（边下边可读，无临时文件）。
+
+    pos 是已落盘字节数（读方据此判断能读到哪）；下载完成补 meta，
+    失败/中断保留部分文件——听过的部分仍按 T1 语义兜底。
+    预取任务与客户端读流同处一个事件循环，等待用 asyncio.Condition。
+    """
+
+    def __init__(self, key: str) -> None:
+        self.key = key
+        d = _cache_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        self.path = d / f"{key}.m4a"
+        try:
+            self.pos = self.path.stat().st_size if self.path.exists() else 0
+        except OSError:
+            self.pos = 0
+        self.total: int | None = None
+        self.done = False
+        self.failed = False
+        self._cond = asyncio.Condition()
+
+    async def append(self, chunk: bytes) -> bool:
+        try:
+            with open(self.path, "ab") as fh:
+                fh.write(chunk)
+        except OSError as exc:
+            log.warning("relay 写入失败，停预取：%s", exc)
+            await self.finish(ok=False)
+            return False
+        self.pos += len(chunk)
+        async with self._cond:
+            self._cond.notify_all()
+        return True
+
+    async def finish(self, ok: bool) -> None:
+        async with self._cond:
+            if self.done:
+                return
+            self.done = True
+            self.failed = not ok
+            self._cond.notify_all()
+        if not ok:
+            return
+        complete = self.total is not None and self.pos >= self.total
+        try:
+            _meta_path(self.key).write_text(json.dumps(
+                {"key": self.key, "bytes": self.pos, "complete": complete, "at": time.time()}),
+                encoding="utf-8")
+            evict_if_over()
+        except OSError as exc:
+            log.warning("relay meta 写入失败：%s", exc)
+
+    async def wait_pos(self, offset: int, timeout: float) -> int:
+        """等到落盘越过 offset（或超时/结束），返回当前可读字节数。"""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        async with self._cond:
+            while self.pos <= offset and not self.done:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                try:
+                    await asyncio.wait_for(self._cond.wait(), remaining)
+                except asyncio.TimeoutError:
+                    break
+            return self.pos
+
+    @property
+    def active(self) -> bool:
+        return not self.done
+
+
+def relay_active(key: str) -> RelayWriter | None:
+    ent = _RELAYS.get(key)
+    return ent["writer"] if ent and ent["writer"].active else None
+
+
+def start_relay(key: str, total: int | None, task_factory):
+    """单飞启动后台整曲预取；已在跑的 key 直接复用。并发超上限返回 (None, None)。
+
+    task_factory(writer, start) 返回预取协程，在调用方的事件循环里 create_task。
+    """
+    ent = _RELAYS.get(key)
+    if ent and ent["writer"].active:
+        return ent["writer"], ent["task"]
+    if sum(1 for e in _RELAYS.values() if e["writer"].active) >= MAX_ACTIVE_RELAYS:
+        return None, None
+    writer = RelayWriter(key)
+    writer.total = total
+    task = asyncio.create_task(task_factory(writer, writer.pos))
+    ent = {"writer": writer, "task": task}
+    _RELAYS[key] = ent
+
+    def _cleanup(_task) -> None:
+        if writer.active:
+            # 任务被取消/异常退出：同步收口，别留僵尸 active 条目挡住同 key 复用
+            writer.done = True
+            writer.failed = True
+        if _RELAYS.get(key) is ent:
+            _RELAYS.pop(key, None)
+
+    task.add_done_callback(_cleanup)
+    return writer, task
+
+
+def cancel_relays() -> None:
+    for ent in _RELAYS.values():
+        ent["task"].cancel()
+    _RELAYS.clear()
+
+
+def relay_for(key: str) -> RelayWriter | None:
+    with _RELAYS_LOCK:
+        return _RELAYS.get(key)

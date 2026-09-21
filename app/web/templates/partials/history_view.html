@@ -1,0 +1,64 @@
+<div class="hv">
+  {% if s.total.plays == 0 %}
+  <div class="hv-empty">还没有听歌记录。<br>播放满 30 秒（或听完整首）就会记一笔，这里会长出你的收听历史。</div>
+  {% else %}
+
+  <div class="hv-hero">
+    <div class="lb">累计收听</div>
+    <div class="hv-num">{% if s.total.minutes >= 60 %}{{ s.total.minutes // 60 }}<i>小时</i>{% endif %}{{ s.total.minutes % 60 }}<i>分</i></div>
+    <div class="hv-sub">{{ s.total.plays }} 次播放 · {{ s.total.songs }} 首不同的歌</div>
+  </div>
+
+  {% if s.top %}
+  <section class="hv-sec">
+    <div class="hv-sec-head">
+      <h3>最常听</h3>
+      <button class="hv-playall" type="button" onclick="hvPlayAll(this)" title="按榜单顺序连播">▶ 播放全部</button>
+    </div>
+    <ol class="hv-rack">
+      {% for t in s.top %}
+      <li class="hv-card" data-bvid="{{ t.bvid }}" data-cid="{{ t.cid }}" data-title="{{ t.title }}" data-artist="{{ t.artist }}" data-cover="{{ t.cover }}" title="播放：{{ t.title }}">
+        <span class="im">
+          {% if t.cover %}
+          <img src="{{ t.cover }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+          {% else %}
+          <span class="cv none" aria-hidden="true">♪</span>
+          {% endif %}
+          <span class="rank" aria-hidden="true">{{ loop.index }}</span>
+        </span>
+        <span class="t1">{{ t.title }}</span>
+        <span class="t2">{{ t.artist }} · {{ t.plays }} 次</span>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if s.recent %}
+  <section class="hv-sec">
+    <div class="hv-sec-head"><h3>最近播放</h3></div>
+    {% for g in s.recent %}
+    <div class="hv-day">
+      <div class="hv-day-label">{{ g.label }}</div>
+      <ol class="hv-rack">
+        {% for r in g["items"] %}
+        <li class="hv-card" {% if r.bvid %}data-bvid="{{ r.bvid }}" data-cid="{{ r.cid }}" data-title="{{ r.title }}" data-artist="{{ r.artist }}" data-cover="{{ r.cover }}" title="播放：{{ r.title }}"{% endif %}>
+          <span class="im">
+            {% if r.cover %}
+            <img src="{{ r.cover }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+            {% else %}
+            <span class="cv" aria-hidden="true">♪</span>
+            {% endif %}
+            <span class="at" aria-hidden="true">{{ r.at }}</span>
+          </span>
+          <span class="t1">{{ r.title }}</span>
+          <span class="t2">{{ r.artist }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% endif %}
+</div>
