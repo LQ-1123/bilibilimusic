@@ -1753,12 +1753,15 @@
       return '<p class="l-line" data-idx="' + i + '">' + escapeHtml(t) + "</p>";
     }).join("");
     box.classList.toggle("timed", lyricTimed); // 有轴歌词可点击跳转
+    if (window.BiliLearning) window.BiliLearning.decorate();
   }
 
   // 点击歌词行跳转到该行时间（曲库歌与试听流都支持；无轴歌词不响应）
   $("lyrics-scroll").addEventListener("click", function (e) {
     var line = e.target.closest(".l-line");
-    if (!line || !lyricTimed) return;
+    if (!line) return;
+    if (window.BiliLearning) window.BiliLearning.select(Number(line.dataset.idx));
+    if (!lyricTimed) return;
     var l = lyricLines[Number(line.dataset.idx)];
     if (!l || l.t < 0) return;
     var m = (recActive && recAudio) ? recAudio : audio;
@@ -1766,6 +1769,16 @@
     try { m.currentTime = l.t; } catch (err) {}
     updateLyricHighlight(l.t, true);
   });
+  window.__learningSeek = function (time) {
+    if (mirror || !Number.isFinite(time) || time < 0) return false;
+    var media = (recActive && recAudio) ? recAudio : audio;
+    if (!media || !media.src) return false;
+    try { media.currentTime = time; return true; } catch (err) { return false; }
+  };
+  window.__learningDuration = function () {
+    var media = (recActive && recAudio) ? recAudio : audio;
+    return media && Number.isFinite(media.duration) ? media.duration : 0;
+  };
 
   // 播放页封面/标题同步到大小两处（顶栏小封面 + 手机端大封面视图）
   function setLyricsCover(src) {
@@ -1808,6 +1821,7 @@
     currentLyricsMeta = meta;
     lyricSongId = meta.key;
     lyricLines = []; lyricTimed = false; lyricIdx = -1;
+    if (window.BiliLearning) window.BiliLearning.loading(meta);
     setLyricsText(meta.title, meta.artist);
     var sourceEl = $("lyrics-source");
     if (sourceEl) { sourceEl.hidden = true; sourceEl.textContent = ""; }
@@ -1836,6 +1850,7 @@
         lyricTimed = parsed.timed;
         lyricIdx = -1;
         renderLyrics();
+        if (window.BiliLearning) window.BiliLearning.setLyrics(meta, lyricLines, lyricTimed);
         var now = meta.isTrial && recAudio ? recAudio.currentTime : (audio.currentTime || 0);
         updateLyricHighlight(now, true);
       })
@@ -1844,6 +1859,7 @@
         var action = String(meta.key).indexOf("lib:") === 0
           ? ' <button type="button" class="ly-retry-inline">重试</button>' : "";
         $("lyrics-scroll").innerHTML = '<div class="l-empty l-error">歌词加载失败' + action + '</div>';
+        if (window.BiliLearning) window.BiliLearning.error();
         var retry = $("lyrics-scroll").querySelector(".ly-retry-inline");
         if (retry) retry.addEventListener("click", retryLyrics);
       });
@@ -1864,6 +1880,7 @@
     if (force || lyricLines[idx].t > now) idx = 0;
     while (idx + 1 < lyricLines.length && lyricLines[idx + 1].t <= now) idx++;
     while (idx > 0 && lyricLines[idx].t > now) idx--;
+    if (window.BiliLearning) window.BiliLearning.time(now, idx);
     if (idx === lyricIdx && !force) return;
     lyricIdx = idx;
     var box = $("lyrics-scroll");
@@ -1964,6 +1981,7 @@
       else loadLyrics(libLyricsMeta(song));
     } else {
       setLyricsText("—", "");
+      if (window.BiliLearning) window.BiliLearning.setLyrics({ key: "none" }, [], false);
       renderLyrics();
     }
   }
